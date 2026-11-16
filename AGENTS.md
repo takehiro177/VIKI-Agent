@@ -375,8 +375,10 @@ route or control only once it is implemented and tested. The read and wire contr
   exempts it: the exact public repository URL in the root README, `docs/index.html` and the
   showcase bundle, the exact GitHub profile URL in the root README, the exact GitHub Sponsors URL
   in the root README, `docs/index.html` and the showcase bundle, the GitHub Pages site's front page
-  and showcase URLs (each with an optional anchor) in the root README, and the single rule line of
-  `.github/CODEOWNERS` and of `.github/FUNDING.yml`. That test scans tracked and untracked files.
+  and showcase URLs (each with an optional anchor) in the root README, the exact URLs of the FOSSA
+  license and security badges and the FOSSA project page they link to in the root README, and the
+  single rule line of `.github/CODEOWNERS` and of `.github/FUNDING.yml`. That test scans tracked
+  and untracked files.
   Words that identify you beyond your account name, such as a family name or an employer, go in
   the git-ignored `.private-words.json` (`scripts/scrub_fixture.py` `PRIVATE_FILE`), never in a
   repo file.

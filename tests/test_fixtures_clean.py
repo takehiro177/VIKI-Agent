@@ -194,6 +194,14 @@ REPO_URL_PAGES = frozenset({"README.md", "docs/index.html", "docs/showcase/asset
 PROFILE_URL_PAGES = frozenset({"README.md"})
 SPONSOR_URL_PAGES = frozenset({"README.md", "docs/index.html", "docs/showcase/assets/showcase.js"})
 PAGES_URL_PAGES = frozenset({"README.md"})
+# FOSSA scans the public repository: the README shows its license and security badges, each
+# linking to the project's FOSSA page for the same issue type, and no other FOSSA URL.
+FOSSA_PROJECT = "git%2Bgithub.com%2F" + "take" + "hiro177%2FVIKI-Agent"
+FOSSA_BADGE_URL = "https://app.fossa.com/api/projects/" + FOSSA_PROJECT + ".svg"
+FOSSA_BADGE_TAIL = r"\?type=shield&issueType=(?:license|security)"
+FOSSA_PAGE_URL = "https://app.fossa.com/projects/" + FOSSA_PROJECT
+FOSSA_PAGE_TAIL = r"\?ref=badge_shield&issueType=(?:license|security)"
+FOSSA_URL_PAGES = frozenset({"README.md"})
 # GitHub needs the owner's handle in CODEOWNERS and FUNDING.yml. Exempt only each file's one rule
 # line, as a whole line of that file. Split them so this guard scans itself.
 CODEOWNERS = ".github/CODEOWNERS"
@@ -201,7 +209,12 @@ CODEOWNERS_RULE = "* @" + "take" + "hiro177"
 FUNDING = ".github/FUNDING.yml"
 FUNDING_RULE = "github: " + "take" + "hiro177"
 PUBLIC_DOCUMENTS = (
-    REPO_URL_PAGES | PROFILE_URL_PAGES | SPONSOR_URL_PAGES | PAGES_URL_PAGES | {CODEOWNERS, FUNDING}
+    REPO_URL_PAGES
+    | PROFILE_URL_PAGES
+    | SPONSOR_URL_PAGES
+    | PAGES_URL_PAGES
+    | FOSSA_URL_PAGES
+    | {CODEOWNERS, FUNDING}
 )
 
 
@@ -220,6 +233,9 @@ def _public_document_text(name: str, content: str) -> str:
         content = _without_exact_url(content, PROFILE_URL)
     if name in PAGES_URL_PAGES:
         content = _without_exact_url(content, PAGES_URL, PAGES_TAIL)
+    if name in FOSSA_URL_PAGES:
+        content = _without_exact_url(content, FOSSA_BADGE_URL, FOSSA_BADGE_TAIL)
+        content = _without_exact_url(content, FOSSA_PAGE_URL, FOSSA_PAGE_TAIL)
     if name == CODEOWNERS:
         return re.sub("(?m)^" + re.escape(CODEOWNERS_RULE) + "$", "", content)
     if name == FUNDING:
@@ -463,13 +479,22 @@ def test_public_entry_documents_reject_owner_data(
     assert _owner_data_problems(name, PUBLIC_REPO_URL + "-fork")
     assert _owner_data_problems(name, PAGES_URL + "private/" + scrub_fixture.OWNER)
     assert _owner_data_problems(name, PAGES_URL + "manual/docs/security.html")
+    assert _owner_data_problems(name, FOSSA_PAGE_URL + "/refs/branch/main")
+    assert _owner_data_problems(name, f"[![FOSSA]({FOSSA_BADGE_URL}?type=large)]")
     site = [PAGES_URL, PAGES_URL + "#core-team", PAGES_URL + "showcase/"]
+    fossa = [
+        f"[![FOSSA {kind} scan]({FOSSA_BADGE_URL}?type=shield&issueType={kind})]"
+        f"({FOSSA_PAGE_URL}?ref=badge_shield&issueType={kind})"
+        for kind in ("license", "security")
+    ]
     if name == "README.md":
         assert _owner_data_problems(name, PUBLIC_REPO_URL) == set()
         assert all(_owner_data_problems(name, f"[site]({url})") == set() for url in site)
+        assert all(_owner_data_problems(name, badge) == set() for badge in fossa)
     else:
         assert _owner_data_problems(name, PUBLIC_REPO_URL)
         assert all(_owner_data_problems(name, f"[site]({url})") for url in site)
+        assert all(_owner_data_problems(name, badge) for badge in fossa)
 
 
 @pytest.mark.parametrize("name", ["README.md", "AGENTS.md"])

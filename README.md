@@ -14,6 +14,8 @@
 [![Documentation: visual guide](https://img.shields.io/badge/docs-visual%20guide-1f1f1f?style=flat-square)](https://takehiro177.github.io/VIKI-Agent/)
 [![Pull requests welcome](https://img.shields.io/badge/PRs-welcome-1f1f1f?style=flat-square)](CONTRIBUTING.md)
 [![Sponsor VIKI Agent on GitHub](https://img.shields.io/badge/sponsor-VIKI%20Agent-1f1f1f?style=flat-square&logo=githubsponsors&logoColor=ea4aaa)](https://github.com/sponsors/takehiro177)
+[![FOSSA license scan](https://app.fossa.com/api/projects/git%2Bgithub.com%2Ftakehiro177%2FVIKI-Agent.svg?type=shield&issueType=license)](https://app.fossa.com/projects/git%2Bgithub.com%2Ftakehiro177%2FVIKI-Agent?ref=badge_shield&issueType=license)
+[![FOSSA security scan](https://app.fossa.com/api/projects/git%2Bgithub.com%2Ftakehiro177%2FVIKI-Agent.svg?type=shield&issueType=security)](https://app.fossa.com/projects/git%2Bgithub.com%2Ftakehiro177%2FVIKI-Agent?ref=badge_shield&issueType=security)
 
 [Visual guide](https://takehiro177.github.io/VIKI-Agent/) · [Showcase](https://takehiro177.github.io/VIKI-Agent/showcase/) ·
 [Get started](docs/getting-started.md) · [Manual](docs/using-the-app.md) ·
