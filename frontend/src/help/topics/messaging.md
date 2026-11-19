@@ -64,9 +64,12 @@ then check for work at the saved times. For pickup between those times, turn on
 
 Open **Kanban** in the left sidebar for a Kanban view of the notes directly in `kanban/`. Each
 status has its own lane, color and glyph: **To do**, **Working**, **Blocked**, **Ready for review**
-and **Done**. A card shows its owner's face and name, when it last changed, and **Stopped moving**
-after a day in Working or three days in To do. Select a card to open its note.
-Change the note or ask a Bot to change it. Open a routine's
+and **Done**, plus **Cancelled** once a card is cancelled. A card shows its owner's face and name,
+when it last changed, and **Stopped moving** after a day in Working or three days in To do. A
+blocked or review card also shows under **Needs you**, atop the page: answer it, or **Approve** or
+send it back, with one click. The click saves at once and offers **Undo** for 10 seconds; after
+that, it tries to send the card's Bot one message to continue, except after **Approve**, which
+sends nothing. Select a card to open its note. Open a routine's
 result with **Open session**; it is separate from the Bot's regular conversation.
 
 Kanban is optional. New seat profiles include instructions for working without it:

@@ -1,100 +1,56 @@
 .vsp {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 10px;
   min-width: 0;
   color: var(--t1);
 }
 
-.vsp-header h1,
-.vsp-header p,
-.vsp-growth h2,
-.vsp-growth p,
-.vsp-topics h2,
-.vsp-topics p,
-.vsp-notes h2,
-.vsp-group h2,
-.vsp-group p {
-  margin-block: 0 8px;
+/* The list's own header: the section, its count and folder, and the sort on one row. */
+.vsp-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 2px 2px 8px;
+  border-bottom: 1px solid var(--line);
 }
 
-.vsp-header p,
+.vsp-head h2,
+.vsp-insight h2,
+.vsp-insight h3,
+.vsp-group h3 {
+  margin: 0;
+  color: var(--t0);
+}
+
+.vsp-head h2 {
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.vsp-title {
+  min-width: 0;
+}
+
 .vsp-meta,
 .vsp-empty {
+  margin: 4px 0 0;
   color: var(--t2);
   font-size: 13px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .vsp-ref {
-  display: inline-block;
-  max-width: 100%;
-  color: var(--t2);
+  color: var(--t3);
   font-family: var(--font-mono);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 
-.vsp-count {
-  margin: 4px 0 0;
-  color: var(--t2);
-  font-size: 13px;
-}
-
-.vsp-growth,
-.vsp-group {
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--g2);
-}
-
-.vsp-meta {
-  margin: 5px 0 0;
-}
-
-.vsp-tags,
-.vsp-note-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.vsp-tags {
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-
-.vsp-tag,
-.vsp-action {
-  min-height: 32px;
-  padding: 5px 9px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--g2);
-  color: var(--t1);
-  font: inherit;
-  cursor: pointer;
-}
-
-.vsp-tag:hover,
-.vsp-action:hover {
-  border-color: var(--t3);
-}
-
-.vsp-list-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.vsp-list-head label {
+.vsp-sort {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -102,14 +58,57 @@
   font-size: 12px;
 }
 
-.vsp-list-head select {
+.vsp-sort select {
   max-width: 100%;
-  min-height: 32px;
+  min-height: 30px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--g2);
   color: var(--t1);
   font: inherit;
+}
+
+.vsp-tags,
+.vsp-note-list,
+.vsp-legend,
+.vsp-maps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vsp-note-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.vsp-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vsp-tag,
+.vsp-action {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--g2);
+  color: var(--t1);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.vsp-action {
+  align-self: flex-start;
+  border-radius: 6px;
+}
+
+.vsp-tag:hover,
+.vsp-action:hover {
+  border-color: var(--t3);
 }
 
 .vsp-groups {
@@ -118,23 +117,208 @@
   gap: 10px;
 }
 
+.vsp-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--g2);
+}
+
+.vsp-group h3 {
+  font-size: 15px;
+}
+
 .vsp-group > .note-card {
-  margin-top: 8px;
+  margin-top: 6px;
+  border-top: 1px solid var(--hair);
 }
 
 .vsp-group .vsp-action {
   margin-top: 8px;
 }
 
+/* The reader side of a section while no note is open. */
+.vsp-insight {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 640px;
+  min-width: 0;
+}
+
+.vsp-kicker {
+  margin: 0;
+  color: var(--label-slate);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vsp-total {
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.vsp-bar-figure {
+  margin: 14px 0 4px;
+}
+
+.vsp-bar {
+  display: flex;
+  gap: 2px;
+  overflow: hidden;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--track);
+}
+
+.vsp-bar-part {
+  flex-basis: 0;
+  min-width: 4px;
+}
+
+.vsp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 10px;
+  color: var(--t2);
+  font-size: 13px;
+}
+
+.vsp-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vsp-legend li::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vault-tone);
+}
+
+.vsp-legend strong {
+  color: var(--t0);
+}
+
+.vsp-insight [data-tone="settled"] {
+  --vault-tone: var(--vault-settled);
+}
+
+.vsp-insight [data-tone="growing"] {
+  --vault-tone: var(--vault-growing);
+}
+
+.vsp-insight [data-tone="open"] {
+  --vault-tone: var(--vault-open);
+}
+
+.vsp-insight [data-tone="none"] {
+  --vault-tone: var(--t3);
+}
+
+.vsp-bar-part {
+  background: var(--vault-tone);
+}
+
+.vsp-coverage {
+  color: var(--t3);
+  font-size: 12px;
+}
+
+.vsp-maps {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+/* A map's row: its name and linked-note count over a bar scaled to the most linked map. */
+.vsp-map {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--g2);
+  color: var(--t1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vsp-map:hover {
+  border-color: var(--t3);
+}
+
+.vsp-map-name {
+  min-width: 0;
+  color: var(--t0);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vsp-map-count {
+  color: var(--t2);
+  font-size: 12px;
+}
+
+.vsp-map-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--vault-map);
+}
+
+.vsp-topics {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.vsp-topics h3 {
+  color: var(--t2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vsp-hint {
+  margin: 18px 0 0;
+  color: var(--t3);
+  font-size: 13px;
+}
+
 .vsp button:focus-visible,
-.vsp select:focus-visible {
+.vsp select:focus-visible,
+.vsp-insight button:focus-visible {
   outline: 2px solid var(--or);
   outline-offset: 2px;
 }
 
 @media (forced-colors: active) {
   .vsp button:focus-visible,
-  .vsp select:focus-visible {
+  .vsp select:focus-visible,
+  .vsp-insight button:focus-visible {
     outline-color: Highlight;
+  }
+
+  .vsp-bar-part,
+  .vsp-map-bar,
+  .vsp-legend li::before {
+    background: CanvasText;
   }
 }

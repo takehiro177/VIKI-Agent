@@ -37,7 +37,8 @@ model connections.
 ## Vault notes and app data
 
 These rows cover where a vault folder may live, direct note Save and note actions on macOS or
-Linux, and opening the app data with an older build.
+Linux, a deny rule in some **Start with VIKI** vaults, and opening the app data with an older
+build.
 
 | Situation | What to expect |
 |---|---|
@@ -49,6 +50,7 @@ Linux, and opening the app data with an older build.
 | Another program keeps the note open for writing during a save | On macOS or Linux, with no file lock from the OS, that program can lose its own later write. On Windows, the save is refused while another program holds the note open for writing. |
 | A vault that uses Git LFS or another Git filter | The status bar's Git chip counts a filtered file as changed when its timestamps changed but its contents did not, for example after the vault was copied. Running `git status` in the vault yourself clears it. |
 | An Ordinary vault whose `AGENTS.md` or `CLAUDE.md` comes to hold the same text as a protected vault's file of that name | Saving that text in **Settings › Instructions and Persona** is refused. Another program's edit, a protected vault's file that changed since VIKI Agent last read it, or a vault made protected later can still bring the files into line; VIKI Agent then refuses every save to this vault. Change the file outside VIKI Agent so the two differ. |
+| A **Start with VIKI** vault whose `.claude/settings.json` denies `Edit(_raw/**)` | Claude Code applies that rule to new files too, so /learn and the researcher can't save originals into `_raw/`. Delete that line from the vault's `.claude/settings.json`. `_raw/` stays create-only through the first prime directive in the vault's `AGENTS.md`. |
 | Updating VIKI Agent | Each update step to `app.sqlite3` leaves a verified copy of the store beside it. VIKI Agent deletes none of them. So an update that crosses several store versions leaves one such copy for each step in the app's data folder. |
 | Opening the app data with an older build | The older build refuses it. Rolling back to the copy made before the update loses what the app stored after it, such as saved settings. See [Rolling back after an upgrade](security.md#rolling-back-after-an-upgrade). |
 

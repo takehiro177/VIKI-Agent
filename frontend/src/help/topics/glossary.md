@@ -17,17 +17,18 @@ default still decides how long the original is kept.
 The right panel's read-only list of messages your chats received from other Claude Code sessions.
 
 ### Kanban
-The notes directly in a vault's `kanban/` folder, each one a card. **Kanban** shows them read-only,
-grouped by status, and VIKI's launcher lists the cards that need you while **Kanban** is on.
+The notes directly in a vault's `kanban/` folder, each one a card. **Kanban** groups them by
+status and lists blocked and review cards under **Needs you**, and VIKI's launcher lists the
+cards that need you while **Kanban** is on.
 
 ### Bot
 A saved profile wired to its own Claude Code conversation, so a routine can run it
 and optionally deliver results to **Messaging**. **Bots** lists Chief, Ops, Research, Writer, Engineer, Desk and Checker under **Core team** in every registered vault, before you create any Bot. Their conversations work without the optional Kanban skills.
 
 ### Card
-A note directly in `kanban/`. Its lowercase `status` (`todo`, `working`, `blocked`, `review` or
-`done`) says where it stands, and an `owner/<seat>` tag names the seat that should pick it up;
-the card template also sets `type: card`.
+A note directly in `kanban/`. Its lowercase `status` (`todo`, `working`, `blocked`, `review`,
+`done` or `cancelled`) says where it stands, and an `owner/<seat>` tag names the seat that should
+pick it up; the card template also sets `type: card`.
 
 ### Chat
 What you see as a tab in VIKI Agent's window. Opening an old session's chat resumes it; closing the tab leaves its record untouched.

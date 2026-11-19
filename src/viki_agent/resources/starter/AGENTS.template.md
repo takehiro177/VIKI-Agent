@@ -1,4 +1,4 @@
-<!-- VIKI starter vault {{viki.vault_id}}, starter version 4 -->
+<!-- VIKI starter vault {{viki.vault_id}}, starter version 5 -->
 
 # VIKI vault: agent instructions
 
@@ -56,7 +56,7 @@ Learned memory (changed only through /retro):
 | `60-calendar/YYYY/` | Daily notes `YYYY-MM-DD.md` (append-only log) and weekly reviews `YYYY-Www.md`. |
 | `70-people/` | One note per person. |
 | `90-archive/` | Completed/inactive items moved whole. Nothing is deleted, only archived. |
-| `kanban/` | The team's Kanban cards: one card per job, directly in this folder (see Team). Done cards move weekly into `90-archive/kanban/`. |
+| `kanban/` | The team's Kanban cards: one card per job, directly in this folder (see Team). Done and cancelled cards move weekly into `90-archive/kanban/`. |
 | `_raw/` | Create-only: deposit once as a new file, never edit or overwrite. |
 | `_attachments/` | Binary media. |
 | `_templates/` | One template per note type. Copy, don't invent structure. |
@@ -70,7 +70,7 @@ Schema-exempt file classes: `00-inbox/` captures (only `captured:`), `_raw/` ori
 
 ```yaml
 type: note        # note | project | area | source | person | daily | weekly | moc | thinking | card
-status: draft     # notes/thinking: draft|evergreen · projects: seed|active|done|archived · sources: unread|processed · daily/weekly/person/moc/area: evergreen · cards: todo|working|blocked|review|done
+status: draft     # notes/thinking: draft|evergreen · projects: seed|active|done|archived · sources: unread|processed · daily/weekly/person/moc/area: evergreen · cards: todo|working|blocked|review|done|cancelled
 created: YYYY-MM-DD
 modified: YYYY-MM-DD
 up: "[[Second Brain MOC]]"   # parent map/hub; wikilinks in YAML must be quoted
@@ -123,4 +123,4 @@ Writing conventions:
 
 This vault can run a small team of seats that coordinate through Kanban cards in `kanban/`, not by messaging each other: Chief turns requests into cards, Ops runs the standup and the weekly sweep, specialists each own one domain, and the checker subagent checks finished work. A seat is usually a Bot, and a Bot takes its rules from VIKI Agent and the /kanban skill, not from this file.
 
-A plain chat with the owner needs no card. Use /kanban when the owner asks for one or hands work to a seat: it holds the card format and the rules every seat follows. /standup summarizes the cards, and /weekly moves done ones whole into `90-archive/kanban/`.
+A plain chat with the owner needs no card. Use /kanban when the owner asks for one or hands work to a seat: it holds the card format and the rules every seat follows. /standup summarizes the cards, and /weekly moves done and cancelled ones whole into `90-archive/kanban/`.

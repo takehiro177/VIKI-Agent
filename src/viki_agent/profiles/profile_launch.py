@@ -824,7 +824,12 @@ class ProfileLaunchService:
         binding, document, _prefs = self._binding(session_id)
         if binding["bot_id"] is None:
             return None
-        return bot_memory_rule.bot_system_prompt(document["instructions"])
+        return bot_memory_rule.bot_system_prompt(
+            document["instructions"],
+            kanban=bot_memory_rule.kanban_skill_present(
+                Path(self._bot_workspace(binding).root.display)
+            ),
+        )
 
     def _bot_workspace(self, binding: dict[str, Any]) -> Workspace:
         workspace = self._workspace(binding["workspace_id"])

@@ -721,6 +721,37 @@ def test_resolved_bot_profile_previews_instructions_and_memory_rule_as_system_pr
     assert bare == ("Line one.", bot_system_prompt(""))
 
 
+def test_resolved_bot_profile_previews_the_kanban_rule_once_the_vault_has_the_skill(
+    launched: tuple[Rig, LaunchRig],
+) -> None:
+    rig, launch = launched
+    document = _document_raw(
+        prompt="Line one.", profile_id=launch.profile_id, workspace_id=launch.workspace_id
+    )
+    with launch.state.store._connection(write=True) as connection:
+        connection.execute(
+            "INSERT INTO bots VALUES (?,?,?,?,?,1,?,?)",
+            (
+                str(uuid4()),
+                launch.profile_id,
+                launch.workspace_id,
+                str(uuid4()),
+                "a" * 64,
+                "2026-11-05T00:00:00.000Z",
+                "2026-11-05T00:00:00.000Z",
+            ),
+        )
+    with rig.api as api:
+        before = _resolved_turns(_preview(api, document).json()["resolved"])
+        skill = launch.vault / ".claude" / "skills" / "kanban" / "SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("content", encoding="utf-8")
+        after = _resolved_turns(_preview(api, document).json()["resolved"])
+    instructions = profile_document()["instructions"]
+    assert before == ("Line one.", bot_system_prompt(instructions))
+    assert after == ("Line one.", bot_system_prompt(instructions, kanban=True))
+
+
 def test_resolved_mode_and_model_fall_back_to_settings(
     launched: tuple[Rig, LaunchRig], monkeypatch: pytest.MonkeyPatch
 ) -> None:

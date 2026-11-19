@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 import type { BotRow, BotsApi } from "../../clients/messaging/botsApi";
 import type { Key } from "../../i18n";
 import { t, tf } from "../../i18n/t";
@@ -9,6 +9,8 @@ import { READINESS_TEXT, type TeamReadiness } from "../Bots/teamReadiness";
 import { Icon, type IconName } from "../Icon/Icon";
 import { Loading } from "../Loading/Loading";
 import "./Kanban.css";
+import { KanbanNeedsYou, type NeedsYouItem, updatedText } from "./KanbanNeedsYou";
+import { type CardRead, readCard } from "./kanbanBody";
 import {
   KANBAN_BATCH,
   KANBAN_READ_CAP,
@@ -16,20 +18,26 @@ import {
   type KanbanLaneId,
   type KanbanListing,
   kanbanAttention,
+  kanbanBodyRefs,
   kanbanLanes,
   kanbanListing,
+  kanbanNeedsYou,
   kanbanReadRefs,
   type UnreadCode,
+  wakeTarget,
 } from "./kanbanCards";
+import { type KanbanWrite, useCardAnswer, type WakeResult } from "./useCardAnswer";
 
 export interface KanbanViewProps {
-  api: Pick<VaultApi, "entries" | "metadata">;
+  api: Pick<VaultApi, "entries" | "metadata"> & Partial<Pick<VaultApi, "note">>;
   workspaceId: string;
   onOpenNote(ref: string): void;
   botsApi?: Pick<BotsApi, "list">;
   readiness: TeamReadiness;
   onOpenSeat(seat: SeatId): void;
   onRefresh(): void;
+  write?: KanbanWrite;
+  onWake?: (bot: BotRow, text: string) => Promise<WakeResult>;
   nowMs?: number;
 }
 
@@ -42,6 +50,8 @@ type State =
       listing: KanbanListing;
       items: ReadonlyMap<string, VaultMetadataItem>;
       refreshing: boolean;
+      bodies: ReadonlyMap<string, CardRead>;
+      reading: boolean;
     };
 
 const LANE_NAME: Record<KanbanLaneId, Key> = {
@@ -50,6 +60,7 @@ const LANE_NAME: Record<KanbanLaneId, Key> = {
   blocked: "kanban.lane.blocked",
   review: "kanban.lane.review",
   done: "kanban.lane.done",
+  cancelled: "kanban.lane.cancelled",
   other: "kanban.lane.other",
   unread: "kanban.lane.unread",
 };
@@ -59,6 +70,7 @@ const GLYPH: Record<KanbanLaneId, IconName> = {
   blocked: "statusBlocked",
   review: "statusReview",
   done: "statusDone",
+  cancelled: "close",
   other: "statusOther",
   unread: "statusUnread",
 };
@@ -81,12 +93,6 @@ function coverageText({ reasons, omitted }: KanbanListing): string {
     .filter(Boolean)
     .join("; ");
   return detail ? tf("kanban.coverage.detail", { detail }) : t("kanban.coverage");
-}
-
-function updatedText(ageDays: number): string {
-  if (ageDays === 0) return t("kanban.card.updated_today");
-  if (ageDays === 1) return t("kanban.card.updated_yesterday");
-  return tf("kanban.card.updated_days", { days: ageDays });
 }
 
 function cardNote(card: KanbanCard, laneId: KanbanLaneId): string | null {
@@ -115,6 +121,23 @@ function ownerBot(slug: string, bots: readonly BotRow[], workspaceId: string): T
   return { key: `seat:${seat.seat}`, name: seat.name, ...seatFace(seat.seat) };
 }
 
+/** A card's owner markup: "No owner", or a label plus each owner's Bot tag or plain slug.
+ * Shared by a lane card and its Needs-you item so the two read the same. */
+function ownerTags(card: KanbanCard, bots: readonly BotRow[], workspaceId: string): ReactNode {
+  if (card.owners.length === 0) return t("kanban.card.no_owner");
+  return (
+    <>
+      <span>{t(card.owners.length === 1 ? "kanban.card.owner" : "kanban.card.owners")}</span>
+      {card.owners.map((slug, slot) => {
+        const bot = ownerBot(slug, bots, workspaceId);
+        // A card can list a slug twice, so the slug alone is no key.
+        const key = `${slug}-${slot}`;
+        return bot ? <BotTag key={key} bot={bot} /> : <span key={key}>{slug}</span>;
+      })}
+    </>
+  );
+}
+
 function focusHeading(node: HTMLHeadingElement | null) {
   node?.focus();
 }
@@ -127,12 +150,26 @@ export function KanbanView({
   readiness,
   onOpenSeat,
   onRefresh,
+  write,
+  onWake,
   nowMs,
 }: KanbanViewProps) {
   const id = useId();
   const [requested, setRequested] = useState(0);
   const [state, setState] = useState<State>({ phase: "loading" });
   const [bots, setBots] = useState<BotRow[]>([]);
+  const { notice, saving, lockedRef, answer, undo } = useCardAnswer({
+    write: write ?? null,
+    ...(onWake === undefined
+      ? {}
+      : {
+          // F11: the ref (a Bot-writable file name) never enters the message sent in the
+          // owner's voice — the fixed text says only that an answer is waiting.
+          wake: (bot: BotRow) => onWake(bot, t("kanban.wake.message")),
+        }),
+    onSettled: () => setRequested((n) => n + 1),
+    ...(nowMs === undefined ? {} : { nowMs }),
+  });
   // biome-ignore lint/correctness/useExhaustiveDependencies: requested is an explicit read request
   useEffect(() => {
     const controller = new AbortController();
@@ -169,8 +206,39 @@ export function KanbanView({
       } catch {
         // A failed batch stops the reads; kanbanLanes labels the unread cards.
       }
+      if (signal.aborted) return;
+      const lanes = kanbanLanes(listing, items, nowMs ?? Date.now());
+      setState((now) => ({
+        phase: "ready",
+        workspaceId,
+        listing,
+        items,
+        refreshing: false,
+        // A same-workspace refresh keeps what was already read; a new workspace starts empty.
+        bodies: now.phase === "ready" && now.workspaceId === workspaceId ? now.bodies : new Map(),
+        reading: api.note !== undefined,
+      }));
+      const note = api.note;
+      if (!note) return;
+      // One body at a time, needs-you first (kanbanBodyRefs' order and KANBAN_BODY_CAP): a
+      // throw or an unparseable body stops the rest, so a stuck or bad read never spins forever.
+      for (const ref of kanbanBodyRefs(lanes, listing)) {
+        if (signal.aborted) return;
+        let raw: Record<string, unknown>;
+        try {
+          raw = await note(workspaceId, ref, signal);
+        } catch {
+          break;
+        }
+        const read = readCard(raw);
+        if (read === null) break;
+        if (signal.aborted) return;
+        setState((now) =>
+          now.phase === "ready" ? { ...now, bodies: new Map(now.bodies).set(ref, read) } : now,
+        );
+      }
       if (!signal.aborted)
-        setState({ phase: "ready", workspaceId, listing, items, refreshing: false });
+        setState((now) => (now.phase === "ready" ? { ...now, reading: false } : now));
     })();
     return () => controller.abort();
   }, [api, workspaceId, requested]);
@@ -192,7 +260,18 @@ export function KanbanView({
 
   const ready = state.phase === "ready" && state.workspaceId === workspaceId ? state : null;
   const lanes = ready ? kanbanLanes(ready.listing, ready.items, nowMs ?? Date.now()) : [];
-  const attention = ready ? kanbanAttention(ready.listing, lanes) : null;
+  const counts = ready ? kanbanAttention(ready.listing, lanes) : null;
+  const needsYouItems: NeedsYouItem[] = ready
+    ? kanbanNeedsYou(lanes, ready.listing).map((card) => {
+        const target = wakeTarget(card.owners, bots, workspaceId);
+        return {
+          card,
+          read: ready.bodies.get(card.ref) ?? null,
+          ownerTags: ownerTags(card, bots, workspaceId),
+          botName: target && "bot" in target ? target.name : null,
+        };
+      })
+    : [];
 
   return (
     <section className="kanban kanban-page" aria-labelledby={`${id}-title`}>
@@ -221,9 +300,30 @@ export function KanbanView({
       {ready ? (
         <>
           {ready.listing.partial ? <p role="status">{coverageText(ready.listing)}</p> : null}
-          {attention && attention.review + attention.blocked > 0 ? (
-            <p className="kanban-attention">{tf("kanban.attention", attention)}</p>
-          ) : null}
+          <div inert={ready.refreshing}>
+            <KanbanNeedsYou
+              items={needsYouItems}
+              counts={counts}
+              reading={ready.reading}
+              canWrite={write !== undefined}
+              saving={saving}
+              lockedRef={lockedRef}
+              notice={notice}
+              onAnswer={(item, value) => {
+                if (!item.read) return;
+                void answer(
+                  item.card,
+                  item.read,
+                  wakeTarget(item.card.owners, bots, workspaceId),
+                  value,
+                );
+              }}
+              onUndo={() => {
+                void undo();
+              }}
+              onOpenNote={onOpenNote}
+            />
+          </div>
           {ready.listing.refs.length === 0 ? (
             <div className="kanban-empty">
               <p>{t("kanban.empty")}</p>
@@ -263,6 +363,8 @@ export function KanbanView({
                       {lane.cards.map((card, index) => {
                         const refId = `${id}-${lane.id}-${index}`;
                         const note = cardNote(card, lane.id);
+                        const body = ready.bodies.get(card.ref) ?? null;
+                        const done = body?.body.done ?? null;
                         return (
                           <li key={card.ref} className="kanban-card">
                             <button
@@ -273,39 +375,33 @@ export function KanbanView({
                             >
                               {card.title}
                             </button>
+                            {lane.id === "blocked" || lane.id === "review" ? (
+                              <span className="kanban-badge">{t("kanban.card.needs_you")}</span>
+                            ) : null}
                             {note ? <p className="kanban-card-note">{note}</p> : null}
+                            {body?.body.now ? (
+                              <p className="kanban-card-note">{body.body.now}</p>
+                            ) : null}
                             {card.unread ? null : (
                               <p className="kanban-card-owners">
-                                {card.owners.length === 0 ? (
-                                  t("kanban.card.no_owner")
-                                ) : (
-                                  <>
-                                    <span>
-                                      {t(
-                                        card.owners.length === 1
-                                          ? "kanban.card.owner"
-                                          : "kanban.card.owners",
-                                      )}
-                                    </span>
-                                    {card.owners.map((slug, slot) => {
-                                      const bot = ownerBot(slug, bots, workspaceId);
-                                      // A card can list a slug twice, so the slug alone is no key.
-                                      const key = `${slug}-${slot}`;
-                                      return bot ? (
-                                        <BotTag key={key} bot={bot} />
-                                      ) : (
-                                        <span key={key}>{slug}</span>
-                                      );
-                                    })}
-                                  </>
-                                )}
+                                {ownerTags(card, bots, workspaceId)}
                               </p>
                             )}
-                            {card.ageDays === null ? null : (
+                            {card.ageDays === null && !done ? null : (
                               <p className="kanban-card-meta">
-                                <span>{updatedText(card.ageDays)}</span>
+                                {card.ageDays === null ? null : (
+                                  <span>{updatedText(card.ageDays)}</span>
+                                )}
                                 {card.stale ? (
                                   <span className="kanban-stale">{t("kanban.card.stale")}</span>
+                                ) : null}
+                                {done ? (
+                                  <span>
+                                    {tf("kanban.card.done_of", {
+                                      done: done.done,
+                                      total: done.total,
+                                    })}
+                                  </span>
                                 ) : null}
                               </p>
                             )}

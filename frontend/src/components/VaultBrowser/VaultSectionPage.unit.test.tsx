@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, expect, it, vi } from "vitest";
 import type { OverviewNote, VaultOverview as VaultOverviewData } from "../../state/vaultApi";
 import { readCss } from "../../testing/css";
-import { VaultSectionPage } from "./VaultSectionPage";
+import { VaultSectionInsight, VaultSectionPage } from "./VaultSectionPage";
 
 afterEach(() => {
   cleanup();
@@ -50,7 +50,6 @@ it("uses singular and plural listing counts", () => {
       listingPartial={false}
       onOpen={() => {}}
       onBrowse={() => {}}
-      onTag={() => {}}
     />,
   );
   expect(screen.getByText("0 notes")).toBeTruthy();
@@ -64,7 +63,6 @@ it("uses singular and plural listing counts", () => {
         listingPartial={listingPartial}
         onOpen={() => {}}
         onBrowse={() => {}}
-        onTag={() => {}}
       />,
     );
 
@@ -91,7 +89,6 @@ it("shows exact folder ref, partial listing lower-bound count, recent ordering, 
       listingPartial
       onOpen={onOpen}
       onBrowse={() => {}}
-      onTag={() => {}}
     />,
   );
 
@@ -126,7 +123,6 @@ it("sorts finite positive file times first and exact refs break ties", () => {
       listingPartial={false}
       onOpen={() => {}}
       onBrowse={() => {}}
-      onTag={() => {}}
     />,
   );
   const list = screen.getByRole("list", { name: "Notes in 40-sources" });
@@ -158,7 +154,6 @@ it("resets the visible page when sort or section changes", () => {
     listingPartial: false,
     onOpen: () => {},
     onBrowse: () => {},
-    onTag: () => {},
   };
   const { rerender } = render(<VaultSectionPage {...props} />);
   fireEvent.click(screen.getByRole("button", { name: "Show more" }));
@@ -182,7 +177,6 @@ it("names the exact folder in its empty state", () => {
       listingPartial={false}
       onOpen={() => {}}
       onBrowse={() => {}}
-      onTag={() => {}}
     />,
   );
   expect(screen.getByText("No notes in this folder. (40-sources/)")).toBeTruthy();
@@ -191,21 +185,18 @@ it("names the exact folder in its empty state", () => {
 it("routes tags with three-folder coverage label on complete overview", () => {
   const onTag = vi.fn();
   render(
-    <VaultSectionPage
+    <VaultSectionInsight
       section="maps"
-      listing={[row("50-maps/Home.md", 5)]}
       overview={overview([
         detail("30-knowledge/a.md", ["review"]),
         detail("40-sources/b.md", ["review"]),
         detail("50-maps/Home.md", ["review"]),
       ])}
-      listingPartial={false}
       onOpen={() => {}}
-      onBrowse={() => {}}
       onTag={onTag}
     />,
   );
-  expect(screen.getAllByText("In notes read from Knowledge, Sources and Maps")).toHaveLength(2);
+  expect(screen.getAllByText("In notes read from Knowledge, Sources and Maps")).toHaveLength(1);
   const tag = screen.getByRole("button", { name: "#review (3)" });
   fireEvent.click(tag);
   expect(onTag).toHaveBeenCalledWith("review");
@@ -233,7 +224,6 @@ it("shows 32 eligible Everything else folders, one newest card each, then the ne
       listingPartial
       onOpen={() => {}}
       onBrowse={onBrowse}
-      onTag={() => {}}
     />,
   );
 
@@ -263,7 +253,6 @@ it("keeps controls keyboard reachable and section CSS scoped", () => {
       listingPartial={false}
       onOpen={() => {}}
       onBrowse={() => {}}
-      onTag={() => {}}
     />,
   );
   const showAll = screen.getByRole("button", { name: "Show all" });
@@ -289,7 +278,6 @@ it.each([
         listingStatus={<p role="alert">The vault is unavailable.</p>}
         onOpen={() => {}}
         onBrowse={() => {}}
-        onTag={() => {}}
       />
     );
     const { rerender } = render(page(false));
@@ -304,3 +292,71 @@ it.each([
     if (section === "sources") expect(screen.getByText("0 notes")).toBeTruthy();
   },
 );
+
+it("marks the open note's row as current", () => {
+  render(
+    <VaultSectionPage
+      section="knowledge"
+      listing={[row("30-knowledge/a.md", 2), row("30-knowledge/b.md", 1)]}
+      overview={overview()}
+      listingPartial={false}
+      selected="30-knowledge/b.md"
+      onOpen={() => {}}
+      onBrowse={() => {}}
+    />,
+  );
+  expect(
+    screen.getByRole("button", { name: "title:30-knowledge/b.md" }).getAttribute("aria-current"),
+  ).toBe("true");
+  expect(
+    screen.getByRole("button", { name: "title:30-knowledge/a.md" }).getAttribute("aria-current"),
+  ).toBeNull();
+});
+
+it("shows a section's status mix as one bar with a counted legend", () => {
+  render(
+    <VaultSectionInsight
+      section="knowledge"
+      overview={overview([
+        { ...detail("30-knowledge/a.md"), status: "evergreen" },
+        { ...detail("30-knowledge/b.md"), status: "evergreen" },
+        { ...detail("30-knowledge/c.md"), status: "draft" },
+        { ...detail("40-sources/d.md"), status: "unread" },
+      ])}
+      onOpen={() => {}}
+      onTag={() => {}}
+    />,
+  );
+  expect(screen.getByRole("heading", { name: "3 knowledge notes" })).toBeTruthy();
+  const bar = screen.getByRole("img", {
+    name: "Knowledge notes by status: 2 evergreen, 1 draft",
+  });
+  expect([...bar.children].map((part) => part.getAttribute("data-tone"))).toEqual([
+    "settled",
+    "growing",
+  ]);
+  expect(screen.getByText("evergreen").textContent).toBe("2 evergreen");
+  expect(screen.getByText("draft").textContent).toBe("1 draft");
+});
+
+it("ranks maps by linked notes and opens one as a map", () => {
+  const onOpen = vi.fn();
+  render(
+    <VaultSectionInsight
+      section="maps"
+      overview={overview([
+        { ...detail("50-maps/small.md"), title: "Small", links: 1 },
+        { ...detail("50-maps/big.md"), title: "Big", links: 9 },
+        { ...detail("50-maps/empty.md"), title: "Empty", links: 0 },
+      ])}
+      onOpen={onOpen}
+      onTag={() => {}}
+    />,
+  );
+  const maps = within(screen.getByRole("list", { name: "Maps by linked notes" })).getAllByRole(
+    "button",
+  );
+  expect(maps.map((map) => map.textContent)).toEqual(["Big9 linked", "Small1 linked"]);
+  fireEvent.click(maps[0] as HTMLElement);
+  expect(onOpen).toHaveBeenCalledWith("50-maps/big.md", "map", maps[0]);
+});

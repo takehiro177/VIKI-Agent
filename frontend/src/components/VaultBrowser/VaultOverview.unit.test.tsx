@@ -399,10 +399,10 @@ test("Growth keeps the knowledge and sources cards (no standalone maps card); le
   expect(meter?.getAttribute("aria-hidden")).toBe("true");
   const segments = Array.from(meter?.querySelectorAll<HTMLElement>(".vo-meter-segment") ?? []);
   expect(segments).toHaveLength(2);
-  // Evergreen (the accent) and draft (the muted tone) must not share a colour, or the split
-  // disappears, as it did when every bucket was only an opacity step of the same accent hue.
-  expect(segments[0]?.style.background).toContain("--or");
-  expect(segments[1]?.style.background).toContain("--t2");
+  // Evergreen and draft take the Vault's settled and growing state colours: they must not share
+  // one, or the split disappears, as it did when every bucket was an opacity step of one hue.
+  expect(segments[0]?.style.background).toContain("--vault-settled");
+  expect(segments[1]?.style.background).toContain("--vault-growing");
   expect(segments[0]?.style.background).not.toBe(segments[1]?.style.background);
 });
 

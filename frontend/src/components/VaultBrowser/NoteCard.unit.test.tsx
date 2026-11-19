@@ -47,7 +47,7 @@ it("keeps exact ref visible and describes it from title button", () => {
   expect(title.getAttribute("data-vault-ref")).toBe(listing.ref);
   expect(title.getAttribute("data-vault-kind")).toBe("recent");
   expect(title.getAttribute("aria-describedby")).toBe(ref.id);
-  expect(ref.className).not.toContain("sr-only");
+  expect(ref.hidden).toBe(false);
   fireEvent.click(title);
   expect(onOpen).toHaveBeenCalledWith(listing.ref, "recent", title);
 });
@@ -268,4 +268,73 @@ it("uses a forced-colors focus outline and disables hover lift in both reduced-m
   ]) {
     expect(reduced).toMatch(/\.note-card:hover\s*\{[^}]*transform:\s*none/);
   }
+});
+
+it.each([
+  ["evergreen", "settled"],
+  ["Processed", "settled"],
+  ["done", "settled"],
+  ["draft", "growing"],
+  ["seed", "growing"],
+  ["unread", "open"],
+  ["active", "open"],
+  ["archived", null],
+  [null, null],
+] as const)("gives status %s the %s tone", (status, tone) => {
+  const ref = "30-knowledge/a.md";
+  const { container } = render(
+    <NoteCard
+      noteRef={ref}
+      overview={note({ ref, status })}
+      variant="compact"
+      kind="row"
+      onOpen={() => {}}
+    />,
+  );
+  expect(container.querySelector(".note-card")?.getAttribute("data-tone")).toBe(tone);
+});
+
+it.each([
+  ["30-knowledge/Alpha.md", "alpha", true],
+  ["30-knowledge/sub/Alpha.md", "Alpha", false],
+  ["30-knowledge/Beta.md", "Alpha", false],
+  ["Alpha.md", "Alpha", false],
+] as const)(
+  "hides the path %s from sight only when it repeats the title %s",
+  (ref, title, hidden) => {
+    render(
+      <NoteCard
+        noteRef={ref}
+        overview={note({ ref, title })}
+        variant="card"
+        kind="recent"
+        onOpen={() => {}}
+      />,
+    );
+    const path = screen.getByText(ref);
+    expect(path.hidden).toBe(hidden);
+    expect(screen.getByRole("button", { name: title }).getAttribute("aria-describedby")).toBe(
+      path.id,
+    );
+  },
+);
+
+it("leaves out the section a list already names and keeps a non-default type", () => {
+  const ref = "30-knowledge/a.md";
+  const card = (type: string | null, hideSection: boolean) => (
+    <NoteCard
+      noteRef={ref}
+      overview={note({ ref, type })}
+      variant="compact"
+      kind="row"
+      hideSection={hideSection}
+      onOpen={() => {}}
+    />
+  );
+  const { container, rerender } = render(card(null, true));
+  expect(container.querySelector(".note-card-kicker")).toBeNull();
+  rerender(card("thinking", true));
+  expect(container.querySelector(".note-card-kicker")?.textContent).toBe("thinking");
+  rerender(card("thinking", false));
+  expect(container.querySelector(".note-card-kicker")?.textContent).toBe("Knowledge · thinking");
 });

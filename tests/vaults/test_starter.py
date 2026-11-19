@@ -21,6 +21,7 @@ import pytest
 import viki_agent
 from tests.automation.test_brief import WID, service, write
 from viki_agent.automation.kanban import card_waiting
+from viki_agent.decision_loop import rules, seats
 from viki_agent.vaults import starter
 
 TESTS = Path(__file__).parents[1]
@@ -291,17 +292,15 @@ def test_rendered_files_name_the_current_starter_version(
 
 # --- the exact deny list --------------------------------------------------------------------
 
+# Claude Code checks every file-editing tool against Edit rules, so an Edit rule also refuses a
+# new file, and it accepts a Write rule without ever matching one. Hence no Write rules, and no
+# rule on _raw/: its originals stay create-only through AGENTS.md hard rule 1, so /learn and the
+# researcher can still deposit them.
 DENY_RULES = (
     "Edit(CLAUDE.md)",
-    "Write(CLAUDE.md)",
     "Edit(.claude/settings.json)",
-    "Write(.claude/settings.json)",
     "Edit(.claude/hooks/**)",
-    "Write(.claude/hooks/**)",
     "Edit(.viki/**)",
-    "Write(.viki/**)",
-    # Originals in _raw/ are create-only (AGENTS.md hard rule 1): no edit, new files still allowed.
-    "Edit(_raw/**)",
     "Bash(rm -rf:*)",
     "Bash(git push --force:*)",
     "Bash(git push -f:*)",
@@ -320,9 +319,15 @@ DENY_RULES = (
 
 
 def test_settings_hold_deny_rules_only(rendered: dict[str, str]) -> None:
-    assert len(DENY_RULES) == 20
+    assert len(DENY_RULES) == 15
     parsed = json.loads(rendered[".claude/settings.json"])
     assert parsed == {"permissions": {"deny": list(DENY_RULES)}}
+
+
+def test_no_deny_rule_refuses_a_new_original_in_raw(rendered: dict[str, str]) -> None:
+    """/learn and the researcher create originals in _raw/; a rule there would refuse them too."""
+    deny = json.loads(rendered[".claude/settings.json"])["permissions"]["deny"]
+    assert [rule for rule in deny if "_raw" in rule or rule.startswith("Write(")] == []
 
 
 # --- the team Kanban's contract --------------------------------------------------------------
@@ -333,10 +338,12 @@ def test_the_card_template_holds_the_kanban_contract(rendered: dict[str, str]) -
     front = card.split("---\n")[1].splitlines()
     assert {"type: card", "status: todo", "tags: [owner/<seat>]"} <= set(front)
     assert sum(line.startswith("up: ") for line in front) == 1
-    headings = ["## Done when", "## Handoff", "## Needs decision", "## Check"]
+    headings = ["## Summary", "## Needs you", "## Done when", "## Handoff", "## Check"]
     lines = card.splitlines()
     assert [lines.index(h) for h in headings] == sorted(lines.index(h) for h in headings)
     assert all(lines.count(h) == 1 for h in headings)
+    assert any(line.startswith("What: ") for line in lines)
+    assert any(line.startswith("Now: ") for line in lines)
 
 
 def test_a_card_made_from_the_template_waits_for_its_seat(
@@ -349,7 +356,7 @@ def test_a_card_made_from_the_template_waits_for_its_seat(
     made = (
         rendered["_templates/card.md"]
         .replace("<seat>", "research")
-        .replace("<One-line outcome>", title)
+        .replace("<Outcome in plain words, about 60 characters>", title)
     )
     variants = {
         "made": made,
@@ -389,11 +396,12 @@ def test_the_kanban_skill_holds_the_card_format_and_every_seats_rules(
     flat = re.sub(r"\s+", " ", rendered[".claude/skills/kanban/SKILL.md"])
     for token in (
         # the card format
-        "`status: todo | working | blocked | review | done`",
+        "`status: todo | working | blocked | review | done | cancelled`",
         "`tags: [owner/<seat>]`",
+        "`## Summary`",
+        "`## Needs you`",
         "`## Done when`",
         "`## Handoff`",
-        "`## Needs decision`",
         "`## Check`",
         # the seats
         "**Chief** is the front door",
@@ -401,10 +409,11 @@ def test_the_kanban_skill_holds_the_card_format_and_every_seats_rules(
         "**Specialists** each own one domain",
         "checks work in its own context and edits nothing",
         # the rules a seat no longer finds in AGENTS.md
-        "Card work starts from a card. A direct request from the owner",
+        "Card work starts from a card. Work that goes to another seat, or that needs "
+        "the owner's decision, goes on a card",
         "Any other request without a card goes to Chief first.",
         "Work one card at a time.",
-        "the next seat reads the card, not your chat",
+        "The next seat reads the card, not your chat",
         "stop at the first that cannot",
         "grants no permission",
         "Fetch any fact that could change an action",
@@ -413,6 +422,24 @@ def test_the_kanban_skill_holds_the_card_format_and_every_seats_rules(
     ):
         assert token in flat, token
     assert "prime directive" not in flat
+
+
+def test_a_cancelled_card_is_not_waiting_stale_or_moved_work(
+    rendered: dict[str, str], tmp_path: Path
+) -> None:
+    """SN section G: a cancelled card must not read as waiting, stale or moved work, wherever a
+    rule reads card status by list."""
+    card = (
+        rendered["_templates/card.md"]
+        .replace("status: todo", "status: cancelled")
+        .replace("<seat>", "research")
+        .replace("<Outcome in plain words, about 60 characters>", "Ship the thing")
+    )
+    write(tmp_path / "kanban" / "card.md", card)
+    assert card_waiting(service(tmp_path), WID, "research") is False
+    assert rules.present("card_needs_you", {"status": "cancelled"}) is False
+    assert rules.present("card_stale", {"status": "cancelled"}) is False
+    assert "cancelled" not in seats.MOVED
 
 
 # --- the persona section's shared grammar --------------------------------------------------

@@ -165,6 +165,7 @@ import { VaultBanner } from "./components/Header/VaultBanner";
 import { WRAP_UP_PROMPT } from "./components/Header/wrapUp";
 import { HelpCenter } from "./components/Help/HelpCenter";
 import { KanbanView } from "./components/Kanban/KanbanView";
+import type { WakeResult } from "./components/Kanban/useCardAnswer";
 import { AgentsSection } from "./components/LeftRail/AgentsSection";
 import { ArchiveBar } from "./components/LeftRail/ArchiveBar";
 import { LeftRail, type RailDestination } from "./components/LeftRail/LeftRail";
@@ -6130,6 +6131,46 @@ export function App({
     );
   }
 
+  /** Kanban's wake (SN §E): one `turn.send` into the seat Bot's own chat, as if the owner typed
+   * it — called once, after `useCardAnswer`'s undo window, never for Approve. Never selects or
+   * shows that chat. Never steers a running reply: idle is checked before and after
+   * `prepareTarget`, and the server also refuses a send mid-turn (SessionActor.send's
+   * turn_running). */
+  async function wakeBot(bot: BotRow, text: string): Promise<WakeResult> {
+    if (viki.store.getSnapshot().status !== "open" || bot.chat.archived || !botsApi)
+      return "failed";
+    const id = bot.chat_session_id;
+    const idle = () => {
+      const view = viki.store.getSnapshot().sessions[id];
+      return !view || presence(view) === "idle";
+    };
+    if (!idle()) return "busy";
+    const tracked = Boolean(viki.store.getSnapshot().sessions[id]);
+    if (!tracked && (sessionsBlocked || liveIds.size >= maxLiveSessions)) return "failed";
+    let answer: Awaited<ReturnType<BotsApi["chat"]>>;
+    try {
+      answer = await botsApi.chat(bot);
+    } catch {
+      return "failed";
+    }
+    const preview = answer.preview;
+    if (
+      !("session_id" in preview) ||
+      !preview.launchable ||
+      preview.session_id !== bot.chat_session_id ||
+      answer.bot_id !== bot.bot_id ||
+      preview.workspace_id !== activeVault?.workspace_id
+    )
+      return "failed";
+    handleProfileSession(id, preview.identity ?? null);
+    markBotSession(id, bot.profile_id);
+    if (!tracked) viki.actions.openExistingSession(id);
+    if ((await viki.actions.prepareTarget(id)) === null) return "failed";
+    if (!idle()) return "busy";
+    if (await viki.actions.send(id, text)) return "sent";
+    return idle() ? "failed" : "busy";
+  }
+
   function renderView(): ReactNode {
     if (view === "bot_threads" && botsApi && botsAvailable)
       return (
@@ -6179,6 +6220,8 @@ export function App({
                 if (showBot(null)) setSeatRequest(seat);
               }}
               onRefresh={() => setTeamCheck((check) => check + 1)}
+              {...(writeScope ? { write: { api: vaultApi, ...writeScope } } : {})}
+              {...(botsApi ? { onWake: wakeBot } : {})}
             />
           ) : (
             <div className="bots-view">

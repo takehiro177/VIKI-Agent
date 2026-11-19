@@ -58,3 +58,46 @@ test("owner names on cards stay neutral, not the Bot's hue", () => {
 test("the empty state keeps its buttons at their own width", () => {
   expect(ruleIn(css, ".kanban-empty")).toMatch(/justify-items:\s*start/);
 });
+
+test("the needs-you options are a wrapping grid with a 210px minimum", () => {
+  const options = ruleIn(css, ".kanban-needs-options");
+  expect(options).toMatch(/grid-template-columns:\s*repeat\(auto-fit, minmax\(210px, 1fr\)\)/);
+});
+
+test("a recommended option gets a 2px border in the owner-recommended colour", () => {
+  expect(ruleIn(css, ".kanban-needs-option[data-recommended]")).toMatch(
+    /border:\s*2px solid var\(--or\)/,
+  );
+});
+
+test.each(["blocked", "review"])("the %s needs-you chip takes its lane colour", (stage) => {
+  expect(ruleIn(css, `.kanban-chip[data-stage="${stage}"]`)).toMatch(
+    new RegExp(`--kanban-lane:\\s*var\\(--kanban-${stage}\\)`),
+  );
+});
+
+test("the chip is neutral by default and its glyph follows the chip's colour", () => {
+  const chip = ruleIn(css, ".kanban-chip");
+  expect(chip).toMatch(/--kanban-lane:\s*var\(--t3\)/);
+  expect(ruleIn(css, ".kanban-chip .ico")).toMatch(/color:\s*var\(--kanban-lane\)/);
+});
+
+test("the needs-you badge uses the owner-recommended colours", () => {
+  const badge = ruleIn(css, ".kanban-badge");
+  expect(badge).toMatch(/background:\s*var\(--or\)/);
+  expect(badge).toMatch(/color:\s*var\(--on-or\)/);
+});
+
+test("forced colours cover the chip, its glyph, the badge and a recommended tile", () => {
+  const forced = narrowBlock(css, "@media (forced-colors: active) {");
+  expect(ruleIn(forced, ".kanban-chip")).toMatch(/border-color:\s*CanvasText/);
+  expect(ruleIn(forced, ".kanban-chip .ico")).toMatch(/color:\s*CanvasText/);
+  expect(ruleIn(forced, ".kanban-badge")).toMatch(/background:\s*Highlight/);
+  expect(ruleIn(forced, ".kanban-needs-option[data-recommended]")).toMatch(
+    /border-color:\s*CanvasText/,
+  );
+});
+
+test("the old attention line is gone, replaced by the section's own heading", () => {
+  expect(css).not.toMatch(/\.kanban-attention/);
+});

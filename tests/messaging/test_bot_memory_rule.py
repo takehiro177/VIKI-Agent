@@ -1,10 +1,19 @@
-"""Pins the fixed Bot memory rule, the Bot rules and the Bot system prompt they make."""
+"""Pins the fixed Bot memory rule, the Bot rules, the Kanban reminder and the Bot system prompt
+they make."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from viki_agent.messaging.bot_memory_rule import BOT_MEMORY_RULE, BOT_RULES, bot_system_prompt
+from viki_agent.messaging.bot_memory_rule import (
+    BOT_MEMORY_RULE,
+    BOT_RULES,
+    KANBAN_RULE,
+    bot_system_prompt,
+    kanban_skill_present,
+)
 
 PINNED = "\n".join(
     (
@@ -73,3 +82,49 @@ def test_the_rules_follow_the_instructions_after_blank_lines(instructions: str) 
 
 def test_without_instructions_the_prompt_is_the_rules_alone() -> None:
     assert bot_system_prompt("") == f"{BOT_MEMORY_RULE}\n\n{BOT_RULES}"
+
+
+PINNED_KANBAN_RULE = (
+    "- This vault keeps team work on Kanban cards in kanban/. Before you create, pick up, "
+    "change or hand off a card, load the /kanban skill with the Skill tool, unless this "
+    "session already did. Work you hand to another Bot, or that needs my decision, goes on a "
+    "card, even when I asked in a chat or thread."
+)
+
+
+def test_the_kanban_rule_is_the_pinned_text() -> None:
+    assert KANBAN_RULE == PINNED_KANBAN_RULE
+
+
+def test_the_kanban_rule_stays_small_plain_ascii() -> None:
+    assert len(KANBAN_RULE.encode("utf-8")) <= 320
+    assert KANBAN_RULE.isascii()
+    assert "\r" not in KANBAN_RULE
+
+
+def test_kanban_skill_present_is_false_without_the_file(tmp_path: Path) -> None:
+    assert kanban_skill_present(tmp_path) is False
+
+
+def test_kanban_skill_present_is_false_when_skill_md_is_a_folder(tmp_path: Path) -> None:
+    (tmp_path / ".claude" / "skills" / "kanban" / "SKILL.md").mkdir(parents=True)
+    assert kanban_skill_present(tmp_path) is False
+
+
+def test_kanban_skill_present_is_true_with_the_file(tmp_path: Path) -> None:
+    skill_dir = tmp_path / ".claude" / "skills" / "kanban"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("content", encoding="utf-8")
+    assert kanban_skill_present(tmp_path) is True
+
+
+def test_bot_system_prompt_appends_the_kanban_rule_when_true() -> None:
+    assert bot_system_prompt("Be brief.", kanban=True) == (
+        f"Be brief.\n\n{BOT_MEMORY_RULE}\n\n{BOT_RULES}\n{KANBAN_RULE}"
+    )
+
+
+def test_bot_system_prompt_without_instructions_and_kanban_true() -> None:
+    assert bot_system_prompt("", kanban=True) == (
+        f"{BOT_MEMORY_RULE}\n\n{BOT_RULES}\n{KANBAN_RULE}"
+    )
