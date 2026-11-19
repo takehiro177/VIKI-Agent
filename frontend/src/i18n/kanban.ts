@@ -1,4 +1,4 @@
-/** `kanban.*`: the Kanban page's strings (KanbanView, KanbanNeedsYou and App's Kanban fallback); its missing-skill line is Bots' `READINESS_TEXT.missing`. */
+/** `kanban.*`: the Kanban page's strings (KanbanView, KanbanNeedsYou, kanbanMessage and App's Kanban fallback); its missing-skill line is Bots' `READINESS_TEXT.missing`. */
 
 import { defineCatalog } from "./defineCatalog";
 
@@ -87,5 +87,27 @@ export const catalog = defineCatalog({
     "kanban.notice.wake_failed": "Couldn't reach {bot}; the answer waits on the card.",
     "kanban.wake.message":
       "Kanban: I answered one of your cards. Load /kanban, then continue the card whose newest Handoff line is mine.",
+    "kanban.needs.message_mode":
+      "This vault doesn't take saves from VIKI Agent, so Kanban sends your answer to the card's Bot and shows you the message first.",
+    "kanban.needs.message_hint": "{bot} gets your answer in a message you see before it goes.",
+    "kanban.needs.no_bot_card": "No Bot can take this answer here, so answer in the card's note.",
+    "kanban.needs.preview_label": "This goes to {bot} as your message, exactly as shown:",
+    "kanban.needs.preview_send": "Send message",
+    "kanban.needs.preview_sending": "Sending…",
+    "kanban.needs.sent": "Sent to {bot}. The card stays here until {bot} records your answer.",
+    "kanban.notice.message_busy":
+      "{bot} is busy, so your answer wasn't sent. Send it again once {bot} is done.",
+    "kanban.notice.message_failed":
+      "Couldn't reach {bot}, so your answer wasn't sent. Try again, or answer in the card's note.",
+    "kanban.notice.message_refused":
+      "Kanban won't send an answer for {title}: its name or the option is over {cap} characters, or the answer has characters it can't show. Answer in the card's note.",
+    "kanban.notice.message_changed":
+      "{title} changed since Kanban read it, so your answer wasn't sent. Kanban is reading it again.",
+    "kanban.notice.message_unread":
+      "Couldn't read {title} again, so your answer wasn't sent. Kanban is reading it again.",
+    "kanban.message.continue":
+      "Kanban: I answered one of your cards. Load /kanban, find the card named on the next line, write the answer on the line after it under that card's question, word for word, set status: todo, then continue the card. Both lines are JSON strings.\n{card}\n{line}",
+    "kanban.message.done":
+      "Kanban: I approved one of your cards. Load /kanban, find the card named on the next line, write the answer on the line after it under that card's question, word for word, and set status: done. Both lines are JSON strings.\n{card}\n{line}",
   },
 });

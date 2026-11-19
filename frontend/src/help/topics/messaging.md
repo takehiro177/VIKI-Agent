@@ -68,9 +68,12 @@ and **Done**, plus **Cancelled** once a card is cancelled. A card shows its owne
 when it last changed, and **Stopped moving** after a day in Working or three days in To do. A
 blocked or review card also shows under **Needs you**, atop the page: answer it, or **Approve** or
 send it back, with one click. The click saves at once and offers **Undo** for 10 seconds; after
-that, it tries to send the card's Bot one message to continue, except after **Approve**, which
-sends nothing. Select a card to open its note. Open a routine's
-result with **Open session**; it is separate from the Bot's regular conversation.
+that, it tries to send the card's Bot one message to continue, except after **Approve**, which sends
+nothing. In a vault VIKI Agent doesn't save to, the click instead shows the message Kanban would
+send the card's Bot, naming the card and your answer: **Send message** sends it as your message and
+saves nothing in the vault, and **Cancel** sends nothing. **Send message** turns on a moment after
+the message appears. Select a card to open its note. Open a routine's result with **Open session**;
+it is separate from the Bot's regular conversation.
 
 Kanban is optional. New seat profiles include instructions for working without it:
 Chief drafts a task brief, Ops summarizes the notes you name, and specialists handle your requests

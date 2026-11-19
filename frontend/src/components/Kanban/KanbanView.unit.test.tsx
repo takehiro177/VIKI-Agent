@@ -11,11 +11,28 @@ import type {
 } from "../../state/vaultApi";
 import { TEAM } from "../Bots/team";
 import { READINESS_TEXT } from "../Bots/teamReadiness";
+import { SEND_ARM_MS } from "./KanbanNeedsYou";
 import { KanbanView, type KanbanViewProps } from "./KanbanView";
+import type { CardAnswer } from "./kanbanBody";
 import { KANBAN_BODY_CAP } from "./kanbanCards";
+import { cardMessage } from "./kanbanMessage";
 import type { KanbanWrite, WakeResult } from "./useCardAnswer";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+/** Arms a just-opened preview under fake timers (F11: Send is disabled `SEND_ARM_MS` after it
+ * mounts), then reverts to real timers so the rest of the test's `waitFor`/`findBy*` queries keep
+ * working. Fake timers must already be active (`vi.useFakeTimers`) before the click that mounts
+ * the preview, or this has nothing to advance. */
+async function armPreview(): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(SEND_ARM_MS);
+  });
+  vi.useRealTimers();
+}
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -678,5 +695,384 @@ describe("KanbanView", () => {
     view.rerender(<KanbanView {...view.props} workspaceId="w2" />);
     expect(screen.getByText("Loading Kanban…")).toBeTruthy();
     expect(screen.queryByText("kanban/one.md")).toBeNull();
+  });
+});
+
+describe("KanbanView composing and sending an answer (message mode, no write)", () => {
+  const nowMs = at(19, 9);
+  const DATE = "2026-11-19";
+
+  /** A single blocked card, `ref`, owned by `owner/engineer`, with `cardSource("blocked")`'s one
+   * decide option ("A. Ship (recommended): go live"). */
+  function blockedApi(ref: string): Api {
+    return {
+      entries: async () => listingOf([ref]),
+      metadata: async () => batchOf([item(ref, { status: "blocked", tags: ["owner/engineer"] })]),
+      note: async () => rawNote(cardSource("blocked")),
+    };
+  }
+
+  it("previews a decide tile's exact text, sends it once, and keeps the sent line through a refresh", async () => {
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const onWake = vi
+      .fn<(bot: BotRow, text: string) => Promise<WakeResult>>()
+      .mockResolvedValue("sent");
+    setup(blockedApi("kanban/b.md"), {
+      botsApi: botsOf([engineer]),
+      onWake,
+      nowMs,
+    });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    const tile = await screen.findByRole("button", { name: /A · Ship/ });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    fireEvent.click(tile);
+    await armPreview();
+    expect(onWake).not.toHaveBeenCalled();
+    const decide: CardAnswer = {
+      kind: "decide",
+      option: {
+        letter: "A",
+        label: "Ship",
+        recommended: true,
+        effect: "go live",
+      },
+    };
+    const expected = cardMessage("kanban/b.md", decide, DATE);
+    expect(document.querySelector(".kanban-needs-preview pre")?.textContent).toBe(expected);
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.needs.preview_send") }));
+    await waitFor(() => expect(onWake).toHaveBeenCalledTimes(1));
+    expect(onWake).toHaveBeenCalledWith(engineer, expected);
+    expect(await screen.findByText(tf("kanban.notice.woke", { bot: "Engineer" }))).toBeTruthy();
+    expect(await screen.findByText(tf("kanban.needs.sent", { bot: "Engineer" }))).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /A · Ship/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.refresh") }));
+    await waitFor(() =>
+      expect(screen.getByText(tf("kanban.needs.sent", { bot: "Engineer" }))).toBeTruthy(),
+    );
+  });
+
+  it("never calls onWake when unmounted with an open preview", async () => {
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const onWake = vi
+      .fn<(bot: BotRow, text: string) => Promise<WakeResult>>()
+      .mockResolvedValue("sent");
+    const view = setup(blockedApi("kanban/b.md"), {
+      botsApi: botsOf([engineer]),
+      onWake,
+      nowMs,
+    });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    fireEvent.click(await screen.findByRole("button", { name: /A · Ship/ }));
+    await screen.findByRole("button", { name: t("kanban.needs.preview_send") });
+    view.unmount();
+    expect(onWake).not.toHaveBeenCalled();
+  });
+
+  it("drops the preview on Cancel without calling onWake", async () => {
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const onWake = vi.fn<(bot: BotRow, text: string) => Promise<WakeResult>>();
+    setup(blockedApi("kanban/b.md"), {
+      botsApi: botsOf([engineer]),
+      onWake,
+      nowMs,
+    });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    fireEvent.click(await screen.findByRole("button", { name: /A · Ship/ }));
+    await screen.findByRole("button", { name: t("kanban.needs.preview_send") });
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.needs.cancel") }));
+    expect(onWake).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: /A · Ship/ })).toBeTruthy();
+  });
+
+  it("keeps the preview open on a busy result and sends again on a second Send", async () => {
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const onWake = vi
+      .fn<(bot: BotRow, text: string) => Promise<WakeResult>>()
+      .mockResolvedValue("busy");
+    setup(blockedApi("kanban/b.md"), {
+      botsApi: botsOf([engineer]),
+      onWake,
+      nowMs,
+    });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    const tile = await screen.findByRole("button", { name: /A · Ship/ });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    fireEvent.click(tile);
+    await armPreview();
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.needs.preview_send") }));
+    await waitFor(() => expect(onWake).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByText(tf("kanban.notice.message_busy", { bot: "Engineer" })),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.needs.preview_send") }));
+    await waitFor(() => expect(onWake).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows a failed notice and keeps the preview when onWake rejects", async () => {
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const onWake = vi
+      .fn<(bot: BotRow, text: string) => Promise<WakeResult>>()
+      .mockRejectedValue(new Error("boom"));
+    setup(blockedApi("kanban/b.md"), {
+      botsApi: botsOf([engineer]),
+      onWake,
+      nowMs,
+    });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    const tile = await screen.findByRole("button", { name: /A · Ship/ });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    fireEvent.click(tile);
+    await armPreview();
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.needs.preview_send") }));
+    await waitFor(() => expect(onWake).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByText(tf("kanban.notice.message_failed", { bot: "Engineer" })),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: t("kanban.needs.preview_send") })).toBeTruthy();
+  });
+
+  it("sends once on a double click while onWake is still pending", async () => {
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const pending = deferred<WakeResult>();
+    const onWake = vi
+      .fn<(bot: BotRow, text: string) => Promise<WakeResult>>()
+      .mockReturnValue(pending.promise);
+    setup(blockedApi("kanban/b.md"), {
+      botsApi: botsOf([engineer]),
+      onWake,
+      nowMs,
+    });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    const tile = await screen.findByRole("button", { name: /A · Ship/ });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    fireEvent.click(tile);
+    await armPreview();
+    const send = screen.getByRole("button", {
+      name: t("kanban.needs.preview_send"),
+    });
+    fireEvent.click(send);
+    fireEvent.click(send);
+    // sendDraft's own re-read (R4) puts onWake behind an extra await, so "called once" is
+    // asserted once that settles, not in the same tick as the clicks; "Sending…" is set
+    // synchronously in sendDraft's prefix (before that await) and so holds immediately.
+    expect(screen.getByRole("button", { name: t("kanban.needs.preview_sending") })).toBeTruthy();
+    await waitFor(() => expect(onWake).toHaveBeenCalledTimes(1));
+    await act(async () => pending.resolve("sent"));
+  });
+
+  it("sends once even when both clicks land before the first one's disabled state commits", async () => {
+    // Unlike the test above, both clicks are dispatched inside one `act`, synchronously, so
+    // neither waits for React to re-render and disable the button in between: this is the only
+    // way to prove `sendDraft`'s own `sendingRef` guard (not the DOM `disabled` attribute, which
+    // would otherwise silently drop the second dispatch) is what stops a second `onWake` call.
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const pending = deferred<WakeResult>();
+    const onWake = vi
+      .fn<(bot: BotRow, text: string) => Promise<WakeResult>>()
+      .mockReturnValue(pending.promise);
+    setup(blockedApi("kanban/b.md"), {
+      botsApi: botsOf([engineer]),
+      onWake,
+      nowMs,
+    });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    const tile = await screen.findByRole("button", { name: /A · Ship/ });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    fireEvent.click(tile);
+    await armPreview();
+    const send = screen.getByRole("button", {
+      name: t("kanban.needs.preview_send"),
+    });
+    act(() => {
+      send.click();
+      send.click();
+    });
+    // The guard (sendingRef, set synchronously before sendDraft's own re-read await) already
+    // decided by now which click — if either — proceeds; onWake still lands behind that await.
+    await waitFor(() => expect(onWake).toHaveBeenCalledTimes(1));
+    await act(async () => pending.resolve("sent"));
+  });
+
+  it("messages a review card's Approve as done text and Send back as continue text", async () => {
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const onWake = vi
+      .fn<(bot: BotRow, text: string) => Promise<WakeResult>>()
+      .mockResolvedValue("sent");
+    const api: Api = {
+      entries: async () => listingOf(["kanban/r.md"]),
+      metadata: async () =>
+        batchOf([item("kanban/r.md", { status: "review", tags: ["owner/engineer"] })]),
+      note: async () => rawNote(cardSource("review")),
+    };
+    setup(api, { botsApi: botsOf([engineer]), onWake, nowMs });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    fireEvent.click(await screen.findByRole("button", { name: t("kanban.needs.approve") }));
+    const approveText = cardMessage("kanban/r.md", { kind: "approve" }, DATE);
+    expect(document.querySelector(".kanban-needs-preview pre")?.textContent).toBe(approveText);
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.needs.cancel") }));
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: t("kanban.needs.send_back_open"),
+      }),
+    );
+    fireEvent.change(screen.getByLabelText(t("kanban.needs.send_back_label")), {
+      target: { value: "redo it" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.needs.send_back") }));
+    const continueText = cardMessage("kanban/r.md", { kind: "send_back", note: "redo it" }, DATE);
+    expect(continueText).toContain("Sent back: redo it");
+    expect(document.querySelector(".kanban-needs-preview pre")?.textContent).toBe(continueText);
+  });
+
+  it("refuses a message when the ref is over the text cap", async () => {
+    const hugeRef = `kanban/${"a".repeat(191)}.md`; // 201 code points, over CARD_TEXT_CAP (200)
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const onWake = vi.fn<(bot: BotRow, text: string) => Promise<WakeResult>>();
+    setup(blockedApi(hugeRef), { botsApi: botsOf([engineer]), onWake, nowMs });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    fireEvent.click(await screen.findByRole("button", { name: /A · Ship/ }));
+    expect(document.querySelector(".kanban-needs-preview")).toBeNull();
+    expect(onWake).not.toHaveBeenCalled();
+    const notice = await screen.findByRole("status");
+    expect(notice.textContent).toContain("over 200 characters");
+  });
+
+  it("drops a stale preview when Refresh reads a new sha for the same card", async () => {
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const onWake = vi.fn<(bot: BotRow, text: string) => Promise<WakeResult>>();
+    const note = vi
+      .fn<NonNullable<Api["note"]>>()
+      .mockResolvedValueOnce(rawNote(cardSource("blocked")))
+      .mockResolvedValueOnce(rawNote(cardSource("blocked"), "b".repeat(64)));
+    const api: Api = {
+      entries: async () => listingOf(["kanban/b.md"]),
+      metadata: async () =>
+        batchOf([item("kanban/b.md", { status: "blocked", tags: ["owner/engineer"] })]),
+      note,
+    };
+    setup(api, { botsApi: botsOf([engineer]), onWake, nowMs });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    fireEvent.click(await screen.findByRole("button", { name: /A · Ship/ }));
+    await screen.findByRole("button", { name: t("kanban.needs.preview_send") });
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.refresh") }));
+    await waitFor(() => expect(note).toHaveBeenCalledTimes(2));
+    expect(document.querySelector(".kanban-needs-preview")).toBeNull();
+    expect(await screen.findByRole("button", { name: /A · Ship/ })).toBeTruthy();
+    expect(onWake).not.toHaveBeenCalled();
+  });
+
+  it("Send's own re-read returning a different sha drops the draft, notices the change, sends nothing, and reads the card again", async () => {
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const onWake = vi.fn<(bot: BotRow, text: string) => Promise<WakeResult>>();
+    const note = vi
+      .fn<NonNullable<Api["note"]>>()
+      .mockResolvedValueOnce(rawNote(cardSource("blocked")))
+      .mockResolvedValue(rawNote(cardSource("blocked"), "b".repeat(64)));
+    const api: Api = {
+      entries: async () => listingOf(["kanban/b.md"]),
+      metadata: async () =>
+        batchOf([item("kanban/b.md", { status: "blocked", tags: ["owner/engineer"] })]),
+      note,
+    };
+    setup(api, { botsApi: botsOf([engineer]), onWake, nowMs });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    const tile = await screen.findByRole("button", { name: /A · Ship/ });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    fireEvent.click(tile);
+    await armPreview();
+    expect(note).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.needs.preview_send") }));
+    await waitFor(() => expect(note).toHaveBeenCalledTimes(3));
+    expect(onWake).not.toHaveBeenCalled();
+    expect(document.querySelector(".kanban-needs-preview")).toBeNull();
+    expect(await screen.findByRole("button", { name: /A · Ship/ })).toBeTruthy();
+    expect(
+      await screen.findByText(tf("kanban.notice.message_changed", { title: "b" })),
+    ).toBeTruthy();
+  });
+
+  it("Send's own re-read throwing says the card couldn't be read, keeps the draft, sends nothing, and reads the card again", async () => {
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const onWake = vi.fn<(bot: BotRow, text: string) => Promise<WakeResult>>();
+    const note = vi
+      .fn<NonNullable<Api["note"]>>()
+      .mockResolvedValueOnce(rawNote(cardSource("blocked")))
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValue(rawNote(cardSource("blocked")));
+    const api: Api = {
+      entries: async () => listingOf(["kanban/b.md"]),
+      metadata: async () =>
+        batchOf([item("kanban/b.md", { status: "blocked", tags: ["owner/engineer"] })]),
+      note,
+    };
+    setup(api, { botsApi: botsOf([engineer]), onWake, nowMs });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    const tile = await screen.findByRole("button", { name: /A · Ship/ });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    fireEvent.click(tile);
+    await armPreview();
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.needs.preview_send") }));
+    expect(
+      await screen.findByText(tf("kanban.notice.message_unread", { title: "b" })),
+    ).toBeTruthy();
+    await waitFor(() => expect(note).toHaveBeenCalledTimes(3));
+    expect(document.querySelector(".kanban-needs-preview pre")).toBeTruthy();
+    expect(onWake).not.toHaveBeenCalled();
+  });
+
+  it("drops the preview and brings the actions back when a Refresh re-seats the card's owner to a different Bot", async () => {
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const standIn = botNamed("Stand-in", seatProfileId("engineer"));
+    const onWake = vi.fn<(bot: BotRow, text: string) => Promise<WakeResult>>();
+    const list = vi
+      .fn<Bots["list"]>()
+      .mockResolvedValueOnce({ bots: [engineer], scheduler })
+      .mockResolvedValue({ bots: [standIn], scheduler });
+    setup(blockedApi("kanban/b.md"), { botsApi: { list }, onWake, nowMs });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    const tile = await screen.findByRole("button", { name: /A · Ship/ });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    fireEvent.click(tile);
+    await armPreview();
+    expect(screen.getByText(tf("kanban.needs.preview_label", { bot: "Engineer" }))).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.refresh") }));
+    await waitFor(() => expect(screen.getAllByText("Stand-in").length).toBeGreaterThan(0));
+    expect(document.querySelector(".kanban-needs-preview")).toBeNull();
+    expect(await screen.findByRole("button", { name: /A · Ship/ })).toBeTruthy();
+    expect(onWake).not.toHaveBeenCalled();
+  });
+
+  it("saves normally under write mode and shows no message preview even with onWake set", async () => {
+    const engineer = botNamed("Engineer", seatProfileId("engineer"));
+    const saveNote = vi.fn<VaultApi["saveNote"]>().mockResolvedValue(saveOutcome());
+    const onWake = vi
+      .fn<(bot: BotRow, text: string) => Promise<WakeResult>>()
+      .mockResolvedValue("sent");
+    setup(blockedApi("kanban/b.md"), {
+      botsApi: botsOf([engineer]),
+      write: writeOf(saveNote),
+      onWake,
+      nowMs,
+    });
+    await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
+    fireEvent.click(await screen.findByRole("button", { name: /A · Ship/ }));
+    await waitFor(() => expect(saveNote).toHaveBeenCalledTimes(1));
+    expect(document.querySelector(".kanban-needs-preview")).toBeNull();
   });
 });

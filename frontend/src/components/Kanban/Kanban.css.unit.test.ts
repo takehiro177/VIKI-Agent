@@ -101,3 +101,11 @@ test("forced colours cover the chip, its glyph, the badge and a recommended tile
 test("the old attention line is gone, replaced by the section's own heading", () => {
   expect(css).not.toMatch(/\.kanban-attention/);
 });
+
+test("the message preview's pre wraps and shows the whole message, with no height cap", () => {
+  const pre = ruleIn(css, ".kanban-needs-preview pre");
+  expect(pre).toMatch(/white-space:\s*pre-wrap/);
+  expect(pre).toMatch(/overflow-wrap:\s*anywhere/);
+  expect(pre).toMatch(/overflow:\s*auto/);
+  expect(pre).not.toMatch(/max-height/);
+});

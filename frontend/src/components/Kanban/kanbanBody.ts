@@ -295,7 +295,7 @@ function answerText(answer: CardAnswer): string {
 // ponytail: the owner's words are written verbatim (SN §G), so a reply or note whose first line
 // starts with "#" becomes a markdown heading once saved and can misread as a new section on the
 // next parse. Upgrade path: warn before save if the draft's first line starts with "#".
-function ownerLineText(answer: CardAnswer, date: string): string {
+export function ownerLineText(answer: CardAnswer, date: string): string {
   return `**Owner, ${date}:** ${answerText(answer)}`;
 }
 

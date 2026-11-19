@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import type { BotRow, BotsApi } from "../../clients/messaging/botsApi";
 import type { Key } from "../../i18n";
 import { t, tf } from "../../i18n/t";
@@ -10,13 +10,14 @@ import { Icon, type IconName } from "../Icon/Icon";
 import { Loading } from "../Loading/Loading";
 import "./Kanban.css";
 import { KanbanNeedsYou, type NeedsYouItem, updatedText } from "./KanbanNeedsYou";
-import { type CardRead, readCard } from "./kanbanBody";
+import { type CardRead, cardDate, readCard } from "./kanbanBody";
 import {
   KANBAN_BATCH,
   KANBAN_READ_CAP,
   type KanbanCard,
   type KanbanLaneId,
   type KanbanListing,
+  type KanbanNotice,
   kanbanAttention,
   kanbanBodyRefs,
   kanbanLanes,
@@ -26,6 +27,7 @@ import {
   type UnreadCode,
   wakeTarget,
 } from "./kanbanCards";
+import { cardMessage } from "./kanbanMessage";
 import { type KanbanWrite, useCardAnswer, type WakeResult } from "./useCardAnswer";
 
 export interface KanbanViewProps {
@@ -53,6 +55,20 @@ type State =
       bodies: ReadonlyMap<string, CardRead>;
       reading: boolean;
     };
+
+/** Message mode's one open draft (P3): composed from a tile, previewed, and sent only by the
+ * Send button. `bot`/`botName` are the exact target `onWake` is called with and its name, both
+ * fixed at compose time: a Refresh or a Bot re-seating the card must not let the preview's label
+ * or Send drift onto a different Bot than the one shown. `title` carries the card's display
+ * title through to a notice, the same way `useCardAnswer`'s own `OpenWindow` does. */
+interface MessageDraft {
+  ref: string;
+  sha256: string;
+  title: string;
+  bot: BotRow;
+  botName: string;
+  text: string;
+}
 
 const LANE_NAME: Record<KanbanLaneId, Key> = {
   todo: "kanban.lane.todo",
@@ -158,6 +174,22 @@ export function KanbanView({
   const [requested, setRequested] = useState(0);
   const [state, setState] = useState<State>({ phase: "loading" });
   const [bots, setBots] = useState<BotRow[]>([]);
+  // Message mode (P3): one open draft, one send at a time, kept only in this component — a
+  // workspace switch remounts KanbanView (App's `key`) and drops all of it with the rest of state.
+  const [draft, setDraft] = useState<MessageDraft | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState<ReadonlyMap<string, { sha256: string; botName: string }>>(
+    new Map(),
+  );
+  const [messageNotice, setMessageNotice] = useState<KanbanNotice | null>(null);
+  const sendingRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const { notice, saving, lockedRef, answer, undo } = useCardAnswer({
     write: write ?? null,
     ...(onWake === undefined
@@ -273,6 +305,95 @@ export function KanbanView({
       })
     : [];
 
+  /** The Bot `wakeTarget` currently resolves for a needs-you card, or null (no match, no owner,
+   * or a seat with no Bot). An open draft's Bot is fixed at compose time, so both the preview and
+   * Send must agree the card still currently resolves to that same Bot before using it. */
+  function liveWakeBot(ref: string): BotRow | null {
+    const match = needsYouItems.find((entry) => entry.card.ref === ref);
+    if (!match) return null;
+    const target = wakeTarget(match.card.owners, bots, workspaceId);
+    return target && "bot" in target ? target.bot : null;
+  }
+  const draftLive = draft !== null && liveWakeBot(draft.ref)?.bot_id === draft.bot.bot_id;
+
+  /** Message mode's Send (P3): the only `onWake` call on this path — no effect, timer or unmount
+   * sends (contrast `useCardAnswer`'s wake-on-unmount, see its module doc). F11: the preview the
+   * owner already read is the exact text this sends. A card can change between the preview
+   * opening and Send, so this re-reads it first and only ever sends for the sha the preview was
+   * composed from; a card that changed or can't be read sends nothing, and Kanban reads the cards
+   * again. A Refresh or a Bot re-seating the card before Send (`draftLive` false) hides the preview
+   * and sends nothing; one that lands during the re-read still sends to the Bot the preview
+   * named. */
+  async function sendDraft(): Promise<void> {
+    if (!draft || !onWake || sendingRef.current || !draftLive) return;
+    const note = api.note;
+    if (!note) return; // unreachable: message mode never composes a draft without a note() read.
+    sendingRef.current = true;
+    setSending(true);
+    let raw: Record<string, unknown>;
+    try {
+      raw = await note(workspaceId, draft.ref);
+    } catch {
+      sendingRef.current = false;
+      if (mountedRef.current) {
+        setSending(false);
+        setMessageNotice({ kind: "message_unread", title: draft.title });
+        setRequested((n) => n + 1);
+      }
+      return;
+    }
+    if (!mountedRef.current) {
+      sendingRef.current = false;
+      return;
+    }
+    const read = readCard(raw);
+    if (read === null) {
+      sendingRef.current = false;
+      setSending(false);
+      setMessageNotice({ kind: "message_unread", title: draft.title });
+      setRequested((n) => n + 1);
+      return;
+    }
+    if (read.sha256 !== draft.sha256) {
+      sendingRef.current = false;
+      setSending(false);
+      setDraft(null);
+      setMessageNotice({ kind: "message_changed", title: draft.title });
+      setRequested((n) => n + 1);
+      return;
+    }
+    let result: WakeResult;
+    try {
+      result = await onWake(draft.bot, draft.text);
+    } catch {
+      result = "failed";
+    }
+    sendingRef.current = false;
+    if (!mountedRef.current) return;
+    setSending(false);
+    if (result === "sent") {
+      setSent((prev) =>
+        new Map(prev).set(draft.ref, {
+          sha256: draft.sha256,
+          botName: draft.botName,
+        }),
+      );
+      setDraft(null);
+      setMessageNotice({ kind: "woke", title: draft.title, bot: draft.bot });
+    } else {
+      setMessageNotice({
+        kind: result === "busy" ? "message_busy" : "message_failed",
+        title: draft.title,
+        bot: draft.bot,
+      });
+    }
+  }
+
+  function cancelDraft(): void {
+    if (sendingRef.current) return;
+    setDraft(null);
+  }
+
   return (
     <section className="kanban kanban-page" aria-labelledby={`${id}-title`}>
       <header className="page-head">
@@ -306,17 +427,54 @@ export function KanbanView({
               counts={counts}
               reading={ready.reading}
               canWrite={write !== undefined}
-              saving={saving}
+              saving={saving || sending}
               lockedRef={lockedRef}
-              notice={notice}
+              notice={notice ?? messageNotice}
+              {...(write === undefined && onWake !== undefined
+                ? {
+                    message: {
+                      // A draft whose Bot no longer matches the card's current wakeTarget (a
+                      // Refresh or a re-seat) is not shown — the actions return instead.
+                      draft: draftLive ? draft : null,
+                      sent,
+                      onSend: () => {
+                        void sendDraft();
+                      },
+                      onCancel: cancelDraft,
+                    },
+                  }
+                : {})}
               onAnswer={(item, value) => {
                 if (!item.read) return;
-                void answer(
-                  item.card,
-                  item.read,
-                  wakeTarget(item.card.owners, bots, workspaceId),
-                  value,
-                );
+                if (write !== undefined) {
+                  void answer(
+                    item.card,
+                    item.read,
+                    wakeTarget(item.card.owners, bots, workspaceId),
+                    value,
+                  );
+                  return;
+                }
+                if (!onWake || sendingRef.current) return;
+                const target = wakeTarget(item.card.owners, bots, workspaceId);
+                if (!target || !("bot" in target)) return;
+                const text = cardMessage(item.card.ref, value, cardDate(nowMs ?? Date.now()));
+                if (text === null) {
+                  setMessageNotice({
+                    kind: "message_refused",
+                    title: item.card.title,
+                  });
+                  return;
+                }
+                setMessageNotice(null);
+                setDraft({
+                  ref: item.card.ref,
+                  sha256: item.read.sha256,
+                  title: item.card.title,
+                  bot: target.bot,
+                  botName: target.name,
+                  text,
+                });
               }}
               onUndo={() => {
                 void undo();
