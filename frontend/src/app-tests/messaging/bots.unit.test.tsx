@@ -3602,7 +3602,8 @@ test("a Bot-thread reply draws its own Bot icon, not just the Bot's chat bar", a
   // composer is the only path that gives a message a server-matchable turn (threadTurn reads the
   // live session, since a saved/loaded message is always `prompt: null`). This also exercises
   // `identityFor`, the same formula R5's mutant M1 guts, but for a thread entry rather than the
-  // focused pane's own `chatIdentity`.
+  // focused pane's own `chatIdentity`. While the turn runs, the log shows a status line (the
+  // Bot's own face, no `renderTurn` call); the reply itself renders only once the turn ends.
   const { socket, launch, durable, container } = await mountThreadCards();
   // fakeViki auto-synchronizes a freshly opened session at the fixed GENERATION (fakes.ts); a
   // reply frame at any other generation is for a stale session and gets dropped.
@@ -3643,6 +3644,38 @@ test("a Bot-thread reply draws its own Bot icon, not just the Bot's chat bar", a
   await click("Send to team");
   await settled();
   expect(durable.submissions).toHaveLength(1);
+  const sessionId = durable.submissions[0]?.session_id as string;
+  // Still running: a status line with the Bot's own face, not the reply itself.
+  expect(container.querySelector(".bot-thread-reply")).toBeNull();
+  expect(container.querySelector(".bot-thread-working .bot-face")).toBeTruthy();
+  expect(container.querySelector(".bot-thread-working svg.bot-icon")).toBeTruthy();
+  const usage = {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_tokens: 0,
+    cache_creation_tokens: 0,
+  };
+  await act(async () => {
+    socket.receive({
+      v: 2,
+      type: "text.done",
+      session_id: sessionId,
+      generation: GENERATION,
+      request_id: "",
+      seq: 3,
+      data: { block_id: "b1", text: "On it." },
+    });
+    socket.receive({
+      v: 2,
+      type: "turn.done",
+      session_id: sessionId,
+      generation: GENERATION,
+      request_id: "",
+      seq: 4,
+      data: { status: "success", usage, context_percent: null, duration_ms: 1 },
+    });
+  });
+  await settled();
   expect(container.querySelector(".bot-thread-reply svg.bot-icon")).toBeTruthy();
 });
 

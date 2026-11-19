@@ -281,26 +281,39 @@
     outline-color: Highlight;
   }
 }
-.bot-thread-result {
+.bot-thread-result,
+.bot-thread-notes {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--s0);
   overflow-wrap: anywhere;
 }
-.bot-thread-result summary {
+.bot-thread-result summary,
+.bot-thread-notes summary {
   cursor: pointer;
   color: var(--t0);
 }
-.bot-thread-result dt {
+.bot-thread-result dt,
+.bot-thread-notes dt {
   margin-top: 8px;
   font-weight: 600;
 }
-.bot-thread-result dd {
+.bot-thread-result dd,
+.bot-thread-notes dd {
   margin-left: 0;
   color: var(--t2);
 }
-.bot-thread-result ul {
+.bot-thread-result ul,
+.bot-thread-notes ul {
   margin: 4px 0;
   padding-left: 16px;
+}
+.bot-thread-notes {
+  margin-top: 12px;
+}
+.bot-thread-note {
+  flex-basis: 100%;
+  color: var(--t2);
+  font-size: 12px;
 }
