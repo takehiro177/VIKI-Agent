@@ -25,6 +25,7 @@ import {
   threadTurn,
 } from "../../state/botThreads";
 import { readHandoff } from "../../state/threadHandoff";
+import { isStepLabel, latestNote, threadPost } from "../../state/threadPosts";
 import type { SessionView, Turn } from "../../state/view";
 import { IdentityContext, useIdentity } from "../Avatar/identity";
 import type { ComposerActivity } from "../Composer/Composer";
@@ -234,6 +235,76 @@ export function BotThreadWorkspace({
     if ((current.attachments ?? []).length) return t("bots.thread.steerFiles");
     if (current.messages.length > 198) return t("bots.thread.capacity");
     return undefined;
+  }
+
+  /** A finished turn's no-post or failed-reply line: face, name, then ` · ${message}`. */
+  function pendingLine(member: ThreadMember | undefined, message: string): ReactNode {
+    return (
+      <p className="bot-thread-pending" data-bot-hue={hueOf(member)}>
+        {member ? (
+          <BotFace
+            profileId={member.profileId}
+            identity={member.identity}
+            name={member.name}
+            size={36}
+            decorative
+          />
+        ) : null}
+        <b className="bot-thread-pending-name">{member?.name ?? "Bot"}</b>
+        {` · ${message}`}
+      </p>
+    );
+  }
+
+  /** The Bot side of a log entry once its turn exists: a running line with no `renderTurn` call,
+   * or the finished reply, its failed/no-post fallback, and progress notes. */
+  function botTurnBody(member: ThreadMember | undefined, turn: Turn, sessionId: string): ReactNode {
+    if (turn.status === "running") {
+      const label = activityOf(sessionId).label;
+      const note = latestNote(turn);
+      return (
+        <p className="bot-thread-pending bot-thread-working" data-bot-hue={hueOf(member)}>
+          {member ? (
+            <BotFace
+              profileId={member.profileId}
+              identity={member.identity}
+              name={member.name}
+              size={36}
+              decorative
+              state="working"
+            />
+          ) : null}
+          <b className="bot-thread-pending-name">{member?.name ?? "Bot"}</b>
+          {` · ${isStepLabel(label) ? t("bots.thread.working") : label}`}
+          {note ? <span className="bot-thread-note">{note}</span> : null}
+        </p>
+      );
+    }
+    const { post, notes } = threadPost(turn);
+    const result = readHandoff(threadReply(turn));
+    return (
+      <>
+        {post.blocks.length > 0 || turn.status === "cancelled" ? (
+          <div className="bot-thread-reply" data-bot-hue={hueOf(member)}>
+            {renderTurn(post, sessionId)}
+          </div>
+        ) : turn.status === "error" ? (
+          pendingLine(member, t("bots.thread.replyFailed"))
+        ) : result === null ? (
+          pendingLine(member, t("bots.thread.noPost"))
+        ) : null}
+        {notes.length > 0 ? (
+          <details className="bot-thread-notes">
+            <summary>{tf("bots.thread.notes", { count: notes.length })}</summary>
+            <ul>
+              {notes.map((note) => (
+                <li key={note.id}>{note.text}</li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+      </>
+    );
   }
 
   return (
@@ -468,9 +539,7 @@ export function BotThreadWorkspace({
                       </div>
                       {message.memberKey !== null && message.sessionId ? (
                         turn ? (
-                          <div className="bot-thread-reply" data-bot-hue={hueOf(member)}>
-                            {renderTurn(turn, message.sessionId)}
-                          </div>
+                          botTurnBody(member, turn, message.sessionId)
                         ) : (
                           <p className="bot-thread-pending" data-bot-hue={hueOf(member)}>
                             {member ? (

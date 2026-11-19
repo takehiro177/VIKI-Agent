@@ -396,7 +396,13 @@ Handoffs carry the result, not the files.
 
 ### What a thread shows
 
-- **Log:** shows each Bot's replies, tool activity, permission requests and questions.
+- **Log:** shows what each Bot says: its message when it finishes, its result summary, and its
+  questions and permission requests. While a Bot works, its entry shows one status line, such as
+  **Working**, **Writing** or **Waiting for your answer**, with its latest progress note. After it
+  finishes, earlier notes fold under **Progress notes**. Its thinking and tool steps stay in its
+  own chat: choose **Open Bot chat** to see them.
+- **No message:** when a Bot finishes without one, its entry says so, and a failed reply says
+  **Reply failed**; open its chat to see its work.
 - **Bot row:** above the message box, the thread's Bots sit in a row. The working one is lit in
   its color, the others grey, and a Bot that needs you shows the attention dot.
 - **Names:** show in their Bot's color in replies, handoffs and **Needs your answer** headings.

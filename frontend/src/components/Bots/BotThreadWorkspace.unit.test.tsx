@@ -15,6 +15,7 @@ import {
 import { emptyView, type SessionView, type Turn } from "../../state/view";
 import { readCss } from "../../testing/css";
 import type { Attachment } from "../../turnInput";
+import type { ComposerActivity } from "../Composer/Composer";
 import { BotThreadWorkspace } from "./BotThreadWorkspace";
 
 afterEach(cleanup);
@@ -162,6 +163,7 @@ async function renderThread(
     canStart?: boolean;
     canSend?: boolean;
     store?: Partial<BotThreadStore>;
+    activityOf?: (sessionId: string | null) => ComposerActivity;
   } = {},
 ) {
   const store = buildStore(opts.store);
@@ -188,7 +190,7 @@ async function renderThread(
       </div>
     )),
     renderCards: vi.fn(() => null),
-    activityOf: vi.fn().mockReturnValue({ state: "idle", label: "" }),
+    activityOf: opts.activityOf ?? vi.fn().mockReturnValue({ state: "idle", label: "" }),
   };
   const view = render(<BotThreadWorkspace {...props} />);
   await act(async () => {});
@@ -971,4 +973,222 @@ test("a thread switch mounts a fresh message box, so nothing in flight carries o
   const before = screen.getByRole("textbox", { name: "Message the thread" });
   rerender(<BotThreadWorkspace {...props} snapshot={{ ...props.snapshot, selectedId: "b" }} />);
   expect(screen.getByRole("textbox", { name: "Message the thread" })).not.toBe(before);
+});
+
+// ---- progress notes and the running status line (P2) ------------------------------------------
+
+test("a finished Bot message posts the trimmed reply and keeps earlier text as a progress note", async () => {
+  const doneTurn = turn("t1", {
+    blocks: [
+      { kind: "thinking", id: "th1", text: "Thinking it over", done: true, durationMs: null },
+      { kind: "text", id: "b1", text: "I'll check", done: true },
+      { kind: "tools", id: "tool1", rows: [] },
+      { kind: "text", id: "b2", text: "Shipped X\nVIKI_DONE", done: true },
+    ],
+  });
+  const thread = baseThread({
+    messages: [
+      {
+        id: "m1",
+        at: "2026-01-01T00:00:00.000Z",
+        memberKey: "chief",
+        text: "",
+        sessionId: "sess-1",
+        prompt: null,
+        turn: doneTurn,
+      },
+    ],
+  });
+  const { props, container } = await renderThread(thread, {
+    sessions: { "sess-1": emptyView("sess-1") },
+  });
+  const lastCall = props.renderTurn.mock.calls.at(-1);
+  expect(lastCall?.[0].blocks).toEqual([{ kind: "text", id: "b2", text: "Shipped X", done: true }]);
+  expect(lastCall?.[1]).toBe("sess-1");
+  const details = container.querySelector(".bot-thread-notes");
+  expect(details?.querySelector("summary")?.textContent).toBe(
+    tf("bots.thread.notes", { count: 1 }),
+  );
+  expect(details?.querySelector("li")?.textContent).toBe("I'll check");
+});
+
+test("a running Bot message shows Working instead of the tool label, with its latest note and no reply", async () => {
+  const runningTurn = turn("t1", {
+    status: "running",
+    blocks: [
+      { kind: "text", id: "b1", text: "Reading the spec", done: true },
+      { kind: "tools", id: "tool1", rows: [] },
+    ],
+  });
+  const thread = baseThread({
+    phase: "running",
+    activeMember: "chief",
+    messages: [
+      {
+        id: "m1",
+        at: "2026-01-01T00:00:00.000Z",
+        memberKey: "chief",
+        text: "",
+        sessionId: "sess-1",
+        prompt: null,
+        turn: runningTurn,
+      },
+    ],
+  });
+  const { container, props, rerender } = await renderThread(thread, {
+    busy: true,
+    sessions: { "sess-1": emptyView("sess-1") },
+    activityOf: vi.fn().mockReturnValue({ state: "active", label: "Using Read" }),
+  });
+  const entry = container.querySelector(".bot-thread-log > li");
+  expect(entry?.textContent).toContain("Chief");
+  expect(entry?.textContent).toContain(t("bots.thread.working"));
+  expect(entry?.textContent).toContain("Reading the spec");
+  expect(entry?.textContent).not.toContain("Using Read");
+  expect(container.querySelector(".bot-thread-reply")).toBeNull();
+  expect(props.renderTurn).not.toHaveBeenCalled();
+
+  rerender(
+    <BotThreadWorkspace
+      {...props}
+      activityOf={vi.fn().mockReturnValue({ state: "waiting", label: "Waiting for your answer" })}
+    />,
+  );
+  expect(container.querySelector(".bot-thread-log > li")?.textContent).toContain(
+    "Waiting for your answer",
+  );
+});
+
+test("a finished Bot message with tools only and no handoff shows the no-post line", async () => {
+  const doneTurn = turn("t1", { blocks: [{ kind: "tools", id: "tool1", rows: [] }] });
+  const thread = baseThread({
+    messages: [
+      {
+        id: "m1",
+        at: "2026-01-01T00:00:00.000Z",
+        memberKey: "chief",
+        text: "",
+        sessionId: "sess-1",
+        prompt: null,
+        turn: doneTurn,
+      },
+    ],
+  });
+  const { container, props } = await renderThread(thread, {
+    sessions: { "sess-1": emptyView("sess-1") },
+  });
+  expect(container.querySelector(".bot-thread-reply")).toBeNull();
+  expect(container.querySelector(".bot-thread-pending")?.textContent).toContain(
+    t("bots.thread.noPost"),
+  );
+  expect(props.renderTurn).not.toHaveBeenCalled();
+});
+
+test("a finished Bot message that is only a VIKI_RESULT line skips the no-post line but keeps the result", async () => {
+  const resultText =
+    'VIKI_RESULT {"to":null,"objective":"o","artifacts":[],"decisions":[],"questions":[],"next_gate":"work","criteria":[],"evidence":[],"verdict":null,"progress":"p"}';
+  const doneTurn = turn("t1", {
+    blocks: [{ kind: "text", id: "b1", text: resultText, done: true }],
+  });
+  const thread = baseThread({
+    messages: [
+      {
+        id: "m1",
+        at: "2026-01-01T00:00:00.000Z",
+        memberKey: "chief",
+        text: "",
+        sessionId: "sess-1",
+        prompt: null,
+        turn: doneTurn,
+      },
+    ],
+  });
+  const { container, props } = await renderThread(thread, {
+    sessions: { "sess-1": emptyView("sess-1") },
+  });
+  expect(container.querySelector(".bot-thread-reply")).toBeNull();
+  expect(container.querySelector(".bot-thread-pending")).toBeNull();
+  expect(container.querySelector("details.bot-thread-result")).not.toBeNull();
+  expect(props.renderTurn).not.toHaveBeenCalled();
+});
+
+test("a cancelled Bot turn with tools only still renders through renderTurn", async () => {
+  const cancelledTurn = turn("t1", {
+    status: "cancelled",
+    blocks: [{ kind: "tools", id: "tool1", rows: [] }],
+  });
+  const thread = baseThread({
+    messages: [
+      {
+        id: "m1",
+        at: "2026-01-01T00:00:00.000Z",
+        memberKey: "chief",
+        text: "",
+        sessionId: "sess-1",
+        prompt: null,
+        turn: cancelledTurn,
+      },
+    ],
+  });
+  const { container, props } = await renderThread(thread, {
+    sessions: { "sess-1": emptyView("sess-1") },
+  });
+  expect(container.querySelector(".bot-thread-reply")).not.toBeNull();
+  expect(props.renderTurn).toHaveBeenCalled();
+});
+
+test("a failed Bot turn with no text shows the failed line, not no-post", async () => {
+  const errorTurn = turn("t1", { status: "error", blocks: [] });
+  const thread = baseThread({
+    messages: [
+      {
+        id: "m1",
+        at: "2026-01-01T00:00:00.000Z",
+        memberKey: "chief",
+        text: "",
+        sessionId: "sess-1",
+        prompt: null,
+        turn: errorTurn,
+      },
+    ],
+  });
+  const { container, props } = await renderThread(thread, {
+    sessions: { "sess-1": emptyView("sess-1") },
+  });
+  expect(container.querySelector(".bot-thread-reply")).toBeNull();
+  const pending = container.querySelector(".bot-thread-pending");
+  expect(pending?.textContent).toContain(t("bots.thread.replyFailed"));
+  expect(pending?.textContent).not.toContain(t("bots.thread.noPost"));
+  expect(props.renderTurn).not.toHaveBeenCalled();
+});
+
+test("a failed Bot turn with an error notice still renders through renderTurn", async () => {
+  const noticeBlock = {
+    kind: "notice",
+    id: "n1",
+    tone: "error",
+    subject: "subject",
+    detail: "detail",
+  } as const;
+  const errorTurn = turn("t1", { status: "error", blocks: [noticeBlock] });
+  const thread = baseThread({
+    messages: [
+      {
+        id: "m1",
+        at: "2026-01-01T00:00:00.000Z",
+        memberKey: "chief",
+        text: "",
+        sessionId: "sess-1",
+        prompt: null,
+        turn: errorTurn,
+      },
+    ],
+  });
+  const { container, props } = await renderThread(thread, {
+    sessions: { "sess-1": emptyView("sess-1") },
+  });
+  expect(container.querySelector(".bot-thread-pending")).toBeNull();
+  expect(props.renderTurn).toHaveBeenCalled();
+  const lastCall = props.renderTurn.mock.calls.at(-1);
+  expect(lastCall?.[0].blocks).toEqual([noticeBlock]);
 });
