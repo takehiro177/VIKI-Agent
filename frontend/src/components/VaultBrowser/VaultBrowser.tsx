@@ -40,11 +40,12 @@ import { BusyLabel, Loading, useHeld } from "../Loading/Loading";
 import { ResizeHandle } from "../Shell/ResizeHandle";
 import { MemoryPanel } from "./MemoryPanel";
 import { NoteActions } from "./NoteActions";
+import { statusTone } from "./NoteCard";
 import { RecoveryPanel } from "./RecoveryPanel";
 import { RelatedNotes } from "./RelatedNotes";
 import { readerBody } from "./readerBody";
 import { VaultOverview, VaultOverviewSkeleton } from "./VaultOverview";
-import { type VaultSectionKey, VaultSectionPage } from "./VaultSectionPage";
+import { VaultSectionInsight, type VaultSectionKey, VaultSectionPage } from "./VaultSectionPage";
 import { linkWikilinks } from "./wikilinks";
 import "./VaultBrowser.css";
 
@@ -523,7 +524,11 @@ function NoteChips({
     <ul className="vault-chips" aria-label="About this note">
       {section ? <li className="vault-reader-kicker">{section}</li> : null}
       {typeAdds ? <li>{type}</li> : null}
-      {status ? <li>{status}</li> : null}
+      {status ? (
+        <li className="vault-chip-status" data-tone={statusTone(status) ?? "none"}>
+          {status}
+        </li>
+      ) : null}
       {confidence ? <li>{`${confidence} confidence`}</li> : null}
       {tags.slice(0, 6).map((tag) => (
         <li key={tag}>
@@ -1556,6 +1561,16 @@ export function VaultBrowser({
     [sectionListing, visibleListing.phase],
   );
   const listingReady = visibleListing.phase === "ready" || visibleListing.phase === "partial";
+  // The tab badges count listed files per section folder, as the section pages do.
+  const sectionCounts = useMemo(() => {
+    const counts = { knowledge: 0, sources: 0, maps: 0 };
+    for (const row of visibleRows) {
+      if (row.ref.startsWith("30-knowledge/")) counts.knowledge += 1;
+      else if (row.ref.startsWith("40-sources/")) counts.sources += 1;
+      else if (row.ref.startsWith("50-maps/")) counts.maps += 1;
+    }
+    return counts;
+  }, [visibleRows]);
   const unavailableOverview =
     overviewPhase === "none" ||
     (overviewPhase === "error" && overviewData === null) ||
@@ -1895,6 +1910,7 @@ export function VaultBrowser({
           : undefined
       }
       data-open={selected ? "" : undefined}
+      data-view={effectiveView}
     >
       {onBack
         ? (renderBack?.(onBack) ?? (
@@ -1903,21 +1919,33 @@ export function VaultBrowser({
             </button>
           ))
         : null}
-      <header className="page-head">
-        <h1 ref={headingRef} tabIndex={-1} className="page-title">
-          Vault
-        </h1>
-        <p className="page-intro">
-          {effectiveView === "overview"
-            ? "Recent notes, your inbox and how your knowledge grows."
-            : "Browse your notes and their context."}
-        </p>
-      </header>
-      <fieldset aria-label="Vault controls" className="vault-controls">
+      <header className="page-head vault-head">
+        <div className="vault-head-title">
+          <h1 ref={headingRef} tabIndex={-1} className="page-title">
+            Vault
+          </h1>
+          <p className="page-intro">
+            {effectiveView === "overview"
+              ? "Recent notes, your inbox and how your knowledge grows."
+              : "Browse your notes and their context."}
+          </p>
+        </div>
         <label className="vault-search">
-          Search note contents{" "}
+          <svg
+            className="ico"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
           <input
+            aria-label="Search note contents"
             maxLength={256}
+            placeholder="Search note contents"
             value={query}
             onChange={(event) => {
               cancelInitialSection();
@@ -1927,125 +1955,86 @@ export function VaultBrowser({
             }}
           />
         </label>
-        {!searching && overviewCount > 0 ? (
-          <fieldset aria-label="Vault view" className="vault-views">
+      </header>
+      {(!searching && overviewCount > 0) || write ? (
+        <div className="vault-toolbar">
+          {!searching && overviewCount > 0 ? (
+            <fieldset aria-label="Vault view" className="vault-views">
+              <button
+                type="button"
+                className="vault-tab"
+                aria-current={effectiveView === "overview" ? "page" : undefined}
+                aria-pressed={effectiveView === "overview"}
+                onClick={() => {
+                  clearTag();
+                  changeView("overview");
+                }}
+              >
+                {t("vault.nav.front")}
+              </button>
+              {(["knowledge", "sources", "maps"] as const).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className="vault-tab"
+                  aria-current={effectiveView === "section" && section === key ? "page" : undefined}
+                  aria-pressed={effectiveView === "section" && section === key}
+                  onClick={() => changeSection(key)}
+                >
+                  {t(`vault.nav.${key}`)}
+                  {listingReady ? (
+                    <span className="vault-tab-count" aria-hidden="true">
+                      {`${sectionCounts[key]}${visibleListing.phase === "partial" ? "+" : ""}`}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+              {otherGroups.length > 0 ? (
+                <button
+                  type="button"
+                  className="vault-tab"
+                  aria-current={
+                    effectiveView === "section" && section === "else" ? "page" : undefined
+                  }
+                  aria-pressed={effectiveView === "section" && section === "else"}
+                  onClick={() => changeSection("else")}
+                >
+                  {t("vault.nav.else")}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="vault-tab"
+                aria-current={effectiveView === "notes" ? "page" : undefined}
+                aria-pressed={effectiveView === "notes"}
+                onClick={() => changeView("notes")}
+              >
+                {t("vault.nav.all")}
+                {listingReady ? (
+                  <span className="vault-tab-count" aria-hidden="true">
+                    {`${visibleRows.length}${visibleListing.phase === "partial" ? "+" : ""}`}
+                  </span>
+                ) : null}
+              </button>
+            </fieldset>
+          ) : null}
+          {write ? (
             <button
               type="button"
-              className="btn alt sm"
-              aria-current={effectiveView === "overview" ? "page" : undefined}
-              aria-pressed={effectiveView === "overview"}
+              className="btn alt sm vault-new-note"
               onClick={() => {
-                clearTag();
-                changeView("overview");
+                if (!confirmDiscard()) return;
+                ++saveGeneration.current;
+                setDraft({ mode: "create", ref: "", content: "" });
+                setSaveState("idle");
+                setSaveMessage("");
               }}
             >
-              {t("vault.nav.front")}
+              New note
             </button>
-            <button
-              type="button"
-              className="btn alt sm"
-              aria-current={effectiveView === "notes" ? "page" : undefined}
-              aria-pressed={effectiveView === "notes"}
-              onClick={() => changeView("notes")}
-            >
-              {t("vault.nav.all")}
-            </button>
-            {(["knowledge", "sources", "maps"] as const).map((key) => (
-              <button
-                key={key}
-                type="button"
-                className="btn alt sm"
-                aria-current={effectiveView === "section" && section === key ? "page" : undefined}
-                aria-pressed={effectiveView === "section" && section === key}
-                onClick={() => changeSection(key)}
-              >
-                {t(`vault.nav.${key}`)}
-              </button>
-            ))}
-            {otherGroups.length > 0 ? (
-              <button
-                type="button"
-                className="btn alt sm"
-                aria-current={
-                  effectiveView === "section" && section === "else" ? "page" : undefined
-                }
-                aria-pressed={effectiveView === "section" && section === "else"}
-                onClick={() => changeSection("else")}
-              >
-                {t("vault.nav.else")}
-              </button>
-            ) : null}
-          </fieldset>
-        ) : null}
-        {!searching && effectiveView === "notes" && visibleRows.length > 0 ? (
-          <fieldset className="vault-filters">
-            <legend>Filter and sort</legend>
-            <label>
-              Folder{" "}
-              <select
-                value={activeFolder}
-                onFocus={() => setFolderControlFocused(true)}
-                onBlur={() => setFolderControlFocused(false)}
-                onChange={(event) => {
-                  cancelInitialSection();
-                  location.current = { ...location.current, folder: event.target.value };
-                  changePage(0);
-                  setFolder(event.target.value);
-                }}
-              >
-                <option value="">All</option>
-                {folders.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Sort{" "}
-              <select
-                value={sort}
-                onChange={(event) => {
-                  cancelInitialSection();
-                  location.current = { ...location.current, sort: event.target.value as Sort };
-                  changePage(0);
-                  setSort(location.current.sort);
-                }}
-              >
-                <option value="name">Name</option>
-                <option value="recent">Last modified</option>
-              </select>
-            </label>
-            <label className="vault-bookmark-filter">
-              <input
-                type="checkbox"
-                checked={onlyMarked}
-                onChange={(event) => {
-                  cancelInitialSection();
-                  location.current = { ...location.current, onlyMarked: event.target.checked };
-                  changePage(0);
-                  setOnlyMarked(event.target.checked);
-                }}
-              />{" "}
-              Bookmarks only
-            </label>
-            {tag ? (
-              <p className="vault-tag-filter">
-                {`Tagged #${tag}`}{" "}
-                <button type="button" aria-label="Clear tag filter" onClick={clearTag}>
-                  ×
-                </button>
-              </p>
-            ) : null}
-            {tag ? (
-              <p className="vault-quiet">
-                {t("vault.coverage.source")}
-                {overviewData?.partial ? ` · ${t("vault.coverage.partial")}` : ""}
-              </p>
-            ) : null}
-          </fieldset>
-        ) : null}
-      </fieldset>
+          ) : null}
+        </div>
+      ) : null}
       {recoveryCount > 0 ? (
         <p role="status" className="vault-notice">
           A save or note operation didn't finish.{" "}
@@ -2054,15 +2043,6 @@ export function VaultBrowser({
           </button>
         </p>
       ) : null}
-      {searching ? (
-        <p aria-live="polite">
-          Searching all readable note contents. Saved browsing filters: folder{" "}
-          {folder ? `"${folder}"` : "all folders"}; {onlyMarked ? "bookmarks only" : "all notes"};{" "}
-          {sort === "recent" ? "most recent first" : "name order"}
-          {tag ? `; tag "#${tag}"` : ""}.
-        </p>
-      ) : null}
-      {effectiveView === "notes" ? <State value={visibleListing} /> : null}
       {overviewPhase === "error" && overviewData === null ? (
         <p className="vault-quiet">
           The overview couldn't be read.{" "}
@@ -2078,31 +2058,7 @@ export function VaultBrowser({
           </button>
         </p>
       ) : null}
-      {effectiveView === "notes" &&
-      !searching &&
-      folder !== "" &&
-      activeFolder === "" &&
-      (visibleListing.phase === "ready" || visibleListing.phase === "partial") ? (
-        <p>
-          Folder "{folder}" was not found in this{" "}
-          {visibleListing.phase === "partial" ? "partial listing" : "listing"}. Showing all folders.
-        </p>
-      ) : null}
       {markError ? <p role="alert">{markError}</p> : null}
-      {write ? (
-        <button
-          type="button"
-          onClick={() => {
-            if (!confirmDiscard()) return;
-            ++saveGeneration.current;
-            setDraft({ mode: "create", ref: "", content: "" });
-            setSaveState("idle");
-            setSaveMessage("");
-          }}
-        >
-          New note
-        </button>
-      ) : null}
       {draft?.mode === "create" ? (
         <section aria-label="New note editor">
           <label>
@@ -2164,395 +2120,507 @@ export function VaultBrowser({
           {PROPOSAL_COPY.reload}
         </button>
       ) : null}
-      {effectiveView === "notes" &&
-      visibleListing.phase !== "loading" &&
-      visibleListing.phase !== "error" &&
-      visibleRows.length === 0 ? (
-        <p>
-          {visibleListing.phase === "partial"
-            ? "No notes found in the scanned results."
-            : "No notes found."}
-        </p>
-      ) : null}
-      {effectiveView === "notes" &&
-      visibleRows.length > 0 &&
-      shownRows.length === 0 &&
-      !tagWaits ? (
-        <p>No notes match these filters.</p>
-      ) : null}
-      {effectiveView === "notes" &&
-      pagingReady &&
-      lastPage > 0 &&
-      (visibleListing.phase === "ready" || visibleListing.phase === "partial") ? (
-        <fieldset aria-label="Note pages" className="vault-pages">
-          <p aria-live="polite">
-            Page {currentPage + 1} of {lastPage + 1}
-          </p>
-          <button
-            type="button"
-            aria-label="Previous note page"
-            disabled={currentPage === 0}
-            onClick={() => changePage(currentPage - 1)}
-          >
-            Previous
-          </button>
-          <button
-            type="button"
-            aria-label="Next note page"
-            disabled={currentPage >= lastPage}
-            onClick={() => changePage(currentPage + 1)}
-          >
-            Next
-          </button>
-        </fieldset>
-      ) : null}
-      {effectiveView === "overview" ? (
-        <div className="vault-list vault-overview-host" id={`${noteListId}-navigation`}>
-          {overviewWaiting ? (
-            <VaultOverviewSkeleton />
-          ) : overviewData && overviewCount > 0 ? (
-            <>
-              {overviewRefreshing && overviewPhase !== "error" ? (
-                <Loading className="vault-quiet vault-updating">Updating the overview…</Loading>
-              ) : null}
-              {overviewPhase === "error" ? (
-                <p className="vault-quiet">
-                  This overview may be out of date: it couldn't be read again.{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      reloadOverview();
-                      // The line, and this button with it, leaves while the overview is read again.
-                      setFocusHeading(true);
+      <div className="vault-panes">
+        {effectiveView === "overview" ? (
+          <div className="vault-list vault-overview-host" id={`${noteListId}-navigation`}>
+            {overviewWaiting ? (
+              <VaultOverviewSkeleton />
+            ) : overviewData && overviewCount > 0 ? (
+              <>
+                {overviewRefreshing && overviewPhase !== "error" ? (
+                  <Loading className="vault-quiet vault-updating">Updating the overview…</Loading>
+                ) : null}
+                {overviewPhase === "error" ? (
+                  <p className="vault-quiet">
+                    This overview may be out of date: it couldn't be read again.{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        reloadOverview();
+                        // The line, and this button with it, leaves while the overview is read again.
+                        setFocusHeading(true);
+                      }}
+                    >
+                      Try again
+                    </button>
+                  </p>
+                ) : null}
+                <VaultOverview
+                  overview={overviewData}
+                  today={new Date()}
+                  workspaceId={workspaceId}
+                  listing={sectionListing}
+                  listingReady={listingReady}
+                  listingPartial={visibleListing.phase === "partial"}
+                  bookmarks={
+                    marks?.api === api && marks.workspaceId === workspaceId ? marks.items : []
+                  }
+                  inboxCount={visibleRows.filter((row) => row.ref.startsWith("00-inbox/")).length}
+                  // The title button is no modal origin: `requestOpen` would refuse it (`canLeave`).
+                  onOpen={(ref, kind) => {
+                    requestOpen(ref, kind);
+                  }}
+                  onOpenCard={(ref, kind) => requestOpen(ref, kind)}
+                  onTag={filterByTag}
+                  onBrowse={browseFolder}
+                  onReload={reloadOverview}
+                  {...(captures ? { captures } : {})}
+                  {...(onTriage ? { onTriage } : {})}
+                />
+              </>
+            ) : (
+              <p role="status">Reading your notes…</p>
+            )}
+          </div>
+        ) : effectiveView === "section" && section ? (
+          <div className="vault-list vault-section-host" id={`${noteListId}-navigation`}>
+            <VaultSectionPage
+              selected={selected}
+              section={section}
+              listing={visibleRows}
+              overview={overviewData}
+              listingPartial={visibleListing.phase === "partial"}
+              // The rows are empty on every reload and after a failed read, which is not "no notes".
+              listingReady={listingReady}
+              listingStatus={<State value={visibleListing} />}
+              onOpen={(ref, kind) => requestOpen(ref, kind)}
+              onBrowse={browseFolder}
+            />
+          </div>
+        ) : (
+          <div className="vault-browse">
+            {searching ? (
+              <p aria-live="polite" className="vault-quiet">
+                Searching all readable note contents. Saved browsing filters: folder{" "}
+                {folder ? `"${folder}"` : "all folders"};{" "}
+                {onlyMarked ? "bookmarks only" : "all notes"};{" "}
+                {sort === "recent" ? "most recent first" : "name order"}
+                {tag ? `; tag "#${tag}"` : ""}.
+              </p>
+            ) : null}
+            {!searching && visibleRows.length > 0 ? (
+              <fieldset className="vault-filters">
+                <legend>Filter and sort</legend>
+                <label>
+                  Folder{" "}
+                  <select
+                    value={activeFolder}
+                    onFocus={() => setFolderControlFocused(true)}
+                    onBlur={() => setFolderControlFocused(false)}
+                    onChange={(event) => {
+                      cancelInitialSection();
+                      location.current = { ...location.current, folder: event.target.value };
+                      changePage(0);
+                      setFolder(event.target.value);
                     }}
                   >
-                    Try again
-                  </button>
+                    <option value="">All</option>
+                    {folders.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Sort{" "}
+                  <select
+                    value={sort}
+                    onChange={(event) => {
+                      cancelInitialSection();
+                      location.current = { ...location.current, sort: event.target.value as Sort };
+                      changePage(0);
+                      setSort(location.current.sort);
+                    }}
+                  >
+                    <option value="name">Name</option>
+                    <option value="recent">Last modified</option>
+                  </select>
+                </label>
+                <label className="vault-bookmark-filter">
+                  <input
+                    type="checkbox"
+                    checked={onlyMarked}
+                    onChange={(event) => {
+                      cancelInitialSection();
+                      location.current = { ...location.current, onlyMarked: event.target.checked };
+                      changePage(0);
+                      setOnlyMarked(event.target.checked);
+                    }}
+                  />{" "}
+                  Bookmarks only
+                </label>
+                {tag ? (
+                  <p className="vault-tag-filter">
+                    {`Tagged #${tag}`}{" "}
+                    <button type="button" aria-label="Clear tag filter" onClick={clearTag}>
+                      ×
+                    </button>
+                  </p>
+                ) : null}
+                {tag ? (
+                  <p className="vault-quiet">
+                    {t("vault.coverage.source")}
+                    {overviewData?.partial ? ` · ${t("vault.coverage.partial")}` : ""}
+                  </p>
+                ) : null}
+              </fieldset>
+            ) : null}
+            <State value={visibleListing} />
+            {!searching &&
+            folder !== "" &&
+            activeFolder === "" &&
+            (visibleListing.phase === "ready" || visibleListing.phase === "partial") ? (
+              <p>
+                Folder "{folder}" was not found in this{" "}
+                {visibleListing.phase === "partial" ? "partial listing" : "listing"}. Showing all
+                folders.
+              </p>
+            ) : null}
+            {visibleListing.phase !== "loading" &&
+            visibleListing.phase !== "error" &&
+            visibleRows.length === 0 ? (
+              <p>
+                {visibleListing.phase === "partial"
+                  ? "No notes found in the scanned results."
+                  : "No notes found."}
+              </p>
+            ) : null}
+            {visibleRows.length > 0 && shownRows.length === 0 && !tagWaits ? (
+              <p>No notes match these filters.</p>
+            ) : null}
+            {shownRows.length > 0 ? (
+              <nav aria-label="Notes" className="vault-list" id={`${noteListId}-navigation`}>
+                {pagedRows.map((row, localIndex) => {
+                  const index = pageStart + localIndex;
+                  const marked = markedRefs?.has(row.ref) ?? false;
+                  const known = overviewRows.get(row.ref);
+                  const label = known?.title ?? displayTitle(row);
+                  return (
+                    <div key={row.ref} className="vault-row">
+                      <svg
+                        className="ico vault-note-icon"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        focusable="false"
+                      >
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <path d="M14 2v6h6M8 12h8M8 16h6" />
+                      </svg>
+                      <div className="vault-row-label">
+                        <button
+                          type="button"
+                          data-vault-ref={row.ref}
+                          data-vault-kind="row"
+                          aria-current={selected === row.ref || undefined}
+                          aria-describedby={`${noteListId}-${index}`}
+                          onClick={() => {
+                            requestOpen(row.ref);
+                          }}
+                        >
+                          {label}
+                          {row.excerpt !== undefined ? ` — line ${row.line}: ${row.excerpt}` : ""}
+                        </button>
+                        {known ? (
+                          <p className="vault-row-meta">
+                            {[sectionOf(row.ref), known.status].filter(Boolean).join(" · ")}
+                          </p>
+                        ) : null}
+                        {known?.summary ? (
+                          <p className="vault-row-summary">{known.summary}</p>
+                        ) : null}
+                        <small id={`${noteListId}-${index}`} className="vault-ref">
+                          {row.ref}
+                        </small>
+                      </div>
+                      {searching ? null : (
+                        <button
+                          type="button"
+                          className="vault-bookmark"
+                          aria-pressed={marked}
+                          aria-label={`${marked ? "Remove bookmark for" : "Add bookmark for"} ${row.ref}`}
+                          disabled={marking}
+                          onClick={() => void toggleMark(row.ref, marked)}
+                        >
+                          {marked ? "★" : "☆"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </nav>
+            ) : null}
+            {pagingReady &&
+            lastPage > 0 &&
+            (visibleListing.phase === "ready" || visibleListing.phase === "partial") ? (
+              <fieldset aria-label="Note pages" className="vault-pages">
+                <p aria-live="polite">
+                  Page {currentPage + 1} of {lastPage + 1}
                 </p>
-              ) : null}
-              <VaultOverview
-                overview={overviewData}
-                today={new Date()}
-                workspaceId={workspaceId}
-                listing={sectionListing}
-                listingReady={listingReady}
-                listingPartial={visibleListing.phase === "partial"}
-                bookmarks={
-                  marks?.api === api && marks.workspaceId === workspaceId ? marks.items : []
-                }
-                inboxCount={visibleRows.filter((row) => row.ref.startsWith("00-inbox/")).length}
-                // The title button is no modal origin: `requestOpen` would refuse it (`canLeave`).
-                onOpen={(ref, kind) => {
-                  requestOpen(ref, kind);
-                }}
-                onOpenCard={(ref, kind) => requestOpen(ref, kind)}
-                onTag={filterByTag}
-                onBrowse={browseFolder}
-                onReload={reloadOverview}
-                {...(captures ? { captures } : {})}
-                {...(onTriage ? { onTriage } : {})}
-              />
-            </>
-          ) : (
-            <p role="status">Reading your notes…</p>
-          )}
-        </div>
-      ) : effectiveView === "section" && section ? (
-        <VaultSectionPage
-          section={section}
-          listing={visibleRows}
-          overview={overviewData}
-          listingPartial={visibleListing.phase === "partial"}
-          // The rows are empty on every reload and after a failed read, which is not "no notes".
-          listingReady={listingReady}
-          listingStatus={<State value={visibleListing} />}
-          onOpen={(ref, kind) => requestOpen(ref, kind)}
-          onBrowse={browseFolder}
-          onTag={filterByTag}
-        />
-      ) : shownRows.length > 0 ? (
-        <nav aria-label="Notes" className="vault-list" id={`${noteListId}-navigation`}>
-          {pagedRows.map((row, localIndex) => {
-            const index = pageStart + localIndex;
-            const marked = markedRefs?.has(row.ref) ?? false;
-            const known = overviewRows.get(row.ref);
-            const label = known?.title ?? displayTitle(row);
-            return (
-              <div key={row.ref} className="vault-row">
-                <svg
-                  className="ico vault-note-icon"
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                  focusable="false"
+                <button
+                  type="button"
+                  aria-label="Previous note page"
+                  disabled={currentPage === 0}
+                  onClick={() => changePage(currentPage - 1)}
                 >
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <path d="M14 2v6h6M8 12h8M8 16h6" />
-                </svg>
-                <div className="vault-row-label">
-                  <button
-                    type="button"
-                    data-vault-ref={row.ref}
-                    data-vault-kind="row"
-                    aria-current={selected === row.ref || undefined}
-                    aria-describedby={`${noteListId}-${index}`}
-                    onClick={() => {
-                      requestOpen(row.ref);
-                    }}
-                  >
-                    {label}
-                    {row.excerpt !== undefined ? ` — line ${row.line}: ${row.excerpt}` : ""}
-                  </button>
-                  {known ? (
-                    <p className="vault-row-meta">
-                      {[sectionOf(row.ref), known.status].filter(Boolean).join(" · ")}
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next note page"
+                  disabled={currentPage >= lastPage}
+                  onClick={() => changePage(currentPage + 1)}
+                >
+                  Next
+                </button>
+              </fieldset>
+            ) : null}
+          </div>
+        )}
+        {selected ? (
+          <article aria-label="Selected note" className="vault-inspector">
+            {!onNavigation && (
+              <button type="button" className="btn txt sm vault-back" onClick={backNote}>
+                {noteTrail.current.at(-1)?.ref ? "Back" : "Back to notes"}
+              </button>
+            )}
+            <State value={noteState} />
+            {note ? (
+              <>
+                <header className="vault-reader-head">
+                  <NoteChips
+                    section={overviewRows.has(note.ref) ? sectionOf(note.ref) : folderOf(note.ref)}
+                    type={note.displayMetadata?.type}
+                    status={note.displayMetadata?.status}
+                    confidence={overviewRows.get(note.ref)?.confidence}
+                    tags={note.displayMetadata?.tags ?? undefined}
+                    {...(sectionOf(note.ref) !== null && overviewRows.has(note.ref)
+                      ? { onTag: filterByTag }
+                      : {})}
+                  />
+                  <h2>{readerTitle}</h2>
+                  {date && dateLabel ? (
+                    <p className="vault-reader-date">
+                      <time dateTime={date}>{dateLabel}</time>
                     </p>
                   ) : null}
-                  {known?.summary ? <p className="vault-row-summary">{known.summary}</p> : null}
-                  <small id={`${noteListId}-${index}`} className="vault-ref">
-                    {row.ref}
-                  </small>
-                </div>
-                {searching ? null : (
-                  <button
-                    type="button"
-                    className="vault-bookmark"
-                    aria-pressed={marked}
-                    aria-label={`${marked ? "Remove bookmark for" : "Add bookmark for"} ${row.ref}`}
-                    disabled={marking}
-                    onClick={() => void toggleMark(row.ref, marked)}
-                  >
-                    {marked ? "★" : "☆"}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-      ) : null}
-      {selected ? (
-        <article aria-label="Selected note" className="vault-inspector">
-          {!onNavigation && (
-            <button type="button" className="btn txt sm vault-back" onClick={backNote}>
-              {noteTrail.current.at(-1)?.ref ? "Back" : "Back to notes"}
-            </button>
-          )}
-          <State value={noteState} />
-          {note ? (
-            <>
-              <header className="vault-reader-head">
-                <h2>{readerTitle}</h2>
-                <NoteChips
-                  section={overviewRows.has(note.ref) ? sectionOf(note.ref) : folderOf(note.ref)}
-                  type={note.displayMetadata?.type}
-                  status={note.displayMetadata?.status}
-                  confidence={overviewRows.get(note.ref)?.confidence}
-                  tags={note.displayMetadata?.tags ?? undefined}
-                  {...(sectionOf(note.ref) !== null && overviewRows.has(note.ref)
-                    ? { onTag: filterByTag }
-                    : {})}
-                />
-                {date && dateLabel ? (
-                  <p className="vault-reader-date">
-                    <time dateTime={date}>{dateLabel}</time>
+                  <p className="vault-ref">{note.ref}</p>
+                  {isBotMemoryRef(note.ref) ? (
+                    <p className="vault-quiet">{t("vault.reader.bot_memory_read_only")}</p>
+                  ) : null}
+                  {note.displayMetadata?.state === "unsupported" ||
+                  note.displayMetadata?.state === "truncated" ||
+                  (!note.displayMetadata && note.frontmatterError) ? (
+                    <p className="vault-quiet">
+                      Some details in this note's header could not be read.
+                    </p>
+                  ) : null}
+                  <div className="vault-reader-actions">
+                    <button
+                      type="button"
+                      className="vault-reader-bookmark"
+                      aria-label={`${t(markedRefs?.has(note.ref) ? "vault.reader.remove_bookmark" : "vault.reader.bookmark")} ${note.ref}`}
+                      aria-pressed={markedRefs?.has(note.ref) ?? false}
+                      aria-describedby={`${noteListId}-bookmark-hint`}
+                      disabled={marking || markedRefs === null}
+                      onClick={() => void toggleMark(note.ref, markedRefs?.has(note.ref) ?? false)}
+                    >
+                      {markedRefs?.has(note.ref) ? "★" : "☆"}{" "}
+                      {t(
+                        markedRefs?.has(note.ref)
+                          ? "vault.reader.remove_bookmark"
+                          : "vault.reader.bookmark",
+                      )}
+                    </button>
+                    {editingThisNote ? null : write || proposalApi ? (
+                      validWriteRef(note.ref) ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDraft({ mode: "edit", ref: note.ref, content: note.source });
+                            setSaveState("idle");
+                            setSaveMessage("");
+                            // Only Save takes a lock; a proposal has nothing to wait for.
+                            const blocked = write
+                              ? blockedWrites[note.ref.toLowerCase()]
+                              : undefined;
+                            if (blocked) {
+                              setSaveState(blocked.state);
+                              setSaveMessage(
+                                "Recovery must clear before this note can be saved again.",
+                              );
+                            }
+                          }}
+                        >
+                          Edit note
+                        </button>
+                      ) : isBotMemoryRef(note.ref) ? null : (
+                        <p>This file is not edited in the app.</p>
+                      )
+                    ) : null}
+                    {!dirty && (write?.ops || excerptReady) ? (
+                      <NoteActions
+                        workspaceId={workspaceId}
+                        noteRef={note.ref}
+                        noteSha256={note.sha256}
+                        revision={
+                          write
+                            ? {
+                                policyRevision: write.policyRevision,
+                                rootPhysicalId: write.rootPhysicalId,
+                              }
+                            : { policyRevision: 0, rootPhysicalId: "" }
+                        }
+                        api={validWriteRef(note.ref) ? write?.ops : undefined}
+                        {...(excerptReady
+                          ? {
+                              extra: [
+                                {
+                                  label: EXCERPT_COPY.open,
+                                  onSelect: () => setExcerptRef(note.ref),
+                                },
+                              ],
+                            }
+                          : {})}
+                        onPending={beginPending}
+                        onDone={noteChanged}
+                        onRefresh={refreshAfterOperation}
+                      />
+                    ) : null}
+                  </div>
+                  <p id={`${noteListId}-bookmark-hint`} className="vault-reader-hint" hidden>
+                    {t("vault.reader.bookmark_hint")}
                   </p>
-                ) : null}
-                <p className="vault-ref">{note.ref}</p>
-                {isBotMemoryRef(note.ref) ? (
-                  <p className="vault-quiet">{t("vault.reader.bot_memory_read_only")}</p>
-                ) : null}
-                {note.displayMetadata?.state === "unsupported" ||
-                note.displayMetadata?.state === "truncated" ||
-                (!note.displayMetadata && note.frontmatterError) ? (
-                  <p className="vault-quiet">
-                    Some details in this note's header could not be read.
-                  </p>
-                ) : null}
-                <div className="vault-reader-actions">
-                  <button
-                    type="button"
-                    className="vault-reader-bookmark"
-                    aria-label={`${t(markedRefs?.has(note.ref) ? "vault.reader.remove_bookmark" : "vault.reader.bookmark")} ${note.ref}`}
-                    aria-pressed={markedRefs?.has(note.ref) ?? false}
-                    aria-describedby={`${noteListId}-bookmark-hint`}
-                    disabled={marking || markedRefs === null}
-                    onClick={() => void toggleMark(note.ref, markedRefs?.has(note.ref) ?? false)}
-                  >
-                    {markedRefs?.has(note.ref) ? "★" : "☆"}{" "}
-                    {t(
-                      markedRefs?.has(note.ref)
-                        ? "vault.reader.remove_bookmark"
-                        : "vault.reader.bookmark",
-                    )}
-                  </button>
-                  {editingThisNote ? null : write || proposalApi ? (
-                    validWriteRef(note.ref) ? (
+                </header>
+                {editingThisNote ? (
+                  <section aria-label="Note editor">
+                    <label>
+                      Markdown
+                      <textarea
+                        value={draft.content}
+                        readOnly={saveState === "saving"}
+                        onChange={(event) => setDraft({ ...draft, content: event.target.value })}
+                      />
+                    </label>
+                    {write ? (
                       <button
                         type="button"
-                        onClick={() => {
-                          setDraft({ mode: "edit", ref: note.ref, content: note.source });
-                          setSaveState("idle");
-                          setSaveMessage("");
-                          // Only Save takes a lock; a proposal has nothing to wait for.
-                          const blocked = write ? blockedWrites[note.ref.toLowerCase()] : undefined;
-                          if (blocked) {
-                            setSaveState(blocked.state);
-                            setSaveMessage(
-                              "Recovery must clear before this note can be saved again.",
-                            );
-                          }
-                        }}
+                        disabled={
+                          saveState === "saving" ||
+                          saveState === "checking" ||
+                          saveState === "recovery" ||
+                          Boolean(blockedWrites[draft.ref.toLowerCase()])
+                        }
+                        onClick={() => void save()}
                       >
-                        Edit note
+                        <BusyLabel
+                          busy={saveState === "saving" || saveState === "checking"}
+                          failed={
+                            saveState === "error" ||
+                            saveState === "stale" ||
+                            saveState === "recovery"
+                          }
+                        >
+                          Save note
+                        </BusyLabel>
                       </button>
-                    ) : isBotMemoryRef(note.ref) ? null : (
-                      <p>This file is not edited in the app.</p>
-                    )
-                  ) : null}
-                  {!dirty && (write?.ops || excerptReady) ? (
-                    <NoteActions
-                      workspaceId={workspaceId}
-                      noteRef={note.ref}
-                      noteSha256={note.sha256}
-                      revision={
-                        write
-                          ? {
-                              policyRevision: write.policyRevision,
-                              rootPhysicalId: write.rootPhysicalId,
-                            }
-                          : { policyRevision: 0, rootPhysicalId: "" }
-                      }
-                      api={validWriteRef(note.ref) ? write?.ops : undefined}
-                      {...(excerptReady
-                        ? {
-                            extra: [
-                              { label: EXCERPT_COPY.open, onSelect: () => setExcerptRef(note.ref) },
-                            ],
+                    ) : proposalApi ? (
+                      <button
+                        type="button"
+                        disabled={saveState === "saving"}
+                        onClick={() => void propose()}
+                      >
+                        <BusyLabel
+                          busy={saveState === "saving" || saveState === "checking"}
+                          failed={
+                            saveState === "error" ||
+                            saveState === "stale" ||
+                            saveState === "recovery"
                           }
-                        : {})}
-                      onPending={beginPending}
-                      onDone={noteChanged}
-                      onRefresh={refreshAfterOperation}
-                    />
-                  ) : null}
-                </div>
-                <p id={`${noteListId}-bookmark-hint`} className="vault-reader-hint">
-                  {t("vault.reader.bookmark_hint")}
-                </p>
-              </header>
-              {editingThisNote ? (
-                <section aria-label="Note editor">
-                  <label>
-                    Markdown
-                    <textarea
-                      value={draft.content}
-                      readOnly={saveState === "saving"}
-                      onChange={(event) => setDraft({ ...draft, content: event.target.value })}
-                    />
-                  </label>
-                  {write ? (
+                        >
+                          {PROPOSAL_COPY.propose}
+                        </BusyLabel>
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      disabled={
-                        saveState === "saving" ||
-                        saveState === "checking" ||
-                        saveState === "recovery" ||
-                        Boolean(blockedWrites[draft.ref.toLowerCase()])
-                      }
-                      onClick={() => void save()}
+                      onClick={() => {
+                        ++saveGeneration.current;
+                        setDraft(null);
+                        setSaveState("idle");
+                        setSaveMessage("");
+                      }}
                     >
-                      <BusyLabel
-                        busy={saveState === "saving" || saveState === "checking"}
-                        failed={
-                          saveState === "error" || saveState === "stale" || saveState === "recovery"
-                        }
-                      >
-                        Save note
-                      </BusyLabel>
+                      Cancel
                     </button>
-                  ) : proposalApi ? (
-                    <button
-                      type="button"
-                      disabled={saveState === "saving"}
-                      onClick={() => void propose()}
-                    >
-                      <BusyLabel
-                        busy={saveState === "saving" || saveState === "checking"}
-                        failed={
-                          saveState === "error" || saveState === "stale" || saveState === "recovery"
-                        }
-                      >
-                        {PROPOSAL_COPY.propose}
-                      </BusyLabel>
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      ++saveGeneration.current;
-                      setDraft(null);
-                      setSaveState("idle");
-                      setSaveMessage("");
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </section>
-              ) : (
-                <section aria-label="Note content" className="vault-note-content">
-                  <NoteMarkdown
-                    text={readerText}
-                    onOpenUrl={onOpenUrl}
-                    onOpenNoteLink={onOpenNoteLink}
+                  </section>
+                ) : (
+                  <section aria-label="Note content" className="vault-note-content">
+                    <NoteMarkdown
+                      text={readerText}
+                      onOpenUrl={onOpenUrl}
+                      onOpenNoteLink={onOpenNoteLink}
+                    />
+                  </section>
+                )}
+                {onAttachExcerpt && api.excerpt && excerptRef === note.ref ? (
+                  <ExcerptDialog
+                    api={api as ExcerptApi}
+                    workspaceId={workspaceId}
+                    noteRef={note.ref}
+                    lines={lineCount(note.text)}
+                    onAttach={onAttachExcerpt}
+                    onClose={() => setExcerptRef(null)}
                   />
-                </section>
-              )}
-              {onAttachExcerpt && api.excerpt && excerptRef === note.ref ? (
-                <ExcerptDialog
-                  api={api as ExcerptApi}
-                  workspaceId={workspaceId}
-                  noteRef={note.ref}
-                  lines={lineCount(note.text)}
-                  onAttach={onAttachExcerpt}
-                  onClose={() => setExcerptRef(null)}
-                />
-              ) : null}
-            </>
-          ) : null}
-          <RelatedNotes
-            links={note?.links ?? []}
-            backlinks={backlinks}
-            backlinkPhase={backlinkState.phase}
-            backlinkStatus={<State value={backlinkState} />}
-            listing={relatedListing}
-            overview={overviewRows}
-            onOpen={(ref, kind) => {
-              requestOpen(ref, kind);
-            }}
+                ) : null}
+              </>
+            ) : null}
+            <RelatedNotes
+              links={note?.links ?? []}
+              backlinks={backlinks}
+              backlinkPhase={backlinkState.phase}
+              backlinkStatus={<State value={backlinkState} />}
+              listing={relatedListing}
+              overview={overviewRows}
+              onOpen={(ref, kind) => {
+                requestOpen(ref, kind);
+              }}
+            />
+            <section aria-label={HISTORY_COPY.heading} className="vault-history">
+              <details>
+                <summary>{HISTORY_COPY.heading}</summary>
+                {history.phase === "loading" ? <Loading>{HISTORY_COPY.loading}</Loading> : null}
+                {history.phase === "error" ? <p role="alert">{HISTORY_COPY.error}</p> : null}
+                {history.phase === "unknown" ? <p>{HISTORY_COPY.unknown}</p> : null}
+                {history.phase === "ready" && history.commits.length === 0 ? (
+                  <p>{HISTORY_COPY.empty}</p>
+                ) : null}
+                {history.commits.length > 0 ? (
+                  <ul>
+                    {history.commits.map((commit) => (
+                      <li key={commit.short} className="vault-commit">
+                        <code>{commit.short}</code> <time>{commit.date}</time> {commit.subject}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </details>
+            </section>
+          </article>
+        ) : effectiveView === "section" && section && section !== "else" ? (
+          <VaultSectionInsight
+            section={section}
+            overview={overviewData}
+            onOpen={(ref, kind) => requestOpen(ref, kind)}
+            onTag={filterByTag}
           />
-          <section aria-label={HISTORY_COPY.heading} className="vault-history">
-            <details>
-              <summary>{HISTORY_COPY.heading}</summary>
-              {history.phase === "loading" ? <Loading>{HISTORY_COPY.loading}</Loading> : null}
-              {history.phase === "error" ? <p role="alert">{HISTORY_COPY.error}</p> : null}
-              {history.phase === "unknown" ? <p>{HISTORY_COPY.unknown}</p> : null}
-              {history.phase === "ready" && history.commits.length === 0 ? (
-                <p>{HISTORY_COPY.empty}</p>
-              ) : null}
-              {history.commits.length > 0 ? (
-                <ul>
-                  {history.commits.map((commit) => (
-                    <li key={commit.short} className="vault-commit">
-                      <code>{commit.short}</code> <time>{commit.date}</time> {commit.subject}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </details>
-          </section>
-        </article>
-      ) : null}
+        ) : (effectiveView === "notes" && shownRows.length > 0) ||
+          (effectiveView === "section" && section === "else") ? (
+          <p className="vault-placeholder">Pick a note in the list to read it here.</p>
+        ) : null}
+      </div>
       {splitShown && (
         <div
           ref={bindSplitHost}
@@ -2597,8 +2665,13 @@ export function VaultBrowser({
               else setSplitWanted(next);
             }}
           />
-          <button type="button" className="btn txt vault-split-reset" onClick={resetSplit}>
-            Reset Vault panes
+          <button
+            type="button"
+            className="vault-split-reset"
+            aria-label="Reset Vault panes"
+            onClick={resetSplit}
+          >
+            Reset
           </button>
         </div>
       )}

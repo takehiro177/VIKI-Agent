@@ -202,6 +202,16 @@
   --kanban-done: var(--label-green);
 }
 
+/* Vault note states: one scoped data colour each for settled (evergreen, processed, done), growing
+   (draft, seed) and open (unread, active) notes, and one for maps, built only from the session
+   label hues; chrome stays monochrome. */
+.vault-browser {
+  --vault-settled: var(--label-green);
+  --vault-growing: var(--label-orange);
+  --vault-open: var(--label-blue);
+  --vault-map: var(--label-purple);
+}
+
 /* Decision data series reuse distinct session label hues inside their own surface. */
 .dloop-data {
   --dloop-held: var(--label-slate);

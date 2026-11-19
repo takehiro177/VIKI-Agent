@@ -1,8 +1,12 @@
 .note-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--g2);
   color: var(--t1);
   transition: transform var(--motion-fast) var(--motion-ease-out);
@@ -13,8 +17,23 @@
   padding-inline-start: 11px;
 }
 
+/* A compact card is a list row: no box of its own, a hairline between rows, and the open note
+   marked by a fill and an accent bar. */
 .note-card-compact {
-  padding: 6px 8px;
+  padding: 9px 10px 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--hair);
+  border-radius: 0;
+  background: none;
+}
+
+.note-card-compact:hover,
+.note-card-compact:has(> .note-card-title[aria-current="true"]) {
+  background: var(--fill-hi);
+}
+
+.note-card-compact:has(> .note-card-title[aria-current="true"]) {
+  box-shadow: inset 2px 0 0 var(--or);
 }
 
 .note-card-title {
@@ -34,7 +53,6 @@
 
 .note-card-ref {
   display: block;
-  margin-top: 3px;
   color: var(--t3);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -42,31 +60,34 @@
   overflow-wrap: anywhere;
 }
 
-.note-card-kicker,
+.note-card-ref[hidden] {
+  display: none;
+}
+
+.note-card-kicker {
+  margin: 0;
+  color: var(--label-slate);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
 .note-card-meta,
 .note-card-quiet {
-  margin: 5px 0 0;
+  margin: 0;
   color: var(--t2);
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
-.note-card-kicker {
-  color: var(--label-slate);
-}
-
-.note-card-time {
-  display: block;
-  margin-top: 5px;
-  color: var(--t3);
-  font-size: 12px;
-}
-
 .note-card-summary {
   display: -webkit-box;
   overflow: hidden;
-  margin: 5px 0 0;
+  margin: 0;
   color: var(--t2);
   font-size: 13px;
   line-height: 1.5;
@@ -75,26 +96,74 @@
   -webkit-line-clamp: 2;
 }
 
+/* Status, date and tags share one wrapping line under the summary. */
+.note-card-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+  margin-top: 2px;
+}
+
+.note-card-facts:empty {
+  display: none;
+}
+
+/* The status dot carries the note's state colour; the words beside it say the same. */
+.note-card-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.note-card[data-tone="settled"] {
+  --vault-tone: var(--vault-settled);
+}
+
+.note-card[data-tone="growing"] {
+  --vault-tone: var(--vault-growing);
+}
+
+.note-card[data-tone="open"] {
+  --vault-tone: var(--vault-open);
+}
+
+.note-card[data-tone] .note-card-meta::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vault-tone);
+}
+
+.note-card-time {
+  color: var(--t3);
+  font-size: 12px;
+}
+
 .note-card-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  margin: 7px 0 0;
+  gap: 4px;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .note-card-tags li {
   border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 1px 5px;
-  color: var(--t1);
+  border-radius: 999px;
+  padding: 0 7px;
+  color: var(--t2);
   font-size: 11px;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 
 .note-card-bookmark {
-  margin-top: 7px;
+  align-self: flex-start;
   padding: 2px 5px;
   border: 0;
   background: none;
@@ -117,9 +186,23 @@
   transform: translateY(-1px);
 }
 
+/* A list row highlights instead of lifting. */
+.note-card-compact:hover {
+  transform: none;
+}
+
 @media (forced-colors: active) {
   .note-card:has(:focus-visible) {
     outline: 2px solid Highlight;
+  }
+
+  .note-card-compact:has(> .note-card-title[aria-current="true"]) {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .note-card[data-tone] .note-card-meta::before {
+    background: CanvasText;
   }
 }
 

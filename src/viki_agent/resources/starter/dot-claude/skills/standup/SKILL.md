@@ -5,10 +5,10 @@ description: Kanban standup — read every card in kanban/ and append a Standup 
 
 # /standup
 
-1. Read every Kanban card in `kanban/`: its status, its newest Handoff line and its Needs decision.
+1. Read every Kanban card in `kanban/`: its status, its newest Handoff line and its Needs you.
 2. Open `60-calendar/YYYY/YYYY-MM-DD.md`, or create it from `_templates/daily.md`.
 3. Append `- HH:MM — Standup` to its `## Log`, one line per card with its ref, in three groups:
-   - **Needs you:** blocked cards with their decision, then cards in review.
+   - **Needs you:** blocked cards with their question, then cards in review.
    - **Stuck:** working cards whose newest handoff is 2 or more days old, or that have none.
    - **Done since yesterday:** done cards whose `modified:` is yesterday or today.
 

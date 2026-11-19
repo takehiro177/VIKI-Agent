@@ -912,7 +912,8 @@ pause the Bot's enabled routines.
 ## Vault and app storage
 
 In a vault whose policy is **Ordinary**, VIKI Agent can save notes itself on Windows, macOS and
-Linux. This includes the note actions and keeping a chat image in the vault.
+Linux. This includes the note actions, answering a Kanban card under **Needs you**, and keeping a
+chat image in the vault.
 
 - **Conflicts:** a save stops if the note changed elsewhere first, and your draft stays.
 - **Refused notes:** a read-only, locked or another user's note is refused.

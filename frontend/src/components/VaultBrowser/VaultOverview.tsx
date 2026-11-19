@@ -85,17 +85,21 @@ const STATUS_LEGEND: ReadonlyArray<{
   label: string;
   color: string;
 }> = [
-  { key: "evergreen", label: "evergreen", color: "var(--or)" },
-  { key: "draft", label: "draft", color: "var(--t2)" },
+  { key: "evergreen", label: "evergreen", color: "var(--vault-settled)" },
+  { key: "draft", label: "draft", color: "var(--vault-growing)" },
   { key: "other", label: "other", color: "var(--t3)" },
   { key: "none", label: "no status", color: "var(--t3)" },
   { key: "unreadable", label: "unreadable", color: "var(--t3)" },
 ];
 
-const SOURCE_LEGEND: ReadonlyArray<{ key: "processed" | "unread" | "other"; label: string }> = [
-  { key: "processed", label: "processed" },
-  { key: "unread", label: "unread" },
-  { key: "other", label: "other" },
+const SOURCE_LEGEND: ReadonlyArray<{
+  key: "processed" | "unread" | "other";
+  label: string;
+  color: string;
+}> = [
+  { key: "processed", label: "processed", color: "var(--vault-settled)" },
+  { key: "unread", label: "unread", color: "var(--vault-open)" },
+  { key: "other", label: "other", color: "var(--t3)" },
 ];
 
 function coverageLine(partial: boolean) {
@@ -333,6 +337,18 @@ function GrowthSection({ growth, partial }: { growth: Growth; partial: boolean }
         </li>
         <li className="vo-card">
           <p>{growth.sources.total} sources</p>
+          <div className="vo-meter" aria-hidden="true">
+            {nonZeroSources.map((entry) => (
+              <span
+                key={entry.key}
+                className="vo-meter-segment"
+                style={{
+                  width: `${(growth.sources[entry.key] / growth.sources.total) * 100}%`,
+                  background: entry.color,
+                }}
+              />
+            ))}
+          </div>
           <p className="vo-meta">
             {nonZeroSources
               .map((entry) => `${growth.sources[entry.key]} ${entry.label}`)

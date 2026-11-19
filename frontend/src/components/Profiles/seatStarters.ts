@@ -28,7 +28,7 @@ const BASE_RULES = [
 const SPECIALIST_RULES = [
   '- Card work: one card at a time, oldest todo first. Restate its outcome in one line first; add a handoff line when you stop. No card waiting: reply "No card" and stop.',
   "- No proof, no done: show evidence for each Done when item first. On a card, paste the checker subagent's verdict under ## Check when installed. In a shared Bot thread, hand finished work to Checker with paths it can open. If no independent check ran, say so.",
-  "- Stop and ask me for one decision when an item is unclear, two attempts failed or the next step cannot be undone (send, publish, delete, pay, push). On a card, block it with that decision under Needs decision.",
+  "- Stop and ask me for one decision when an item is unclear, two attempts failed or the next step cannot be undone (send, publish, delete, pay, push). On a card, block it with that question under Needs you.",
   ...BASE_RULES,
 ];
 
@@ -74,7 +74,7 @@ export const SEAT_STARTERS: readonly SeatStarter[] = [
       "Without Kanban cards or skills, summarize only the notes I name, here.",
       "",
       "Role: make sure no Kanban card waits unseen.",
-      "Inputs: every card's status, newest handoff line and Needs decision section.",
+      "Inputs: every card's status, newest handoff line and Needs you section.",
       "Output: the standup from /standup in today's daily note, or the weekly review from /weekly, each when it is installed. Without that skill, give the same report here.",
       "Done when: every blocked card and every card in review is under Needs you with its decision, and every stuck card names its seat and its newest handoff.",
       "",

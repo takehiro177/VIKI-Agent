@@ -1,13 +1,33 @@
 import { describe, expect, it } from "vitest";
+import type { BotRow } from "../../clients/messaging/botsApi";
 import type { DisplayMetadata } from "../../state/noteMetadata";
 import type { VaultMetadataItem } from "../../state/vaultApi";
 import {
+  KANBAN_BODY_CAP,
   type KanbanListing,
   kanbanAttention,
+  kanbanBodyRefs,
   kanbanLanes,
   kanbanListing,
+  kanbanNeedsYou,
   kanbanReadRefs,
+  wakeTarget,
 } from "./kanbanCards";
+
+function bot(id: string, profileId: string, name: string | null, workspace = "w1"): BotRow {
+  return {
+    bot_id: id,
+    profile_id: profileId,
+    workspace_id: workspace,
+    profile: name
+      ? {
+          revision: 1,
+          archived: false,
+          identity: { name, purpose: "", avatar_asset_id: null, accent: "slate", shape: "rounded" },
+        }
+      : null,
+  } as BotRow;
+}
 
 const meta = (over: Partial<DisplayMetadata> = {}): DisplayMetadata => ({
   state: "ready",
@@ -303,6 +323,24 @@ describe("kanbanLanes", () => {
       "unread",
     ]);
   });
+
+  it("adds a Cancelled lane after Done, before Other, only while it holds a card", () => {
+    const g = groups([
+      item("kanban/c.md", {}, { status: "cancelled" }),
+      item("kanban/d.md", {}, { status: "done" }),
+      item("kanban/o.md", {}, { status: "weird" }),
+    ]);
+    expect(g.map((x) => x.id)).toEqual([
+      "todo",
+      "working",
+      "blocked",
+      "review",
+      "done",
+      "cancelled",
+      "other",
+    ]);
+    expect(group(g, "cancelled")?.cards.map((c) => c.ref)).toEqual(["kanban/c.md"]);
+  });
 });
 
 describe("card age and stale", () => {
@@ -339,6 +377,7 @@ describe("card age and stale", () => {
     expect(c?.ageDays).toBe(1);
     expect(c?.stale).toBe(false);
     expect(card("done", ago(30 * 24 * H))?.stale).toBe(false);
+    expect(card("cancelled", ago(30 * 24 * H))?.stale).toBe(false);
     expect(card("Working", ago(30 * 24 * H))?.stale).toBe(false);
     expect(card("working")?.stale).toBe(false);
   });
@@ -381,5 +420,100 @@ describe("kanbanAttention", () => {
     const listing = listingOf(refs);
     const items = new Map(refs.map((r) => [r, item(r, {}, { status: "todo" })]));
     expect(kanbanAttention(listing, kanbanLanes(listing, items, NOW))).toBeNull();
+  });
+});
+
+describe("kanbanNeedsYou", () => {
+  it("combines blocked and review, oldest change first, undated last and stable", () => {
+    const entries = [
+      item("kanban/late.md", {}, { status: "blocked" }),
+      item("kanban/early.md", {}, { status: "review" }),
+      item("kanban/mid.md", {}, { status: "blocked" }),
+      item("kanban/no-time-a.md", {}, { status: "review" }),
+      item("kanban/no-time-b.md", {}, { status: "blocked" }),
+      item("kanban/t.md", {}, { status: "todo" }),
+      item("kanban/d.md", {}, { status: "done" }),
+    ];
+    const listing = listingOf(
+      entries.map((e) => e.ref),
+      {
+        modified: new Map([
+          ["kanban/late.md", local(10, 9, 9, 0)],
+          ["kanban/early.md", local(10, 1, 9, 0)],
+          ["kanban/mid.md", local(10, 5, 9, 0)],
+        ]),
+      },
+    );
+    const lanes = kanbanLanes(listing, new Map(entries.map((e) => [e.ref, e])), NOW);
+    expect(kanbanNeedsYou(lanes, listing).map((c) => c.ref)).toEqual([
+      "kanban/early.md",
+      "kanban/mid.md",
+      "kanban/late.md",
+      "kanban/no-time-b.md",
+      "kanban/no-time-a.md",
+    ]);
+  });
+});
+
+describe("kanbanBodyRefs", () => {
+  it("orders needs-you first, then working, then todo", () => {
+    const entries = [
+      item("kanban/b.md", {}, { status: "blocked" }),
+      item("kanban/r.md", {}, { status: "review" }),
+      item("kanban/w1.md", {}, { status: "working" }),
+      item("kanban/w2.md", {}, { status: "working" }),
+      item("kanban/t1.md", {}, { status: "todo" }),
+      item("kanban/t2.md", {}, { status: "todo" }),
+      item("kanban/d.md", {}, { status: "done" }),
+      item("kanban/c.md", {}, { status: "cancelled" }),
+      item("kanban/o.md", {}, { status: "weird" }),
+    ];
+    const listing = listingOf(entries.map((e) => e.ref));
+    const lanes = kanbanLanes(listing, new Map(entries.map((e) => [e.ref, e])), NOW);
+    expect(kanbanBodyRefs(lanes, listing)).toEqual([
+      "kanban/b.md",
+      "kanban/r.md",
+      "kanban/w1.md",
+      "kanban/w2.md",
+      "kanban/t1.md",
+      "kanban/t2.md",
+    ]);
+  });
+
+  it(`caps at ${KANBAN_BODY_CAP}, keeping priority order`, () => {
+    const todoRefs = Array.from({ length: 50 }, (_, i) => `kanban/t${i}.md`);
+    const entries = todoRefs.map((ref) => item(ref, {}, { status: "todo" }));
+    const listing = listingOf(todoRefs);
+    const lanes = kanbanLanes(listing, new Map(entries.map((e) => [e.ref, e])), NOW);
+    const refs = kanbanBodyRefs(lanes, listing);
+    expect(refs).toHaveLength(KANBAN_BODY_CAP);
+    expect(refs).toEqual(todoRefs.slice(0, KANBAN_BODY_CAP));
+  });
+});
+
+describe("wakeTarget", () => {
+  it("wakes the first owner whose seat has a Bot, skipping seats with none", () => {
+    const writer = bot("w", "p-writer", "Writer");
+    expect(wakeTarget(["research", "writer"], [writer], "w1")).toEqual({
+      bot: writer,
+      name: "Writer",
+    });
+  });
+
+  it("falls back to the card's first owner's seat when no owner has a Bot", () => {
+    expect(wakeTarget(["research", "writer"], [], "w1")).toEqual({ seat: "research" });
+  });
+
+  it("falls back to the first owner even when it names no known seat", () => {
+    expect(wakeTarget(["editor", "research"], [], "w1")).toEqual({ seat: "editor" });
+  });
+
+  it("ignores a Bot claiming that seat in another workspace", () => {
+    const away = bot("a", "p-research", "Research", "w2");
+    expect(wakeTarget(["research"], [away], "w1")).toEqual({ seat: "research" });
+  });
+
+  it("is null for a card with no owners", () => {
+    expect(wakeTarget([], [bot("w", "p", "Writer")], "w1")).toBeNull();
   });
 });

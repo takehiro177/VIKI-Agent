@@ -24,6 +24,37 @@ export interface NoteCardProps {
   marked?: boolean;
   onToggleMark?: (noteRef: string) => void;
   disabled?: boolean;
+  /** The note open in the reader beside this list. */
+  current?: boolean;
+  /** Set where the list already names the section, so each card says only a non-default type. */
+  hideSection?: boolean;
+}
+
+/** One data colour per settled, growing or open state; the tone names the colour token. */
+export function statusTone(
+  status: string | null | undefined,
+): "settled" | "growing" | "open" | null {
+  switch (status?.toLowerCase()) {
+    case "evergreen":
+    case "processed":
+    case "done":
+      return "settled";
+    case "draft":
+    case "seed":
+      return "growing";
+    case "unread":
+    case "active":
+      return "open";
+    default:
+      return null;
+  }
+}
+
+/** The path repeats the title when the note sits directly in its folder under its own file name. */
+function refRepeatsTitle(noteRef: string, title: string): boolean {
+  const parts = noteRef.split("/");
+  const file = (parts.at(-1) ?? "").replace(/\.(?:md|markdown)$/i, "");
+  return parts.length === 2 && file.toLowerCase() === title.toLowerCase();
 }
 
 function genericLabel(value: string): boolean {
@@ -106,6 +137,8 @@ export function NoteCard({
   marked = false,
   onToggleMark,
   disabled = false,
+  current = false,
+  hideSection = false,
 }: NoteCardProps) {
   const id = useId();
   const metadata = overview?.ref === noteRef ? overview : undefined;
@@ -115,7 +148,7 @@ export function NoteCard({
     folder && Object.hasOwn(FOLDER_SECTIONS, folder)
       ? FOLDER_SECTIONS[folder as keyof typeof FOLDER_SECTIONS]
       : undefined;
-  const section = sectionLabel(folder);
+  const section = hideSection ? null : sectionLabel(folder);
   const defaultType = entry && "defaultType" in entry ? entry.defaultType : null;
   const type = metadata?.type;
   const kicker = [section, type && type.toLowerCase() !== defaultType ? type : null]
@@ -123,39 +156,47 @@ export function NoteCard({
     .join(" · ");
   const unavailable = metadata?.state === "unsupported" || metadata?.state === "truncated";
   const tags = metadata?.tags?.slice(0, 3) ?? [];
+  const tone = statusTone(metadata?.status);
 
   return (
-    <article className={`note-card note-card-${variant}`}>
+    <article className={`note-card note-card-${variant}`} {...(tone ? { "data-tone": tone } : {})}>
+      {kicker ? <p className="note-card-kicker">{kicker}</p> : null}
       <button
         type="button"
         className="note-card-title"
         data-vault-ref={noteRef}
         data-vault-kind={kind}
         aria-describedby={`${id}-ref`}
+        aria-current={current || undefined}
         onClick={(event) => onOpen(noteRef, kind, event.currentTarget)}
       >
         {title}
       </button>
-      <small id={`${id}-ref`} className="note-card-ref">
+      {metadata?.summary ? <p className="note-card-summary">{metadata.summary}</p> : null}
+      <div className="note-card-facts">
+        {metadata?.status || metadata?.confidence ? (
+          <p className="note-card-meta">
+            {[metadata.status, metadata.confidence ? `${metadata.confidence} confidence` : null]
+              .filter((part): part is string => Boolean(part))
+              .join(" · ")}
+          </p>
+        ) : null}
+        <NoteDate listing={listing} overview={metadata} />
+        {tags.length > 0 ? (
+          <ul className="note-card-tags">
+            {tags.map((tag) => (
+              <li key={tag}>{tag}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+      <small
+        id={`${id}-ref`}
+        className="note-card-ref"
+        hidden={refRepeatsTitle(noteRef, title) || undefined}
+      >
         {noteRef}
       </small>
-      {kicker ? <p className="note-card-kicker">{kicker}</p> : null}
-      <NoteDate listing={listing} overview={metadata} />
-      {metadata?.summary ? <p className="note-card-summary">{metadata.summary}</p> : null}
-      {metadata?.status || metadata?.confidence ? (
-        <p className="note-card-meta">
-          {[metadata.status, metadata.confidence ? `${metadata.confidence} confidence` : null]
-            .filter((part): part is string => Boolean(part))
-            .join(" · ")}
-        </p>
-      ) : null}
-      {tags.length > 0 ? (
-        <ul className="note-card-tags">
-          {tags.map((tag) => (
-            <li key={tag}>{tag}</li>
-          ))}
-        </ul>
-      ) : null}
       {unavailable ? <p className="note-card-quiet">{t("vault.card.header")}</p> : null}
       {!metadata ? <p className="note-card-quiet">{t("vault.card.unread")}</p> : null}
       {onToggleMark ? (

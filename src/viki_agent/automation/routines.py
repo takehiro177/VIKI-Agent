@@ -16,6 +16,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Any, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
@@ -23,7 +24,7 @@ from viki_agent import protection
 from viki_agent.app.settings import SettingsError, SettingsService
 from viki_agent.conversations.drafts import require_private_store
 from viki_agent.llm.connections import PREFIX
-from viki_agent.messaging.bot_memory_rule import bot_system_prompt
+from viki_agent.messaging.bot_memory_rule import bot_system_prompt, kanban_skill_present
 from viki_agent.profiles.service import ProfileError, ProfileService
 from viki_agent.storage import SessionStore, StateError
 from viki_agent.workspaces import WorkspaceError, WorkspaceService
@@ -519,7 +520,8 @@ class RoutineService:
             }
             instructions, prompt = profile["document"]["instructions"], document["prompt"]
             if self._bot_bound(document["profile_id"], document["workspace_id"]):
-                system_prompt, instructions = bot_system_prompt(instructions), ""
+                kanban = self._kanban(document["workspace_id"])
+                system_prompt, instructions = bot_system_prompt(instructions, kanban=kanban), ""
             first_turn = f"{instructions}\n\n{prompt}" if instructions else prompt
         return {
             "profile": resolved,
@@ -539,6 +541,20 @@ class RoutineService:
                 ).fetchone()
                 is not None
             )
+
+    def _kanban(self, workspace_id: str) -> bool:
+        """Whether `workspace_id`'s current root has the /kanban skill now, read-only; False
+        without a workspace service, an unknown workspace, or a root that no longer resolves."""
+        if self.workspaces is None:
+            return False
+        try:
+            workspace = self.workspaces.get(workspace_id)
+        except WorkspaceError:
+            return False
+        root = self.workspaces.current_root(workspace)
+        if root is None:
+            return False
+        return kanban_skill_present(Path(root.display))
 
     def warnings(self, document: dict[str, Any]) -> list[str]:
         """What would stop a run without blocking enable: a profile session starts only in the

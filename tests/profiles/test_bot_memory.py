@@ -144,6 +144,19 @@ def test_bot_bound_system_prompt_without_instructions_is_the_rules_alone(rig: An
     assert service.bot_system_prompt(sid) == bot_system_prompt("")
 
 
+def test_bot_system_prompt_gains_the_kanban_rule_once_the_vault_has_the_skill(rig: Any) -> None:
+    service, _state, vault, pid, wid = rig
+    owner, sid = bot(service, pid, wid), ident()
+    service.prepare(pid, ident(), sid, 1, wid, owner)
+    assert service.bot_system_prompt(sid) == bot_system_prompt(document()["instructions"])
+    skill = vault / ".claude" / "skills" / "kanban" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("content", encoding="utf-8")
+    assert service.bot_system_prompt(sid) == bot_system_prompt(
+        document()["instructions"], kanban=True
+    )
+
+
 def test_a_profile_session_without_a_bot_keeps_its_instructions_in_the_draft(rig: Any) -> None:
     service, state, vault, pid, wid = rig
     sid = ident()

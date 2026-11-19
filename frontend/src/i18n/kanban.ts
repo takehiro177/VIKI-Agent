@@ -1,14 +1,14 @@
-/** `kanban.*`: the Kanban page's strings (KanbanView and App's Kanban fallback); its missing-skill line is Bots' `READINESS_TEXT.missing`. */
+/** `kanban.*`: the Kanban page's strings (KanbanView, KanbanNeedsYou and App's Kanban fallback); its missing-skill line is Bots' `READINESS_TEXT.missing`. */
 
 import { defineCatalog } from "./defineCatalog";
 
 export const catalog = defineCatalog({
   en: {
     "kanban.empty":
-      "No cards yet. A card is a note directly in this vault's kanban/ folder with type: card, status: todo, working, blocked, review or done, and an owner/<seat> tag.",
+      "No cards yet. A card is a note directly in this vault's kanban/ folder with type: card, status: todo, working, blocked, review, done or cancelled, and an owner/<seat> tag.",
     "kanban.title": "Kanban",
     "kanban.intro":
-      "Cards from this vault's kanban/ folder, by status. Kanban only reads them: Bots move cards with /kanban. Select a card to open its note.",
+      "Cards from this vault's kanban/ folder, by status. Answer what needs you on top; Bots move cards with /kanban. Select a card to open its note.",
     "kanban.refresh": "Refresh Kanban",
     "kanban.loading": "Loading Kanban…",
     "kanban.error": "Kanban could not be read. Refresh Kanban to try again.",
@@ -18,12 +18,12 @@ export const catalog = defineCatalog({
     "kanban.coverage.omitted": "at least {count} omitted",
     "kanban.empty.ask": "Ask the Chief to make the first card.",
     "kanban.open_chief": "Open Chief",
-    "kanban.attention": "Waiting for you: {review} ready for review, {blocked} blocked",
     "kanban.lane.todo": "To do",
     "kanban.lane.working": "Working",
     "kanban.lane.blocked": "Blocked",
     "kanban.lane.review": "Ready for review",
     "kanban.lane.done": "Done",
+    "kanban.lane.cancelled": "Cancelled",
     "kanban.lane.other": "Other",
     "kanban.lane.unread": "Couldn't read",
     "kanban.lane.heading": "{lane} ({count})",
@@ -36,6 +36,10 @@ export const catalog = defineCatalog({
     "kanban.card.updated_yesterday": "Updated yesterday",
     "kanban.card.updated_days": "Updated {days} days ago",
     "kanban.card.stale": "Stopped moving",
+    "kanban.card.needs_you": "Needs you",
+    "kanban.card.done_of": "{done} of {total} done",
+    "kanban.card.checker_pass": "Checker passed",
+    "kanban.card.checker_fail": "Checker failed",
     "kanban.unread.unsupported": "The front matter uses a form Kanban cannot read.",
     "kanban.unread.truncated": "The front matter is longer than Kanban reads.",
     "kanban.unread.changed": "The note changed while it was read.",
@@ -45,5 +49,43 @@ export const catalog = defineCatalog({
     "kanban.unread.name": "Not read: Kanban cannot read this name.",
     "kanban.unread.cap": "Not read: Kanban reads at most {cap} cards.",
     "kanban.no_vault": "Open a vault to view Kanban.",
+    "kanban.needs.title": "Needs you",
+    "kanban.needs.title_count": "Needs you · {count}",
+    "kanban.needs.summary": "{blocked} blocked and {review} to review, oldest first",
+    "kanban.needs.no_write":
+      "This vault doesn't take saves from VIKI Agent, so answer in the card's note.",
+    "kanban.needs.unread": "Kanban couldn't read this card's text. Open the card to answer.",
+    "kanban.needs.open": "Open card",
+    "kanban.needs.recommended": "Recommended.",
+    "kanban.needs.reply_open": "Reply in your own words…",
+    "kanban.needs.reply_label": "Your answer",
+    "kanban.needs.reply_send": "Send answer",
+    "kanban.needs.cancel": "Cancel",
+    "kanban.needs.reply_hint": "Your answer goes on the card word for word, and {bot} picks it up.",
+    "kanban.needs.reply_hint_plain": "Your answer goes on the card word for word.",
+    "kanban.needs.review_question": "Accept it and close the card?",
+    "kanban.needs.approve": "Approve",
+    "kanban.needs.send_back_open": "Send back…",
+    "kanban.needs.send_back_label": "What to change",
+    "kanban.needs.send_back": "Send back",
+    "kanban.needs.review_hint":
+      "Approve moves it to Done. Send back returns it to {bot} with your note.",
+    "kanban.needs.review_hint_plain":
+      "Approve moves it to Done. Send back returns it to To do with your note.",
+    "kanban.notice.saved": "Saved your answer on {title}.",
+    "kanban.notice.undo": "Undo",
+    "kanban.notice.changed":
+      "{title} changed since Kanban read it, so nothing was saved. Refresh Kanban and try again.",
+    "kanban.notice.failed":
+      "Kanban couldn't save {title}, so nothing changed. Open the card to answer there.",
+    "kanban.notice.undone": "Undone: {title} is back as it was.",
+    "kanban.notice.undo_refused": "Undo did nothing: {title} changed again or couldn't be saved.",
+    "kanban.notice.woke": "Sent your answer to {bot}.",
+    "kanban.notice.busy": "{bot} is busy; the answer waits on the card.",
+    "kanban.notice.no_bot": "No Bot works owner/{seat}; the answer waits on the card.",
+    "kanban.notice.no_owner": "This card names no owner; the answer waits on the card.",
+    "kanban.notice.wake_failed": "Couldn't reach {bot}; the answer waits on the card.",
+    "kanban.wake.message":
+      "Kanban: I answered one of your cards. Load /kanban, then continue the card whose newest Handoff line is mine.",
   },
 });

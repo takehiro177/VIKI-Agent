@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { t, tf } from "../../i18n/t";
 import type { OverviewNote, VaultOverview } from "../../state/vaultApi";
 import {
@@ -32,9 +32,10 @@ export interface VaultSectionPageProps {
   listingReady?: boolean;
   /** The listing's own loading or failure line, shown only while `listingReady` is false. */
   listingStatus?: ReactNode;
+  /** The note open in the reader beside the list, marked as the current row. */
+  selected?: string | null;
   onOpen: (ref: string, kind: NoteCardKind, origin: HTMLElement) => void;
   onBrowse: (folder: string) => void;
-  onTag: (tag: string) => void;
 }
 
 const PAGE_SIZE = 32;
@@ -107,40 +108,182 @@ function changedDate(modified: number | null): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
 }
 
-function GrowthSlice({
-  section,
-  notes,
-  partial,
-}: {
-  section: "knowledge" | "sources" | "maps";
-  notes: readonly OverviewNote[];
-  partial: boolean;
-}) {
-  const growth = growthOf(notes, todayNumber(new Date()));
+function folderOfSection(section: "knowledge" | "sources" | "maps"): string {
   return (
-    <section className="vsp-growth" aria-labelledby="vsp-growth-heading">
-      <h2 id="vsp-growth-heading">Growth</h2>
-      <p>
-        {section === "knowledge"
-          ? `${growth.knowledge.total} knowledge notes`
-          : section === "sources"
-            ? `${growth.sources.total} sources`
-            : `${growth.maps.total} maps`}
-      </p>
-      {section === "knowledge" ? (
-        <p className="vsp-meta">
-          {`Status: ${growth.knowledge.status.evergreen} evergreen · ${growth.knowledge.status.draft} draft · ${growth.knowledge.status.other} other · ${growth.knowledge.status.none} not set · ${growth.knowledge.status.unreadable} unreadable`}
-        </p>
+    Object.keys(FOLDER_SECTIONS).find(
+      (candidate) => FOLDER_SECTIONS[candidate as keyof typeof FOLDER_SECTIONS].key === section,
+    ) ?? ""
+  );
+}
+
+function sectionNotes(
+  overview: VaultOverview | null,
+  section: "knowledge" | "sources" | "maps",
+): OverviewNote[] {
+  const name = section === "knowledge" ? "Knowledge" : section === "sources" ? "Source" : "Map";
+  return (overview?.notes ?? []).filter((note) => sectionOf(note.ref) === name);
+}
+
+interface Part {
+  key: string;
+  label: string;
+  count: number;
+  tone: "settled" | "growing" | "open" | "none";
+}
+
+/** One stacked bar and its legend: the share of each state in the section, by colour. */
+function StateBar({ parts, label }: { parts: readonly Part[]; label: string }) {
+  const shown = parts.filter((part) => part.count > 0);
+  const total = shown.reduce((sum, part) => sum + part.count, 0);
+  if (total === 0) return null;
+  return (
+    <figure className="vsp-bar-figure">
+      <div className="vsp-bar" role="img" aria-label={label}>
+        {shown.map((part) => (
+          <span
+            key={part.key}
+            className="vsp-bar-part"
+            data-tone={part.tone}
+            style={{ flexGrow: part.count }}
+          />
+        ))}
+      </div>
+      <figcaption>
+        <ul className="vsp-legend">
+          {shown.map((part) => (
+            <li key={part.key} data-tone={part.tone}>
+              <strong>{part.count}</strong> {part.label}
+            </li>
+          ))}
+        </ul>
+      </figcaption>
+    </figure>
+  );
+}
+
+export interface VaultSectionInsightProps {
+  section: "knowledge" | "sources" | "maps";
+  overview: VaultOverview | null;
+  onOpen: (ref: string, kind: NoteCardKind, origin: HTMLElement) => void;
+  onTag: (tag: string) => void;
+}
+
+/**
+ * The reader side of a section while no note is open: how the section is made up and which topics
+ * it covers, read from the overview, so the list beside it starts with its notes.
+ */
+export function VaultSectionInsight({
+  section,
+  overview,
+  onOpen,
+  onTag,
+}: VaultSectionInsightProps) {
+  const headingId = useId();
+  const config = COVERED_SECTIONS[section];
+  const notes = sectionNotes(overview, section);
+  const growth = growthOf(notes, todayNumber(new Date()));
+  const topicRows = (overview?.notes ?? []).filter((note) => sectionOf(note.ref) !== null);
+  const tags = overview ? topTags(topicRows) : [];
+  const coverage = overview
+    ? `${t("vault.coverage.source")}${overview.partial ? ` · ${t("vault.coverage.partial")}` : ""}`
+    : t("vault.card.unread");
+  const total =
+    section === "knowledge"
+      ? `${growth.knowledge.total} knowledge notes`
+      : section === "sources"
+        ? `${growth.sources.total} sources`
+        : `${growth.maps.total} maps`;
+  const maps = notes
+    .filter((note) => (note.links ?? 0) > 0)
+    .sort((a, b) => (b.links ?? 0) - (a.links ?? 0) || compareText(a.ref, b.ref))
+    .slice(0, 8);
+  const mostLinks = Math.max(1, ...maps.map((note) => note.links ?? 0));
+
+  return (
+    <section className="vsp-insight" aria-labelledby={headingId}>
+      <p className="vsp-kicker">{t(config.label)}</p>
+      <h2 id={headingId} className="vsp-total">
+        {overview ? total : t(config.label)}
+      </h2>
+      <p className="vsp-meta">{t(config.description)}</p>
+      {overview && section === "knowledge" ? (
+        <StateBar
+          label={`Knowledge notes by status: ${growth.knowledge.status.evergreen} evergreen, ${growth.knowledge.status.draft} draft`}
+          parts={[
+            {
+              key: "evergreen",
+              label: "evergreen",
+              count: growth.knowledge.status.evergreen,
+              tone: "settled",
+            },
+            { key: "draft", label: "draft", count: growth.knowledge.status.draft, tone: "growing" },
+            { key: "other", label: "other", count: growth.knowledge.status.other, tone: "none" },
+            { key: "none", label: "not set", count: growth.knowledge.status.none, tone: "none" },
+            {
+              key: "unreadable",
+              label: "unreadable",
+              count: growth.knowledge.status.unreadable,
+              tone: "none",
+            },
+          ]}
+        />
       ) : null}
-      {section === "sources" ? (
-        <p className="vsp-meta">
-          {`Status: ${growth.sources.processed} processed · ${growth.sources.unread} unread · ${growth.sources.other} other`}
-        </p>
+      {overview && section === "sources" ? (
+        <StateBar
+          label={`Sources by status: ${growth.sources.processed} processed, ${growth.sources.unread} unread`}
+          parts={[
+            {
+              key: "processed",
+              label: "processed",
+              count: growth.sources.processed,
+              tone: "settled",
+            },
+            { key: "unread", label: "unread", count: growth.sources.unread, tone: "open" },
+            { key: "other", label: "other", count: growth.sources.other, tone: "none" },
+          ]}
+        />
       ) : null}
-      <p className="vsp-meta">
-        {t("vault.coverage.source")}
-        {partial ? ` · ${t("vault.coverage.partial")}` : ""}
-      </p>
+      {section === "maps" && maps.length > 0 ? (
+        <ul className="vsp-maps" aria-label="Maps by linked notes">
+          {maps.map((note) => (
+            <li key={note.ref}>
+              <button
+                type="button"
+                className="vsp-map"
+                data-vault-ref={note.ref}
+                data-vault-kind="map"
+                onClick={(event) => onOpen(note.ref, "map", event.currentTarget)}
+              >
+                <span className="vsp-map-name">{note.title ?? note.ref}</span>
+                <span className="vsp-map-count">{`${note.links} linked`}</span>
+                <span
+                  className="vsp-map-bar"
+                  aria-hidden="true"
+                  style={{ inlineSize: `${((note.links ?? 0) / mostLinks) * 100}%` }}
+                />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="vsp-meta vsp-coverage">{coverage}</p>
+      <section className="vsp-topics" aria-labelledby={`${headingId}-topics`}>
+        <h3 id={`${headingId}-topics`}>{t("vault.block.topics")}</h3>
+        {tags.length > 0 ? (
+          <ul className="vsp-tags">
+            {tags.map((tag) => (
+              <li key={tag.tag}>
+                <button type="button" className="vsp-tag" onClick={() => onTag(tag.tag)}>
+                  #{tag.tag} ({tag.count})
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : overview ? (
+          <p className="vsp-meta">No topics read.</p>
+        ) : null}
+      </section>
+      <p className="vsp-hint">Pick a note in the list to read it here.</p>
     </section>
   );
 }
@@ -152,9 +295,9 @@ export function VaultSectionPage({
   listingPartial,
   listingReady = true,
   listingStatus,
+  selected = null,
   onOpen,
   onBrowse,
-  onTag,
 }: VaultSectionPageProps) {
   const [sort, setSort] = useState<"recent" | "name">("recent");
   const [page, setPage] = useState({ section, sort, count: PAGE_SIZE });
@@ -170,10 +313,12 @@ export function VaultSectionPage({
     const groups = otherFolders(listingNotes, listingPartial);
     const latest = latestByFolder(listing);
     return (
-      <main className="vsp">
-        <header className="vsp-header">
-          <h1>{t("vault.nav.else")}</h1>
-          <p>{t("vault.intro.else")}</p>
+      <div className="vsp">
+        <header className="vsp-head">
+          <div className="vsp-title">
+            <h2>{t("vault.nav.else")}</h2>
+            <p className="vsp-meta">{t("vault.intro.else")}</p>
+          </div>
         </header>
         {!listingReady ? (
           listingStatus
@@ -186,9 +331,12 @@ export function VaultSectionPage({
               const latestRow = latest.get(group.folder);
               return (
                 <section className="vsp-group" key={group.folder}>
-                  <h2>{group.folder}</h2>
-                  <code className="vsp-ref">{group.folder}/</code>
-                  <p className="vsp-meta">{countLabel(group.count, group.partial)}</p>
+                  <h3>{group.folder}</h3>
+                  <p className="vsp-meta">
+                    <code className="vsp-ref">{group.folder}/</code>
+                    {" · "}
+                    <span>{countLabel(group.count, group.partial)}</span>
+                  </p>
                   {newest ? (
                     <p className="vsp-meta">{tf("vault.time.changed", { date: newest })}</p>
                   ) : null}
@@ -199,6 +347,8 @@ export function VaultSectionPage({
                       listing={{ title: latestRow.title, modified: latestRow.modified ?? 0 }}
                       variant="compact"
                       kind="row"
+                      current={selected === latestRow.ref}
+                      hideSection
                       onOpen={onOpen}
                     />
                   ) : null}
@@ -223,116 +373,82 @@ export function VaultSectionPage({
             {t("vault.action.show_more")}
           </button>
         ) : null}
-      </main>
+      </div>
     );
   }
 
   const config = COVERED_SECTIONS[section];
-  const folder = Object.keys(FOLDER_SECTIONS).find(
-    (candidate) => FOLDER_SECTIONS[candidate as keyof typeof FOLDER_SECTIONS].key === section,
-  );
-  const folderPrefix = `${folder ?? ""}/`;
+  const folderPrefix = `${folderOfSection(section)}/`;
   const rows = listing.filter((row) => row.ref.startsWith(folderPrefix));
   const sorted = [...rows].sort(
     sort === "recent" ? compareRecent : (a, b) => compareText(a.ref, b.ref),
   );
-  const sectionRows = (overview?.notes ?? []).filter(
-    (note) =>
-      sectionOf(note.ref) ===
-      (section === "knowledge" ? "Knowledge" : section === "sources" ? "Source" : "Map"),
-  );
-  const topicRows = (overview?.notes ?? []).filter((note) => sectionOf(note.ref) !== null);
-  const tags = overview ? topTags(topicRows) : [];
+  const details = new Map((overview?.notes ?? []).map((note) => [note.ref, note]));
 
   return (
-    <main className="vsp">
-      <header className="vsp-header">
-        <h1>{t(config.label)}</h1>
-        <p>{t(config.description)}</p>
-        <code className="vsp-ref">{folderPrefix}</code>
-        {listingReady ? (
-          <p className="vsp-count">{countLabel(rows.length, listingPartial)}</p>
-        ) : null}
-      </header>
-      {overview ? (
-        <GrowthSlice section={config.growth} notes={sectionRows} partial={overview.partial} />
-      ) : (
-        <p className="vsp-meta">{t("vault.card.unread")}</p>
-      )}
-      <section className="vsp-topics" aria-labelledby="vsp-topics-heading">
-        <h2 id="vsp-topics-heading">{t("vault.block.topics")}</h2>
-        <p className="vsp-meta">
-          {overview
-            ? `${t("vault.coverage.source")}${overview.partial ? ` · ${t("vault.coverage.partial")}` : ""}`
-            : t("vault.card.unread")}
-        </p>
-        {tags.length > 0 ? (
-          <ul className="vsp-tags">
-            {tags.map((tag) => (
-              <li key={tag.tag}>
-                <button type="button" className="vsp-tag" onClick={() => onTag(tag.tag)}>
-                  #{tag.tag} ({tag.count})
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : overview ? (
-          <p className="vsp-meta">No topics read.</p>
-        ) : null}
-      </section>
-      <section className="vsp-notes" aria-labelledby="vsp-notes-heading">
-        <div className="vsp-list-head">
-          <h2 id="vsp-notes-heading">{t(config.label)}</h2>
-          <label>
-            {t("vault.sort.label")}
-            <select
-              value={sort}
-              onChange={(event) => {
-                const next = event.currentTarget.value === "name" ? "name" : "recent";
-                setSort(next);
-                setPage({ section, sort: next, count: PAGE_SIZE });
-              }}
-            >
-              <option value="recent">{t("vault.sort.recent")}</option>
-              <option value="name">{t("vault.sort.name")}</option>
-            </select>
-          </label>
-        </div>
-        {!listingReady ? (
-          listingStatus
-        ) : rows.length === 0 ? (
-          <p className="vsp-empty">
-            {listingPartial ? t("vault.empty.partial") : t("vault.empty.section")} ({folderPrefix})
+    <div className="vsp">
+      <header className="vsp-head">
+        <div className="vsp-title">
+          <h2>{t(config.label)}</h2>
+          <p className="vsp-meta">
+            {listingReady ? (
+              <span className="vsp-count">{countLabel(rows.length, listingPartial)}</span>
+            ) : null}
+            {listingReady ? " · " : null}
+            <code className="vsp-ref">{folderPrefix}</code>
           </p>
-        ) : (
-          <ul className="vsp-note-list" aria-label={`Notes in ${folder}`}>
-            {sorted.slice(0, shown).map((row) => {
-              const metadata = overview?.notes.find((note) => note.ref === row.ref);
-              return (
-                <li key={row.ref}>
-                  <NoteCard
-                    {...(metadata ? { overview: metadata } : {})}
-                    noteRef={row.ref}
-                    listing={{ title: row.title, modified: row.modified ?? 0 }}
-                    variant="compact"
-                    kind="row"
-                    onOpen={onOpen}
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {sorted.length > shown ? (
-          <button
-            type="button"
-            className="vsp-action"
-            onClick={() => setPage({ section, sort, count: shown + PAGE_SIZE })}
+        </div>
+        <label className="vsp-sort">
+          {t("vault.sort.label")}
+          <select
+            value={sort}
+            onChange={(event) => {
+              const next = event.currentTarget.value === "name" ? "name" : "recent";
+              setSort(next);
+              setPage({ section, sort: next, count: PAGE_SIZE });
+            }}
           >
-            {t("vault.action.show_more")}
-          </button>
-        ) : null}
-      </section>
-    </main>
+            <option value="recent">{t("vault.sort.recent")}</option>
+            <option value="name">{t("vault.sort.name")}</option>
+          </select>
+        </label>
+      </header>
+      {!listingReady ? (
+        listingStatus
+      ) : rows.length === 0 ? (
+        <p className="vsp-empty">
+          {listingPartial ? t("vault.empty.partial") : t("vault.empty.section")} ({folderPrefix})
+        </p>
+      ) : (
+        <ul className="vsp-note-list" aria-label={`Notes in ${folderPrefix.slice(0, -1)}`}>
+          {sorted.slice(0, shown).map((row) => {
+            const metadata = details.get(row.ref);
+            return (
+              <li key={row.ref}>
+                <NoteCard
+                  {...(metadata ? { overview: metadata } : {})}
+                  noteRef={row.ref}
+                  listing={{ title: row.title, modified: row.modified ?? 0 }}
+                  variant="compact"
+                  kind="row"
+                  current={selected === row.ref}
+                  hideSection
+                  onOpen={onOpen}
+                />
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {sorted.length > shown ? (
+        <button
+          type="button"
+          className="vsp-action"
+          onClick={() => setPage({ section, sort, count: shown + PAGE_SIZE })}
+        >
+          {t("vault.action.show_more")}
+        </button>
+      ) : null}
+    </div>
   );
 }

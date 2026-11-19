@@ -586,6 +586,15 @@ If interrupted starter setup cannot resume because its files or setup details ch
 
 ### The Vault view
 
+Tabs under the search box switch between the **Front page**, **Knowledge**, **Sources**, **Maps**,
+**Everything else** and **All notes**; the number beside a tab counts the listed files in that
+folder, or in the whole list for **All notes**. In a window 800 pixels wide or more, the list sits
+on the left and the open note on the right, and each side scrolls on its own. Until a note is open,
+the right side of **Knowledge**, **Sources** and **Maps** shows the section at a glance: its notes
+by status, its most linked maps, and its topics. Drag the divider to resize the two sides; **Reset**
+on the divider restores the default split. In a narrower window the note replaces the list, and
+**Back to notes** returns to it.
+
 When a vault has notes in `30-knowledge/`, `40-sources/` or `50-maps/`, the **Front page** brings
 together **Featured**, **Latest**, **Topics**, **This week**, **Rediscover** and **Bookmarks**.
 **Latest** groups recently added or updated notes by day. **Rediscover** lists Knowledge files whose
@@ -602,8 +611,9 @@ saved exact paths and can point to notes outside those folders. **Inbox** shows 
 The section navigation includes **Knowledge**, **Sources** and **Maps**. **Everything else** appears
 when the list has another folder to show. A partial list may omit folders. **All notes**
 browses readable notes, and **Search note contents** searches their text. Each row shows its exact
-relative path, including duplicate-title and search results. A title does not change the file name
-or link target.
+relative path, including duplicate-title and search results. A card on the **Front page** or a
+section page leaves out a path that only repeats its title (a note directly in its folder under its
+own file name); the reader always shows the path. A title does not change the file name or link target.
 
 Dates, statuses and summaries come from the opening text of notes in the three covered folders. A
 card can show its file-change date when no note date is available. A listing-only row says its title

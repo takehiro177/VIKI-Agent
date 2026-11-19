@@ -1,36 +1,57 @@
+/* The Vault page: a header with search, a tab row, then two panes side by side (what to read on
+   the left, the open note on the right). From 800px the page fills the view's height and each
+   pane scrolls on its own, so the note never lands below the list. */
 .vault-browser {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
   color: var(--t1);
 }
 
 .vault-browser > * {
-  grid-column: 1 / -1;
   min-width: 0;
 }
 
-.vault-controls {
+.vault-head {
   display: flex;
-  align-items: flex-end;
   flex-wrap: wrap;
-  gap: 12px 20px;
-  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
   margin: 0;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--g1);
+}
+
+.vault-head-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 14px;
+  min-width: 0;
+}
+
+.vault-head-title > .page-title,
+.vault-head-title > .page-intro {
+  margin: 0;
 }
 
 .vault-search {
-  display: grid;
-  flex: 1 1 240px;
-  gap: 6px;
-  min-width: 0;
-  font-size: 13px;
-  color: var(--t2);
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 360px;
+  min-width: min(100%, 220px);
+}
+
+.vault-search > .ico {
+  position: absolute;
+  left: 10px;
+  color: var(--t3);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  pointer-events: none;
 }
 
 .vault-search input,
@@ -39,10 +60,83 @@
   max-width: 100%;
   padding: 7px 9px;
   border: 1px solid var(--b-alt);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--s0);
   color: var(--t0);
   font: inherit;
+}
+
+.vault-search input {
+  width: 100%;
+  padding-inline-start: 32px;
+  border-radius: 8px;
+}
+
+.vault-search input:focus-visible {
+  outline: 2px solid var(--or);
+  outline-offset: 1px;
+}
+
+/* The tab row: the views on the left, New note on the right, one hairline under both. */
+.vault-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.vault-views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.vault-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: -1px;
+  padding: 8px 12px 9px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--t2);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.vault-tab:hover {
+  color: var(--t0);
+}
+
+.vault-views > button[aria-pressed="true"] {
+  border-bottom-color: var(--or);
+  color: var(--t0);
+  font-weight: 600;
+}
+
+.vault-tab-count {
+  min-width: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--fill-pill);
+  color: var(--t2);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 17px;
+  text-align: center;
+}
+
+.vault-new-note {
+  margin-bottom: 6px;
 }
 
 .vault-filters,
@@ -61,13 +155,6 @@
 .vault-filters legend {
   color: var(--t2);
   font-size: 12px;
-}
-
-.vault-controls > .vault-filters {
-  flex: 2 1 400px;
-  min-width: 0;
-  padding: 0;
-  border: 0;
 }
 
 .vault-filters label {
@@ -89,36 +176,42 @@
 }
 
 .vault-pages p {
-  flex: 1 1 200px;
+  flex: 1 1 120px;
   margin: 0;
   color: var(--t2);
 }
 
-.vault-list,
-.vault-inspector {
-  overflow: auto;
-  max-height: 70vh;
+/* Both panes stack below 800px; the open note then replaces the list. */
+.vault-panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.vault-panes > * {
+  min-width: 0;
+}
+
+.vault-browse {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* The named container VaultOverview.css lays its sections out by. */
 .vault-list {
-  grid-column: 1;
   container: vault-browse / inline-size;
 }
 
-.vault-views {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
+/* .vault-updating floats over the overview instead of sitting in flow, so the remembered
+   overview underneath never shifts up a line when a quiet refresh's held indicator unmounts. */
+.vault-overview-host {
+  position: relative;
 }
 
-.vault-views > button[aria-pressed="true"] {
-  border-color: var(--or);
-  background: var(--fill-hi);
+.vault-placeholder {
+  display: none;
 }
 
 .vault-row {
@@ -202,24 +295,65 @@
   overflow-wrap: anywhere;
 }
 
+/* The reader's kicker: section, type, status and confidence as small pills, tags as links. */
 .vault-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
-  margin: 8px 0 0;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
   padding: 0;
   list-style: none;
   color: var(--t2);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .vault-chips > li {
   overflow-wrap: anywhere;
 }
 
+.vault-chips > li:not(:has(> .vault-reader-tag)) {
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--fill-pill);
+}
+
 .vault-reader-kicker {
-  color: var(--or);
+  color: var(--label-slate);
   font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vault-chip-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vault-chip-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vault-tone);
+}
+
+.vault-chip-status[data-tone="settled"] {
+  --vault-tone: var(--vault-settled);
+}
+
+.vault-chip-status[data-tone="growing"] {
+  --vault-tone: var(--vault-growing);
+}
+
+.vault-chip-status[data-tone="open"] {
+  --vault-tone: var(--vault-open);
+}
+
+.vault-chip-status[data-tone="none"] {
+  --vault-tone: var(--t3);
 }
 
 .vault-reader-tag {
@@ -227,7 +361,7 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--or);
+  color: var(--t1);
   font: inherit;
   cursor: pointer;
   overflow-wrap: anywhere;
@@ -235,12 +369,13 @@
 }
 
 .vault-reader-tag:hover {
+  color: var(--t0);
   text-decoration: underline;
 }
 
 .vault-reader-date,
 .vault-reader-hint {
-  margin: 8px 0 0;
+  margin: 0;
   color: var(--t3);
   font-size: 12px;
   line-height: 1.5;
@@ -252,7 +387,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .vault-reader-actions > button {
@@ -295,35 +430,52 @@
   outline-offset: 3px;
 }
 
+/* The reader: one surface, the note's head, its text in a readable measure, then its context. */
 .vault-inspector {
+  position: relative;
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--s0);
-  padding: 16px;
+  padding: 18px 24px 24px;
+}
+
+.vault-back {
+  margin-bottom: 8px;
+}
+
+.vault-reader-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 68ch;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
 }
 
 .vault-reader-head > h2 {
-  margin: 12px 0 4px;
+  min-width: 0;
+  margin: 2px 0 0;
   color: var(--t0);
-  font-size: 20px;
-  line-height: 1.35;
+  font-size: 24px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.vault-reader-head > .vault-ref {
+  margin-top: 0;
 }
 
 .vault-note-content {
   min-width: 0;
-  margin: 16px 0;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--g1);
+  margin: 18px 0 8px;
 }
 
 .vault-note-content > .md {
   max-width: 68ch;
   margin: 0;
   font-size: 16px;
-  line-height: 1.5;
+  line-height: 1.65;
   overflow-wrap: anywhere;
 }
 
@@ -355,13 +507,59 @@
   overflow: auto;
 }
 
+/* Links and backlinks under the text: two columns once the reader is wide enough. */
 .vault-related {
   min-width: 0;
+  max-width: 68ch;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  container: vault-related / inline-size;
+}
+
+.vault-related > h3 {
+  margin: 0 0 8px;
+  color: var(--t2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vault-related h4 {
+  margin: 0 0 4px;
+  color: var(--t1);
+  font-size: 13px;
+}
+
+.vault-related p {
+  margin: 0;
+  color: var(--t3);
+  font-size: 13px;
+}
+
+.vault-related > section + section {
+  margin-top: 12px;
+}
+
+@container vault-related (min-width: 560px) {
+  .vault-related {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 20px;
+  }
+
+  .vault-related > h3 {
+    grid-column: 1 / -1;
+  }
+
+  .vault-related > section + section {
+    margin-top: 0;
+  }
 }
 
 .vault-related ul {
   display: grid;
-  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -373,10 +571,27 @@
   overflow-wrap: anywhere;
 }
 
+.vault-related-missing {
+  padding: 8px 12px;
+  color: var(--t3);
+  font-size: 13px;
+}
+
 .vault-reader-tag:focus-visible,
 .vault-reader-bookmark:focus-visible {
   outline: 2px solid var(--or);
   outline-offset: 2px;
+}
+
+.vault-history {
+  max-width: 68ch;
+  margin-top: 14px;
+  color: var(--t2);
+  font-size: 13px;
+}
+
+.vault-history summary {
+  cursor: pointer;
 }
 
 .vault-history ul {
@@ -393,34 +608,79 @@
 
 @media (min-width: 800px) {
   .vault-browser {
-    grid-template-columns: var(--vault-list-width, minmax(240px, 1fr)) minmax(0, 2fr);
+    height: 100%;
   }
 
-  .vault-inspector {
+  /* The panes take what the header leaves and keep at least 420px; a taller header (an open
+     editor, a notice) scrolls the view instead of squeezing them. */
+  .vault-panes {
+    flex: 1 1 0;
+    min-height: 420px;
+    grid-template-columns: var(--vault-list-width, minmax(240px, 1fr)) minmax(0, 2fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .vault-list,
+  .vault-browse,
+  .vault-inspector,
+  .vsp-insight,
+  .vault-placeholder {
+    overflow: auto;
+    min-height: 0;
+  }
+
+  .vault-inspector,
+  .vsp-insight,
+  .vault-placeholder {
     grid-column: 2;
   }
 
-  /* With no note open, the browse column (list or overview) has the whole width to itself. */
-  .vault-browser:not([data-open]) > .vault-list {
+  /* With no note open, the Front page has the whole width to itself. */
+  .vault-browser:not([data-open]) .vault-list.vault-overview-host {
     grid-column: 1 / -1;
-    max-height: none;
-    overflow: visible;
+  }
+
+  /* Nothing on the reader side (a search or filter that matches nothing): the list takes the
+     whole width rather than leaving an empty column. */
+  .vault-panes > :only-child {
+    grid-column: 1 / -1;
+  }
+
+  .vsp-insight {
+    max-width: none;
+    padding: 22px 26px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--s0);
+  }
+
+  .vault-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 24px;
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    color: var(--t3);
+    font-size: 13px;
   }
 }
 
 @media not all and (min-width: 800px) {
+  .vsp-insight {
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .vault-browser[data-open] .vault-browse,
   .vault-browser[data-open] .vault-list {
     display: none;
   }
 
-  .vault-inspector {
-    grid-column: 1;
+  .vault-browser[data-open] .vsp-insight {
+    display: none;
   }
-}
-
-.vault-reader-head > h2 {
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .vault-resize-controls {
@@ -434,26 +694,38 @@
 .vault-resize-controls > .resize-handle {
   left: 0;
 }
+/* Reset sits on the divider itself and shows while the divider is hovered or focused, so it
+   never covers the reader's text. */
 .vault-split-reset {
   position: absolute;
-  bottom: 8px;
-  left: 8px;
+  bottom: 10px;
+  left: 0;
   z-index: 2;
+  padding: 2px 10px;
+  border: 1px solid var(--b-pop);
+  border-radius: 999px;
+  background: var(--fill-popover);
+  color: var(--t1);
+  font: inherit;
+  font-size: 12px;
   white-space: nowrap;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity var(--motion-fast) var(--motion-ease-out);
 }
-.vault-browser[data-split] > .vault-inspector {
-  padding-bottom: 50px;
+.vault-resize-controls:hover > .vault-split-reset,
+.vault-resize-controls:focus-within > .vault-split-reset {
+  opacity: 1;
+}
+.vault-split-reset:focus-visible {
+  outline: 2px solid var(--or);
+  outline-offset: 2px;
 }
 
 .vault-quiet {
   color: var(--t3);
   font-size: 12px;
-}
-
-/* .vault-updating floats over the overview instead of sitting in flow, so the remembered
-   overview underneath never shifts up a line when a quiet refresh's held indicator unmounts. */
-.vault-overview-host {
-  position: relative;
 }
 
 .vault-updating {
@@ -493,5 +765,9 @@
   .vault-reader-tag:focus-visible,
   .vault-reader-bookmark:focus-visible {
     outline-color: Highlight;
+  }
+
+  .vault-chip-status::before {
+    background: CanvasText;
   }
 }

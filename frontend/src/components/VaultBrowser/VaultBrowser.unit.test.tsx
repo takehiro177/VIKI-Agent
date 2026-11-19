@@ -2853,7 +2853,8 @@ describe("VaultBrowser note operations", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "One" })));
     const notes = screen.getByRole("navigation", { name: "Notes" });
     const inspector = screen.getByRole("article", { name: "Selected note" });
-    expect(notes.nextElementSibling).toBe(inspector);
+    // The reader sits beside the list's pane (filters, list, pager).
+    expect(notes.closest(".vault-browse")?.nextElementSibling).toBe(inspector);
     for (const name of ["Recovery", "Memory"]) {
       const support = screen.getByRole("region", { name, hidden: true });
       expect(inspector.compareDocumentPosition(support) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
@@ -6003,11 +6004,13 @@ it("Vault split keeps literal long duplicate refs selectable and current CSS bou
     const css = readCss(import.meta.url, "VaultBrowser.css");
     expect(css).toMatch(/var\(--vault-list-width, minmax\(240px, 1fr\)\) minmax\(0, 2fr\)/);
     expect(css).toMatch(/\.vault-resize-controls\s*\{[^}]*position:\s*absolute/);
+    // Reset sits on the divider and shows only while the divider is hovered or focused.
+    expect(css).toMatch(/\.vault-split-reset\s*\{[^}]*opacity:\s*0;/);
     expect(css).toMatch(
-      /\.vault-browser\[data-split\] > \.vault-inspector\s*\{[^}]*padding-bottom:\s*50px/,
+      /\.vault-resize-controls:focus-within > \.vault-split-reset\s*\{[^}]*opacity:\s*1/,
     );
     expect(css).toMatch(
-      /\.vault-list,\s*\.vault-inspector\s*\{[^}]*overflow:\s*auto;[^}]*max-height:\s*70vh/,
+      /\.vault-list,\s*\.vault-browse,\s*\.vault-inspector,[^{]*\{[^}]*overflow:\s*auto;[^}]*min-height:\s*0/,
     );
     expect(css).toMatch(/\.vault-browser\[data-open\] \.vault-list\s*\{[^}]*display:\s*none/);
     expect(css).toMatch(/\.vault-ref\s*\{[^}]*overflow-wrap:\s*anywhere/);
@@ -6573,15 +6576,81 @@ describe("VaultBrowser overview", () => {
     }
   });
 
+  it("counts listed files on the section and All notes tabs, with + for a partial listing", async () => {
+    const badge = (name: string) =>
+      within(screen.getByRole("group", { name: "Vault view" }))
+        .getByRole("button", { name })
+        .querySelector(".vault-tab-count")?.textContent ?? null;
+    const first = render(<VaultBrowser workspaceId={W1} api={read()} onOpenUrl={vi.fn()} />);
+    await debounce();
+    expect(badge("Knowledge")).toBe("1");
+    expect(badge("Sources")).toBe("1");
+    expect(badge("Maps")).toBe("0");
+    expect(badge("All notes")).toBe("4");
+    expect(badge("Front page")).toBeNull();
+    first.unmount();
+
+    const partial = read({
+      entries: vi.fn(async () => ({
+        entries: [
+          { ref: KNOWLEDGE, title: "deny-rules.md" },
+          { ref: "30-knowledge/second.md", title: "second.md" },
+        ],
+        partial: true,
+        partial_reasons: ["entry_limit"],
+        omitted: 0,
+      })),
+    });
+    render(<VaultBrowser workspaceId={W1} api={partial} onOpenUrl={vi.fn()} />);
+    await debounce();
+    expect(badge("Knowledge")).toBe("2+");
+    expect(badge("Sources")).toBe("0+");
+    expect(badge("All notes")).toBe("2+");
+  });
+
+  it("gives the list the whole width when the reader side has nothing to show", async () => {
+    const api = read({
+      entries: vi.fn(async (_id: string, query?: string) =>
+        query
+          ? complete({ hits: [] })
+          : scan([
+              { ref: KNOWLEDGE, title: "deny-rules.md" },
+              { ref: SOURCE, title: "paper.md" },
+            ]),
+      ),
+    });
+    const { container } = render(<VaultBrowser workspaceId={W1} api={api} onOpenUrl={vi.fn()} />);
+    await debounce();
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Vault view" })).getByRole("button", {
+        name: "All notes",
+      }),
+    );
+    const panes = () => [...(container.querySelector(".vault-panes")?.children ?? [])];
+    expect(panes().map((pane) => pane.className)).toEqual(["vault-browse", "vault-placeholder"]);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search note contents" }), {
+      target: { value: "nothing matches" },
+    });
+    await debounce();
+    expect(screen.getByText("No notes found.")).toBeTruthy();
+    expect(panes().map((pane) => pane.className)).toEqual(["vault-browse"]);
+    const css = readCss(import.meta.url, "VaultBrowser.css");
+    expect(
+      ruleIn(narrowBlock(css, "@media (min-width: 800px)"), ".vault-panes > :only-child"),
+    ).toMatch(/grid-column:\s*1\s*\/\s*-1;/);
+  });
+
   it("pins the browse column's container and its full width while no note is open", () => {
     const css = readCss(import.meta.url, "VaultBrowser.css");
     expect(ruleIn(css, ".vault-list")).toMatch(/container:\s*vault-browse\s*\/\s*inline-size/);
-    expect(
-      ruleIn(
-        narrowBlock(css, "@media (min-width: 800px)"),
-        ".vault-browser:not([data-open]) > .vault-list",
-      ),
-    ).toMatch(/grid-column:\s*1\s*\/\s*-1;\s*max-height:\s*none;\s*overflow:\s*visible/);
+    const wide = narrowBlock(css, "@media (min-width: 800px)");
+    expect(ruleIn(wide, ".vault-browser:not([data-open]) .vault-list.vault-overview-host")).toMatch(
+      /grid-column:\s*1\s*\/\s*-1;/,
+    );
+    // Each pane scrolls on its own inside a page that fills the view's height.
+    expect(ruleIn(wide, ".vault-browser")).toMatch(/height:\s*100%/);
+    expect(ruleIn(wide, ".vault-panes")).toMatch(/grid-template-rows:\s*minmax\(0, 1fr\)/);
     expect(css).toMatch(/\.vault-row-summary\s*\{[^}]*-webkit-line-clamp:\s*2/);
     expect(ruleIn(css, ".vault-views")).toMatch(/display:\s*flex/);
   });
@@ -7246,10 +7315,11 @@ describe("VaultBrowser overview", () => {
       expect(recent()).toBeTruthy();
       openKnowledge();
 
-      expect(within(sectionPage()).getByRole("heading", { level: 1 }).textContent).toBe(
+      expect(within(sectionPage()).getByRole("heading", { level: 2 }).textContent).toBe(
         "Knowledge",
       );
-      expect(within(sectionPage()).getByText("1 knowledge notes")).toBeTruthy();
+      // The overview's count sits in the reader pane beside the list, not in the list.
+      expect(screen.getByRole("heading", { name: "1 knowledge notes" })).toBeTruthy();
       expect(within(sectionPage()).getByRole("alert").textContent).toBe(
         "The vault is busy. Wait a moment and try again.",
       );
