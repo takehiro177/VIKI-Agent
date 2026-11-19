@@ -218,6 +218,21 @@ export function wakeTarget(
 
 export type KanbanNotice =
   | { kind: "saved"; title: string; undo: boolean }
-  | { kind: "changed" | "failed" | "undone" | "undo_refused" | "no_owner"; title: string }
-  | { kind: "woke" | "busy" | "wake_failed"; title: string; bot: BotRow }
+  | {
+      kind:
+        | "changed"
+        | "failed"
+        | "undone"
+        | "undo_refused"
+        | "no_owner"
+        | "message_refused"
+        | "message_changed"
+        | "message_unread";
+      title: string;
+    }
+  | {
+      kind: "woke" | "busy" | "wake_failed" | "message_busy" | "message_failed";
+      title: string;
+      bot: BotRow;
+    }
   | { kind: "no_bot"; title: string; seat: string };

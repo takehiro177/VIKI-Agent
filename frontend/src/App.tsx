@@ -6132,10 +6132,11 @@ export function App({
   }
 
   /** Kanban's wake (SN §E): one `turn.send` into the seat Bot's own chat, as if the owner typed
-   * it — called once, after `useCardAnswer`'s undo window, never for Approve. Never selects or
-   * shows that chat. Never steers a running reply: idle is checked before and after
-   * `prepareTarget`, and the server also refuses a send mid-turn (SessionActor.send's
-   * turn_running). */
+   * it. In a vault Kanban saves to, this is the fixed wake, sent once `useCardAnswer`'s undo
+   * window runs out and never for Approve; in any other vault, it is the answer message the
+   * owner read in full and chose **Send message** for, Approve included. Never selects or shows
+   * that chat. Never steers a running reply: idle is checked before and after `prepareTarget`,
+   * and the server also refuses a send mid-turn (SessionActor.send's turn_running). */
   async function wakeBot(bot: BotRow, text: string): Promise<WakeResult> {
     if (viki.store.getSnapshot().status !== "open" || bot.chat.archived || !botsApi)
       return "failed";

@@ -939,20 +939,37 @@ stops before reaching it, the item says Kanban couldn't read the card and points
 instead. A Blocked card shows a tile per lettered option — its label, **Recommended.** for the one
 recommended, and its effect — or **Reply in your own words…** when it has none; a section whose
 options don't all read as `- A. <label>: <what happens>` shows its question as free text with the
-reply box open instead. A Ready for review card offers **Approve** or **Send back…** instead. Both
-need a vault that takes saves from VIKI Agent, and the section shows its own line when the vault
-doesn't.
+reply box open instead. A Ready for review card offers **Approve** or **Send back…** instead.
 
-Choosing an option, or **Send answer** after a typed reply, **Approve**, or **Send back** after a
-note, saves the card at once, with the same checks as a note save: when the card changed since
-Kanban read it, the click saves nothing and Kanban says so. A save changes only the front matter's
-`status` and `modified` lines, the **Needs you** section's text and the top of **Handoff**; every
-other byte stays. It then offers **Undo** for 10 seconds; undoing writes the previous text back and
-wakes nobody. Once the 10 seconds pass, or you leave Kanban or switch workspace first, Kanban tries
-to send the card's seat Bot one message asking it to load `/kanban`, then continue the card whose
-newest Handoff line is yours — except after **Approve**, which wakes no one. A busy Bot, a seat
-with no Bot yet, a Bot Kanban can't reach right now, or a card naming no owner each leave the
-answer on the card and say so, instead of sending.
+In a vault that takes saves from VIKI Agent, choosing an option, or **Send answer** after a typed
+reply, **Approve**, or **Send back** after a note, saves the card at once, with the same checks as a
+note save: when the card changed since Kanban read it, the click saves nothing and Kanban says so. A
+save changes only the front matter's `status` and `modified` lines, the **Needs you** section's text
+and the top of **Handoff**; every other byte stays. It then offers **Undo** for 10 seconds; undoing
+writes the previous text back and wakes nobody. Once the 10 seconds pass, or you leave Kanban or
+switch workspace first, Kanban tries to send the card's seat Bot one message asking it to load
+`/kanban`, then continue the card whose newest Handoff line is yours — except after **Approve**,
+which wakes no one. A busy Bot, a seat with no Bot yet, a Bot Kanban can't reach right now, or a
+card naming no owner each leave the answer on the card and say so, instead of sending.
+
+In a vault VIKI Agent doesn't save to, such as a protected or read-only vault or one opened rather
+than created, the section says so in its own line, and the same choices send the card's Bot one
+message instead; VIKI Agent saves nothing to the vault. A card whose owner has no Bot in this vault
+offers no actions: answer in its note. Each choice first shows the exact message under the card.
+Below one line of instructions, it names the card by its location and gives your answer as the line
+`**Owner, YYYY-MM-DD:** …`, each on a line of its own as a JSON string, and asks the Bot to load
+`/kanban`, write that line under the card's question word for word and set the status: `done` after
+**Approve**, else `todo` and continue the card. **Send message** sends that text into the Bot's own
+chat as your message; **Cancel**, leaving Kanban or switching workspace sends nothing. **Send
+message** turns on a moment after the message appears, so the click that opened the message can't
+send it, and a double click never does. Just before it sends, Kanban reads the card again: if the
+card changed since Kanban showed the message, or can't be read, nothing is sent and Kanban reads the
+cards again. A message whose card now belongs to another Bot closes, and the card's actions come
+back. A busy Bot, or one Kanban can't reach, gets nothing, and the message stays open to send again.
+After a send, the card says so and offers no actions until its text changes or you leave Kanban.
+Kanban doesn't build the message when the card's name or the chosen option is over 200 characters,
+or when the message would hold a character it can't show, such as a bidi control or a zero-width
+space.
 
 While Proactive VIKI and **Kanban** are on, VIKI's launcher lists the cards that need you and
 reports cards that stopped moving; see the [Decision guide's Items](decision-engine.md#items).
