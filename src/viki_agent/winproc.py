@@ -75,7 +75,8 @@ _STRIP_EXACT = frozenset(
         "ENABLE_IDE_INTEGRATION",
     }
 )
-# Provider markers and optional bridge configuration do not belong in child environments.
+# Provider markers, optional bridge configuration and an inherited VIKI Agent CLI key do not
+# belong in child environments; a chat's own key joins its process's environment later.
 _STRIP_PREFIXES = (
     "CLAUDE_CODE_",
     "CLAUDE_AGENT_SDK_",
@@ -83,6 +84,7 @@ _STRIP_PREFIXES = (
     "VIKI_MATTERMOST_",
     "VIKI_SLACK_",
     "VIKI_DISCORD_",
+    "VIKI_AGENT_",
 )
 
 
@@ -92,7 +94,7 @@ def _is_leaked(name: str) -> bool:
 
 
 def scrub_env(env: Mapping[str, str]) -> dict[str, str]:
-    """Return a copy without inherited provider markers or bridge configuration."""
+    """Return a copy without inherited provider markers, bridge configuration or CLI keys."""
     return {k: v for k, v in env.items() if not _is_leaked(k)}
 
 

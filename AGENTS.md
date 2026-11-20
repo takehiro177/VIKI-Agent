@@ -255,7 +255,17 @@ route or control only once it is implemented and tested. The read and wire contr
    (ADR-085).
    Explicit model connections add no flags: the existing `--model` carries the native model ID.
    Only the gateway's process-scoped capability and loopback URL enter that Claude process's
-   environment; the upstream API key remains in the server. Sessions without an explicitly
+   environment; the upstream API key remains in the server. An ordinary chat opened through the
+   window also gets `VIKI_AGENT_URL`, `VIKI_AGENT_KEY` and `VIKI_AGENT_CLI` in its environment: a
+   per-process credential and loopback address for that chat's own `viki-agent` command, revoked
+   when the process closes; every spawn, resume included, gets a fresh key (ADR-086). A profile
+   chat, a Bot-bound session and a routine run share one durable origin and never get them,
+   reopened from the window or not. A Decision mission, the inbox suggestion run and a bridge
+   chat get none of their own while VIKI is driving them (created without the flag, with
+   read-only tools, or with a session root); the owner reopening one of their transcripts from
+   the window resumes it like any other chat opened there, key included (decision D-2).
+   `winproc` strips any inherited `VIKI_AGENT_*` variable from every spawn regardless. Sessions
+   without an explicitly
    resolved gateway route start on whatever sign-in the user's Claude Code is set up with while
    **Let Claude Code use its other sign-in methods** (`chat.other_sign_in`, read once at
    launch) is on, as it is by default: an app that runs Claude Code may not restrict its
@@ -286,7 +296,10 @@ route or control only once it is implemented and tested. The read and wire contr
    first message within 5 s; REST (the sessions, search and rails routes) uses `Bearer`. The
    separate `/api/llm/runtime/` gateway accepts only its process-scoped credential, refuses
    requests carrying an Origin, and accepts no window token; only
-   the static bundle is open. TrustedHost `127.0.0.1:8765`/`localhost:8765`;
+   the static bundle is open. The `/api/agent/` surface likewise accepts only a chat process's own
+   key, refuses any Origin and accepts no window token; a safety-list change instead waits for
+   Apply at `/api/v2/agent-changes`, which accepts only the window token. TrustedHost
+   `127.0.0.1:8765`/`localhost:8765`;
    Origin checked before `accept()`; strict CSP. Markdown renders without raw HTML; links only
    http/https/mailto, opened through `open.url`; tool output, hook text, reasons, snippets and
    titles are always text nodes. With `--window-host=<pid>` (`__main__._window_host_pid`) the

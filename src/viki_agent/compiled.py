@@ -13,6 +13,7 @@ own import contract stays stdlib-only until the engine loads.
 from __future__ import annotations
 
 import sys
+import sysconfig
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -52,3 +53,16 @@ def worker_argv(name: str, args: Sequence[str], *, python: str, script: Path) ->
     if COMPILED:
         return [str(INSTALL_DIR / APP_BINARY), WORKER_FLAG, name, *args]
     return [python, "-I", "-B", str(script), *args]
+
+
+def agent_cli() -> Path | None:
+    """The absolute path of the `viki-agent` command this install can run, or None when there is
+    no such file and the agent CLI feature is off: compiled, the standalone folder's own binary
+    (`INSTALL_DIR / APP_BINARY`); from a source checkout or an installed wheel, the venv's
+    console script (`sysconfig`'s own scripts directory / `APP_BINARY`). `COMPILED` and
+    `INSTALL_DIR` are read here as module globals, not bound as defaults, so a test can
+    monkeypatch either and see this follow, as `worker_argv` does."""
+    path = (
+        INSTALL_DIR / APP_BINARY if COMPILED else Path(sysconfig.get_path("scripts")) / APP_BINARY
+    )
+    return path if path.is_file() else None

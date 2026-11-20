@@ -62,6 +62,9 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from viki_agent import events, protection, rails, winproc
 from viki_agent.api_json import unique_object
 from viki_agent.app import folder_dialog
+from viki_agent.app.agent_api import agent_routes
+from viki_agent.app.agent_changes import AgentChanges
+from viki_agent.app.agent_grants import AgentGrants
 from viki_agent.app.data_api import LocationsService, ResetService, data_routes
 from viki_agent.app.diagnostics import ProviderChecks, Readiness
 from viki_agent.app.diagnostics_api import diagnostics_routes
@@ -712,6 +715,7 @@ def create_app(
     windows: WindowManager | None = None,
     settings: SettingsService | None = None,
     workspaces: WorkspaceService | None = None,
+    agent_cli: Path | None = None,
     bootstrap: VaultBootstrap | None = None,
     readiness: Readiness | None = None,
     checks: ProviderChecks | None = None,
@@ -738,7 +742,9 @@ def create_app(
     export, backup or restore never writes into. The Decision routes and loop come with
     `workspaces` too: the loop asks `decision_model`, by default `DecisionModel(TypeSafeHttp())`,
     and runs on `decision_clock`, by default the system clock: not `routine_clock`, which the
-    scheduler waits on."""
+    scheduler waits on. The agent surface and the window's Apply routes register together with
+    `agent_cli` and `settings` (ADR-086); every ordinary chat's spawn then carries a grant into
+    that surface (`manager.bind_agent_cli`)."""
     if config.vault is None:
         # The launcher replaces `vault` with the active workspace's working directory before it
         # gets here, and every scope, transcript folder and rails read is derived from it. No
@@ -780,6 +786,7 @@ def create_app(
     routine_workers: set[asyncio.Task[Any]] = set()
     bot_workers: set[asyncio.Task[Any]] = set()
     voice_workers: set[asyncio.Task[Any]] = set()
+    agent_workers: set[asyncio.Task[Any]] = set()
 
     def read_voice_settings() -> Mapping[str, object]:
         return settings.read().effective if settings is not None else {}
@@ -1491,7 +1498,7 @@ def create_app(
             # The worker made the complete source proof; no await separates this held-actor
             # recheck from allocation, and neither attachment starts a provider.
             return (
-                manager.open(session_id, profile=profile)
+                manager.open(session_id, profile=profile, agent_cli=True)
                 if exists
                 else manager.attach_prepared(session_id, profile=True)
             )
@@ -1527,17 +1534,17 @@ def create_app(
             if actor is not None:
                 return actor
         if exists:
-            return manager.open(session_id, profile=origin == "profile")
+            return manager.open(session_id, profile=origin == "profile", agent_cli=True)
         if origin == "profile":
             return manager.attach_prepared(session_id, profile=True)
         if labelled:
             # A resume actor that never starts here: its history answers transcript_missing,
             # and a send reaches the CLI's own "no conversation found".
-            return manager.open(session_id, profile=False)
+            return manager.open(session_id, profile=False, agent_cli=True)
         actor = (
-            manager.create(session_id)
+            manager.create(session_id, agent_cli=True)
             if expected_model is MODEL_UNSPECIFIED
-            else manager.create(session_id, expected_model=expected_model)
+            else manager.create(session_id, expected_model=expected_model, agent_cli=True)
         )
         if start_if_new:
             await actor.start()
@@ -1858,7 +1865,9 @@ def create_app(
                             return receipt(msg, "rejected", "conflict")
                         raise
                 try:
-                    fork = manager.fork(sid, msg["fork_id"], source_profile=origin == "profile")
+                    fork = manager.fork(
+                        sid, msg["fork_id"], source_profile=origin == "profile", agent_cli=True
+                    )
                 except StateError as exc:
                     failed = manager.get(msg["fork_id"])
                     if failed is not None:
@@ -2282,6 +2291,7 @@ def create_app(
                     voice_workers,
                     messaging_workers,
                     bot_workers,
+                    agent_workers,
                 ):
                     if pending:
                         await asyncio.gather(*pending, return_exceptions=True)
@@ -2486,6 +2496,30 @@ def create_app(
                 settings, authorized=authorized, origins=origins, workers=settings_workers
             )
         )
+        if agent_cli is not None:
+            assert workspaces is not None
+            grants = AgentGrants(agent_cli)
+            changes = AgentChanges(grants.live)
+            manager.bind_agent_cli(grants)
+            routes.extend(
+                agent_routes(
+                    grants,
+                    changes,
+                    settings=settings,
+                    routines=routines,
+                    runner=tasks,
+                    scheduler=scheduler,
+                    bots=bots,
+                    profiles=profiles,
+                    workspaces=workspaces,
+                    admission_lock=admission_lock,
+                    app_version=app_version,
+                    workers=agent_workers,
+                )
+            )
+            routes.extend(
+                changes.routes(authorized=authorized, origins=origins, workers=agent_workers)
+            )
     if workspaces is not None:
         reader = VaultService(workspaces)
         # Bound once, here: the active workspace is resolved once per launch and a session reads

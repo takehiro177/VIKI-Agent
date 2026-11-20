@@ -56,6 +56,7 @@ from claude_agent_sdk import (
     ToolPermissionContext,
 )
 
+from viki_agent.app.agent_grants import AgentGrant
 from viki_agent.drivers.base import (
     Answer,
     McpControlError,
@@ -196,6 +197,9 @@ class DriverConfig:
     # False when the user allows Claude Code's other sign-in methods: a native session then
     # starts on whatever account the initialize reply names.
     subscription_only: bool = True
+    # This process's VIKI Agent CLI key: its variables join the spawn environment after the
+    # route's, and _close_control or the process's exit revokes it.
+    agent_grant: AgentGrant | None = None
 
 
 def check_billing(info: Mapping[str, Any]) -> None:
@@ -533,7 +537,11 @@ class ClaudeDriver:
         self._transport = ClaudeTransport(
             argv,
             cwd=self._cwd,
-            env={**config.env, **route.environment()} if route else config.env,
+            env={
+                **config.env,
+                **(route.environment() if route else {}),
+                **(config.agent_grant.environment() if config.agent_grant else {}),
+            },
             sink=self._enqueue_frame,
             spawner=config.spawner,
             grace_s=config.grace_s,
@@ -981,6 +989,8 @@ class ClaudeDriver:
     async def _close_control(self) -> None:
         if self._config.llm_route is not None:
             self._config.llm_route.revoke()
+        if self._config.agent_grant is not None:
+            self._config.agent_grant.revoke()
         # Owner close can race overflow/exit. Share one SDK disconnect; abort is idempotent.
         if self._control_close_task is None:
             self._control_close_task = asyncio.create_task(self._control.close())
@@ -1311,6 +1321,10 @@ class ClaudeDriver:
 
     def _on_exit(self, stderr: str) -> None:
         self.alive = False
+        # The key dies with its process even when a cancelled close never reached
+        # _close_control, which _closing then keeps the pump from calling.
+        if self._config.agent_grant is not None:
+            self._config.agent_grant.revoke()
         self._steer_change.set()
         self._permission_inputs.clear()
         self._cancel_stop()  # nothing left to stop; a pending kill would outlive the process

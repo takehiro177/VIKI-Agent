@@ -1,4 +1,4 @@
-<!-- VIKI starter vault {{viki.vault_id}}, starter version 5 -->
+<!-- VIKI starter vault {{viki.vault_id}}, starter version 6 -->
 
 # VIKI vault: agent instructions
 

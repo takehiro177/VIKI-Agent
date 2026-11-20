@@ -65,6 +65,8 @@ class Launch:
     `append_system_prompt` is that Bot session's instructions, memory rule and Bot rules, resolved
     again before each spawn. It is no flag: the transport sends it in initialize (ADR-084), and it
     needs Bot memory settings. Kept out of repr: it is the user's own text.
+    `agent_cli` asks for a VIKI Agent CLI key in this process's environment, which
+    `SessionManager._claude_driver` issues; `build_argv` does not read it.
     Bot bindings, grants and filesystem admission are the caller's responsibility.
     """
 
@@ -78,6 +80,7 @@ class Launch:
     bot_memory_settings: str | None = None
     code_worktree: str | None = None
     append_system_prompt: str | None = field(default=None, repr=False)
+    agent_cli: bool = False
 
 
 def build_argv(

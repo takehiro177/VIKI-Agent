@@ -41,6 +41,7 @@ from typing import Any, Literal
 from claude_agent_sdk import CLIConnectionError, ProcessError
 
 from viki_agent import winproc
+from viki_agent.app.agent_grants import AgentGrants
 from viki_agent.app.diagnostics import Readiness
 from viki_agent.conversations.stream_state import MAX_STEERS, STEER_TEXT_CHARS, StreamState
 from viki_agent.drivers.base import (
@@ -392,8 +393,12 @@ class SessionActor:
         root_context: RootContextResolver | None = None,
         folder_resolver: FolderResolver | None = None,
         copy_uses: dict[AgentDriver, str] | None = None,
+        agent_cli: bool = False,
     ) -> None:
         self.session_id = session_id
+        # Whether every spawn, resume included, asks for a VIKI Agent CLI key (Launch.agent_cli).
+        # Kept here, not in the launch: _drop_driver rebuilds that one without it.
+        self._agent_cli = agent_cli
         # Each driver made for a Bot code copy, with that copy's worktree id, from just before it
         # goes live until its own close completes. Shared with the manager, so the record
         # outlives this actor's removal from it (SessionManager.code_copy_in_use).
@@ -815,6 +820,7 @@ class SessionActor:
                 bot_memory_settings=bot_memory,
                 code_worktree=code_copy.path if code_copy is not None else None,
                 append_system_prompt=bot_prompt,
+                agent_cli=self._agent_cli,
             )
             driver = self._make_driver(launch, prefs, lambda e: self._emit_from(token, e))
             if code_copy is not None:
@@ -1801,6 +1807,7 @@ class SessionManager:
         self._max_live: Callable[[], int] = lambda: MAX_LIVE
         self._llm_connections: Connections | None = None
         self._llm_gateway: Gateway | None = None
+        self._agent_grants: AgentGrants | None = None
         self._actors: dict[str, SessionActor] = {}
         self._closing: set[SessionActor] = set()  # forgotten, but their processes still exiting
         self._copy_uses: dict[AgentDriver, str] = {}  # every actor's (SessionActor._copy_uses)
@@ -1959,6 +1966,11 @@ class SessionManager:
         self._llm_connections, self._llm_gateway = connections, gateway
         self._state.bind_default_model_guard(connections.settings.chat_defaults_available)
 
+    def bind_agent_cli(self, grants: AgentGrants) -> None:
+        """Install the registry that gives each later spawn of a chat made with `agent_cli` its
+        own CLI key. Until it is installed, no chat gets one."""
+        self._agent_grants = grants
+
     def native_model(self) -> str | None:
         """The native model default for a session restricted to subscription inference."""
         model = self._state.defaults.model
@@ -2028,6 +2040,12 @@ class SessionManager:
                     "This model connection is unavailable. Check Providers in Settings.",
                 ) from None
         try:
+            if (
+                launch.agent_cli
+                and self._agent_grants is not None
+                and launch.bot_memory_settings is None
+            ):
+                config = replace(config, agent_grant=self._agent_grants.issue(launch.session_id))
             return ClaudeDriver(
                 launch,
                 mode=prefs.mode,
@@ -2039,21 +2057,25 @@ class SessionManager:
         except Exception:
             if config.llm_route is not None:
                 config.llm_route.revoke()
+            if config.agent_grant is not None:
+                config.agent_grant.revoke()
             raise
 
     def get(self, session_id: str) -> SessionActor | None:
         return self._actors.get(session_id)
 
-    def open(self, session_id: str, *, profile: bool | None = None) -> SessionActor:
+    def open(
+        self, session_id: str, *, profile: bool | None = None, agent_cli: bool = False
+    ) -> SessionActor:
         """The actor for an existing transcript; its process starts on the first send.
 
         `profile` is the durable origin when the caller already read it off the event loop;
-        None reads it here, on the caller's thread."""
+        None reads it here, on the caller's thread. `agent_cli` applies only to a new actor."""
         if session_id not in self._actors:
             if profile is None:
                 profile = self._state.store.session_origin(session_id) == "profile"
             self._actors[session_id] = self._actor(
-                session_id, Launch(session_id, resume=True), profile=profile
+                session_id, Launch(session_id, resume=True), profile=profile, agent_cli=agent_cli
             )
         return self._actors[session_id]
 
@@ -2064,6 +2086,7 @@ class SessionManager:
         read_only_tools: bool = False,
         root_resolver: RootResolver | None = None,
         expected_model: object = MODEL_UNSPECIFIED,
+        agent_cli: bool = False,
     ) -> SessionActor:
         """A brand-new session with an id the client generated. Only the inbox suggestion run
         passes `read_only_tools` (`Launch.read_only_tools`)."""
@@ -2072,6 +2095,7 @@ class SessionManager:
             Launch(session_id, read_only_tools=read_only_tools),
             registration_pending=True,
             root_resolver=root_resolver,
+            agent_cli=agent_cli,
         )
         if expected_model is MODEL_UNSPECIFIED:
             self._register_new(actor)
@@ -2114,7 +2138,12 @@ class SessionManager:
         return self._actors[session_id]
 
     def fork(
-        self, source_id: str, fork_id: str, *, source_profile: bool | None = None
+        self,
+        source_id: str,
+        fork_id: str,
+        *,
+        source_profile: bool | None = None,
+        agent_cli: bool = False,
     ) -> SessionActor:
         """A copy of `source_id` under `fork_id`, keeping the source's preferences.
 
@@ -2124,7 +2153,10 @@ class SessionManager:
         if source_profile:
             raise CommandDispatchRejected("profile_locked")
         actor = self._actors[fork_id] = self._actor(
-            fork_id, Launch(fork_id, fork_of=source_id), registration_pending=True
+            fork_id,
+            Launch(fork_id, fork_of=source_id),
+            registration_pending=True,
+            agent_cli=agent_cli,
         )
         self._register_new(actor)
         return actor
@@ -2257,6 +2289,7 @@ class SessionManager:
         registration_pending: bool = False,
         profile: bool = False,
         root_resolver: RootResolver | None = None,
+        agent_cli: bool = False,
     ) -> SessionActor:
         actor = SessionActor(
             session_id,
@@ -2288,6 +2321,10 @@ class SessionManager:
                 else None
             ),
             copy_uses=self._copy_uses,
+            # Like ticked folders, a CLI key is for an ordinary chat only.
+            agent_cli=(
+                agent_cli and root_resolver is None and not profile and not launch.read_only_tools
+            ),
         )
         actor._observer = self._observer
         return actor

@@ -16,6 +16,7 @@ import {
   useState,
 } from "react";
 import type { Rest } from "./api";
+import type { AgentChangesApi } from "./clients/app/agentChangesApi";
 import type { ProviderLoginApi } from "./clients/app/providerLoginApi";
 import {
   type CreateVaultResult,
@@ -229,6 +230,7 @@ import { ProvidersPage } from "./components/Settings/ProvidersPage";
 import { ReviewPanel } from "./components/Settings/ReviewPanel";
 import { SettingsView } from "./components/Settings/SettingsView";
 import { WorkspacesPage } from "./components/Settings/WorkspacesPage";
+import { AgentChanges } from "./components/Shell/AgentChanges";
 import { ChatOnlyBanner } from "./components/Shell/ChatOnlyBanner";
 import { ReadinessBanner } from "./components/Shell/ReadinessBanner";
 import { ReconnectBanner } from "./components/Shell/ReconnectBanner";
@@ -596,6 +598,9 @@ export interface AppProps {
   /** Opens Claude Code's sign-in console from a not-signed-in card; without it, or
    * off Windows, the card's own words are all. */
   providerLoginApi?: ProviderLoginApi;
+  /** Pending settings/routine changes a chat's agent CLI asked the window to make: the Apply
+   * card right after the readiness banner. Without it nothing renders there. */
+  agentChangesApi?: AgentChangesApi;
   /** The context report client: the status bar's context meter and the Context & loadout page.
    * Without it neither renders. */
   contextApi?: ContextApi;
@@ -1385,6 +1390,7 @@ export function App({
   terminalApi,
   previewsApi,
   providerLoginApi,
+  agentChangesApi,
   contextApi,
   limitsApi,
   decisionApi,
@@ -8964,6 +8970,16 @@ export function App({
             <VaultBanner others={appSnapshot.others} />
             <ChatOnlyBanner snapshot={shellSnapshot} onCommand={onCommand} />
             <ReadinessBanner snapshot={shellSnapshot} onCommand={onCommand} />
+            {agentChangesApi ? (
+              <AgentChanges
+                api={agentChangesApi}
+                titleOf={(sessionId) => {
+                  const row = restSnapshot.sessions.find((r) => r.session_id === sessionId);
+                  return row ? rowTitle(row) : "";
+                }}
+                onChanged={() => void shellStore.refreshSettings()}
+              />
+            ) : null}
           </>
         }
         messages={chatMessages}
