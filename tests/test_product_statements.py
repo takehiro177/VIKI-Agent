@@ -54,6 +54,9 @@ ALLOWED: dict[str, str] = {
         "Pinned Natural voices downloads from GitHub and Hugging Face, https only."
     ),
     "viki_agent/voice/voicebox_http.py": "The user's own Voicebox app, loopback only.",
+    "viki_agent/agent_cli.py": (
+        "The viki-agent command in a chat, to VIKI Agent's own server on 127.0.0.1 only."
+    ),
 }
 
 

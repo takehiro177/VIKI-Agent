@@ -28,6 +28,24 @@
   margin-left: auto;
 }
 
+/* AgentChanges' Apply/Reject sit in their own `.chat-only-banner-actions` row so the pair stays
+   side by side at every width (U3); this, not the rule above (written for a lone button, such as
+   ReadinessBanner's), is what pushes that row to the edge, so the buttons inside it keep their
+   own natural width and gap-based spacing instead of each fighting for the full row. Specificity
+   (two classes) beats `.readiness-banner button` (one class) outright, in and out of the narrow
+   query below, so one rule covers both widths. */
+.readiness-banner .chat-only-banner-actions button {
+  margin-left: 0;
+  width: auto;
+}
+
+/* R8: a routine_enable card's prompt, scrollable and wrapped rather than widening the banner. */
+.agent-changes-detail pre {
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .chat-only-banner [aria-disabled="true"],
 .readiness-banner [aria-disabled="true"] {
   opacity: 0.5;

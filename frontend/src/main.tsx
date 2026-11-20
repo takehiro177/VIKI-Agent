@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import "./styles/base.css";
 import { App } from "./App";
 import { createRest } from "./api";
+import { createAgentChangesApi } from "./clients/app/agentChangesApi";
 import {
   createModelConnectionsApi,
   ModelConnectionsContext,
@@ -104,6 +105,7 @@ const checksApi = createChecksApi(token);
 const terminalApi = createTerminalApi(token);
 const previewsApi = createPreviewsApi(token);
 const providerLoginApi = createProviderLoginApi(token);
+const agentChangesApi = createAgentChangesApi(token);
 const modelConnectionsApi = createModelConnectionsApi(token);
 const decisionApi = createDecisionLoopApi(token);
 const messagingApi = createMessagingApi(token);
@@ -176,6 +178,7 @@ createRoot(root).render(
                   terminalApi={terminalApi}
                   previewsApi={previewsApi}
                   providerLoginApi={providerLoginApi}
+                  agentChangesApi={agentChangesApi}
                   decisionApi={decisionApi}
                   messagingApi={messagingApi}
                   botsApi={botsApi}

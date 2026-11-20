@@ -56,6 +56,7 @@ FILES: tuple[str, ...] = (
     ".claude/skills/retro/SKILL.md",
     ".claude/skills/kanban/SKILL.md",
     ".claude/skills/standup/SKILL.md",
+    ".claude/skills/viki-agent/SKILL.md",
 )
 
 # Folders that ship empty: no FILES entry ever lives under them.

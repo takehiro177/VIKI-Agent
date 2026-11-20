@@ -20,6 +20,7 @@ export const catalog = defineCatalog({
     "common.button.refresh": "Refresh",
     "common.button.copy": "Copy",
     "common.button.apply": "Apply",
+    "common.button.reject": "Reject",
     "common.button.cancel": "Cancel",
     "common.button.close": "Close",
     "common.button.retry": "Retry",

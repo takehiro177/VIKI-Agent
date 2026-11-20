@@ -26,6 +26,8 @@ import uvicorn
 from anyio.from_thread import run_sync as run_on_loop
 
 from viki_agent import (
+    agent_cli,
+    compiled,
     config,
     osfs,
     protection,
@@ -903,6 +905,7 @@ def _serve_on(
         windows=windows,
         settings=services.settings,
         workspaces=spaces,
+        agent_cli=compiled.agent_cli(),
         bootstrap=services.bootstrap,
         readiness=readiness,
         checks=services.checks,
@@ -1355,6 +1358,12 @@ def _data_services(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Dispatched before anything else, including the VIKI_AGENT_* scrub below: a chat's own
+    # shell runs `viki-agent <command>` as this same entry point, and the CLI reads those
+    # variables from its own environment (ADR-086, AC-10).
+    args = sys.argv[1:] if argv is None else argv
+    if args and args[0] in agent_cli.COMMANDS:
+        return agent_cli.main(list(args))
     # Every give-up path below is windowless: there is no console and no parent to report to, so
     # a bare `return 2` leaves the user double-clicking an icon that does nothing at all. The
     # boxes are queued rather than shown here for the reason _give_up documents, and these run

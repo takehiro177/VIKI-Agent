@@ -34,6 +34,7 @@ How this vault is organized, and how its agents and skills keep it maintained.
 - /retro — the approval-gated self-improvement loop for memory and skills.
 - /kanban — creates and works the team's Kanban cards in `kanban/`.
 - /standup — summarizes the Kanban cards in today's daily note; changes no card.
+- /viki-agent — changes VIKI Agent's settings, routines and Bots from a chat opened in its window.
 
 ## Agents
 - librarian — files inbox items into the vault.

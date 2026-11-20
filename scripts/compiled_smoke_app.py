@@ -46,7 +46,7 @@ import compiled_smoke
 from websockets.sync.client import connect as ws_connect
 from websockets.typing import Origin
 
-from viki_agent import events, winproc
+from viki_agent import agent_cli, events, winproc
 
 REPO = Path(__file__).resolve().parents[1]
 APP_HOST = "127.0.0.1"
@@ -202,6 +202,26 @@ def stand_in_nuitka_argv(python: str, script: Path, out_dir: Path) -> list[str]:
     ]
 
 
+def cli_dispatch_result(returncode: int, stdout: str, stderr: str) -> tuple[bool, str]:
+    """Whether a `[app, "status", "--json"]` run, with every VIKI_AGENT_* variable removed,
+    matches AC-10's promise: exit `agent_cli.EXIT_NO_KEY`, exactly one stdout line, parsing to
+    a JSON object whose `error.code` is `agent_cli`'s own "no chat" refusal, `"no_agent_chat"`."""
+    if returncode != agent_cli.EXIT_NO_KEY:
+        return False, f"exit {returncode}, expected {agent_cli.EXIT_NO_KEY}: {stderr[-400:]!r}"
+    lines = stdout.splitlines()
+    if len(lines) != 1:
+        return False, f"{len(lines)} stdout line(s), expected 1: {stdout!r}"
+    try:
+        answer = json.loads(lines[0])
+    except ValueError:
+        return False, f"not JSON: {lines[0]!r}"
+    error = answer.get("error")
+    code = error.get("code") if isinstance(error, dict) else None
+    if code != "no_agent_chat":
+        return False, f"error code {code!r}, expected 'no_agent_chat': {answer}"
+    return True, ""
+
+
 # --- stand-in preparation (no test invokes Nuitka; this path is exercised live only) ------------
 
 
@@ -244,6 +264,32 @@ def _prepare_stand_ins(root: Path) -> tuple[Path, Path]:
         _posix_wrapper(bin_dir / "claude", fake_claude),
         _posix_wrapper(bin_dir / "edge", stand_in),
     )
+
+
+# --- the installed binary's own CLI dispatch (AC-10): no port, no app data ---------------------
+
+
+def _check_cli_dispatch(app: Path, data_dir: Path, home: Path) -> tuple[bool, str]:
+    """`__main__.main` dispatches a CLI command (`agent_cli.COMMANDS`) before anything else,
+    including the VIKI_AGENT_* scrub and the single-instance/port/data start-up below it, so
+    this runs apart from the steps that need the running server: it never binds a port or
+    touches app data. Runs against this run's own temp `data_dir` and `home`, a minimal PATH,
+    and every inherited VIKI_AGENT_* variable removed (`winproc.scrub_env`) -- so a regressed
+    dispatch starts, at worst, a throwaway app rather than a developer's own data, lock, port
+    8765 or browser. `status --json` must still refuse the way a plain terminal's
+    `agent_cli.main` does with no chat connection (`cli_dispatch_result` checks the reply), and
+    `data_dir` must still hold nothing afterward, which proves the dispatch ran before any
+    start-up ever reached it."""
+    env = winproc.scrub_env(os.environ)
+    env["PATH"] = system_path()
+    env["HOME"] = str(home)
+    env["USERPROFILE"] = str(home)
+    env["VIKI_DATA_DIR"] = str(data_dir)
+    done = winproc.run([str(app), "status", "--json"], cwd=app.parent, env=env)
+    ok, detail = cli_dispatch_result(done.returncode, done.stdout, done.stderr)
+    if data_dir.exists() and any(data_dir.iterdir()):
+        return False, f"the temp data folder was not empty after cli_dispatch: {data_dir}"
+    return ok, detail
 
 
 # --- the app's own HTTP/WebSocket surface --------------------------------------------------------
@@ -411,6 +457,10 @@ async def _run(app: Path, root: Path) -> tuple[list[tuple[str, bool, str]], Path
             ok, detail = False, f"{type(exc).__name__}: {exc}"
         results.append((name, ok, detail))
         return ok
+
+    # Apart from the steps below that need the running server: never binds a port or touches
+    # app data (the CLI dispatch happens before any start-up), so it runs first and unguarded.
+    await step("cli_dispatch", asyncio.to_thread(_check_cli_dispatch, app, data_dir, home))
 
     try:
         claude_cli, edge = await asyncio.to_thread(_prepare_stand_ins, root)

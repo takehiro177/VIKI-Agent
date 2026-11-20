@@ -58,7 +58,7 @@ describe("the Start with VIKI description", () => {
   it("describes the v4 starter set", () => {
     render(<StarterChoice store={makeStore()} template="viki" onChange={vi.fn()} />);
     screen.getByText(
-      "A ready second brain: folders, note templates, empty memory, Kanban, five agents and twelve skills, with a persona in AGENTS.md you can change at any time. No hooks. Your team's Bots come with it: Chief, Ops, Research, Writer, Engineer, Desk and Checker.",
+      "A ready second brain: folders, note templates, empty memory, Kanban, five agents and thirteen skills, with a persona in AGENTS.md you can change at any time. No hooks. Your team's Bots come with it: Chief, Ops, Research, Writer, Engineer, Desk and Checker.",
     ); // throws if absent
   });
 });
@@ -157,7 +157,7 @@ describe("the viki preview", () => {
     screen.getByText("_templates/: one template per note type");
     screen.getByText("system/: empty memory files, a retro folder and the log");
     screen.getByText(
-      ".claude/: the librarian, curator, connector, researcher and checker agents, twelve skills, and settings with deny rules only",
+      ".claude/: the librarian, curator, connector, researcher and checker agents, thirteen skills, and settings with deny rules only",
     );
     screen.getByText(
       ".viki/vault.json: the vault's id, the starter version and a fingerprint of each file",
