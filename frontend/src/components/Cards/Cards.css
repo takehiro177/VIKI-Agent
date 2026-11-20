@@ -181,6 +181,14 @@ html[data-motion="reduce"] .card-target {
   color: var(--or-hi);
 }
 
+/* The evidence fold: closed by default (Cards.tsx renders it only when the plan carries a
+   "## Details" heading), sitting inside the same scrolling .card-plan box. Spacing from the top
+   content above and a pointer cursor only; open/closed look is the element's own. */
+.card-plan-details > summary {
+  margin-top: 8px;
+  cursor: pointer;
+}
+
 /* --- shared action row ------------------------------------------------------------------------ */
 
 .card-actions {

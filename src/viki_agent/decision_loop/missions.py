@@ -224,7 +224,10 @@ _COLUMNS = (
 _OPEN = "state IN ('starting','running')"
 _IN_IDS = "mission_id IN (SELECT value FROM json_each(?))"
 _HOW = {
-    "prepare": "Plan only. Do not change files; present your plan for approval.",
+    "prepare": (
+        "Plan only. Do not change files; present your plan for approval, opening with what it "
+        "will do in one or two plain sentences."
+    ),
     "run": "Work in this folder under your normal permission prompts.",
 }
 _DONE = {"prepare": "a plan for this, ready for approval", "run": "the work done and summarised"}
@@ -236,7 +239,8 @@ _LOOK_GOAL = (
 )
 _LOOK_HOW = (
     "Look only: read git status, git diff and the files they name, and change nothing. Present "
-    "what you found, and what you would do about it, as a plan for approval."
+    "what you found as a plan for approval: first what you found and what you would do about "
+    'it, in plain words with at most five numbered steps, then your evidence under "## Details".'
 )
 _LOOK_DONE = "a short review of these changes, presented as a plan for approval"
 # A second look's brief is fixed text around the trigger, the chat's title and the vault notes the
@@ -245,8 +249,11 @@ _SECOND_WORK = {"long_task_look": "a long task", "correction_look": "work the ow
 _SECOND_HOW = (
     "Look only: read the notes under Evidence, and git status and git diff if this folder is a "
     "Git repository, and change nothing. If you find something worth the owner's time, present "
-    'it as a plan for approval whose first line is exactly "Kind: flaw", "Kind: better '
-    'approach" or "Kind: missing piece", then your evidence and the change you propose. If '
+    'it as a plan for approval. Its first line, before any heading, is exactly "Kind: flaw", '
+    '"Kind: better approach" or "Kind: missing piece". Below that line, write for the owner: a '
+    "heading that states the finding in plain words, one or two sentences on why it matters, "
+    "and what approving does as at most five numbered steps (what changes, what stays, about "
+    'how long). Put your evidence, file references and checks last, under "## Details". If '
     "nothing is worth the owner's time, say so in one line and stop without a plan. If the "
     "owner keeps planning, stop without another plan."
 )
@@ -268,17 +275,19 @@ _PLAN_GOAL = {
 _PLAN_HOW = {
     "stalled_project": (
         "Look only: read the note under Evidence, the project's tasks.md if it has one and its "
-        "other notes, and change nothing. Present three next actions as a plan for approval, each "
-        "one a task line you would add to the project's tasks.md. If the project looks finished "
-        "or on hold, say so in one line and stop without a plan. If the owner keeps planning, "
-        "stop without another plan."
+        "other notes, and change nothing. Present three next actions as a plan for approval: "
+        "one sentence on where the project stands, then the three actions, each one a task "
+        "line you would add to the project's tasks.md, then your reasons under "
+        '"## Details". If the project looks finished or on hold, say so in one line and stop '
+        "without a plan. If the owner keeps planning, stop without another plan."
     ),
     "overdue_tasks": (
         "Look only: read the note under Evidence and the project's other notes, and change "
-        "nothing. Present one plan for approval that ticks each of those tasks that looks done, "
-        "saying what shows it, and gives each of the others a new due date, with your reason. If "
-        "you cannot tell for any of them, say so in one line and stop without a plan. If the "
-        "owner keeps planning, stop without another plan."
+        "nothing. Present one plan for approval that opens with how many of those tasks look "
+        "done and how many need a new date, then gives one line per task: tick it if it looks "
+        "done, else a new due date. Put what shows each one, and your reasons, under "
+        '"## Details". If you cannot tell for any of them, say so in one line and stop without '
+        "a plan. If the owner keeps planning, stop without another plan."
     ),
 }
 _PLAN_DONE = {
@@ -394,7 +403,7 @@ def brief(
         f"Budget: this turn, at most {MISSION_MINUTES} minutes.\n"
         f"Done when: {done}\n"
         f"Deadline: {when}\n"
-        "Report: end with a short summary.\n"
+        "Report: lead with the result in one or two plain sentences; details after.\n"
         "Do not start other chats, change VIKI Agent settings, or edit AGENTS.md or memory files."
     )
 

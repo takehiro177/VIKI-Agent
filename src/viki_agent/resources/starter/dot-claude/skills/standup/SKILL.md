@@ -14,4 +14,4 @@ description: Kanban standup — read every card in kanban/ and append a Standup 
 
    If Kanban is empty, write "Kanban empty".
 4. Change no card: no status, no handoff, no move. Append one line to `system/log.md`.
-5. Reply with the entry, Needs you first.
+5. Reply with the entry, Needs you first: at most five lines per group, most urgent first, and past five end the group with "+N more". The daily note keeps every line.

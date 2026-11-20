@@ -246,7 +246,7 @@ async def integration(
     stack = Integration(tmp_path, monkeypatch)
     async with stack.app.router.lifespan_context(stack.app), stack.client:
         await stack.connect()
-        assert "startup" in (await take(stack.http.sent))[0].lower()
+        assert "ready" in (await take(stack.http.sent))[0].lower()
         yield stack
 
 

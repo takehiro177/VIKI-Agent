@@ -119,7 +119,7 @@ class Integration:
         response = await self.client.post(f"/api/v2/messaging/{provider}/enable", headers=WRITE)
         assert response.status_code == 200, response.text
         channel = self.channels[provider][-1]
-        assert "startup" in (await take(channel.sent))[0]
+        assert "ready" in (await take(channel.sent))[0]
         return channel
 
     async def chat(self, channel: Channel) -> tuple[SessionActor, Driver]:
@@ -462,7 +462,7 @@ async def test_saved_on_in_startup_workspace_reconnects_without_holding_startup(
             await until(lambda: stack.channels["slack"])
             assert stack.runtime.status()["slack"]["state"] == "connecting"
             bound.set()
-            assert "startup" in (await take(stack.channels["slack"][-1].sent))[0]
+            assert "ready" in (await take(stack.channels["slack"][-1].sent))[0]
             await until(lambda: stack.runtime.status()["slack"]["state"] == "connected")
             assert stack.runtime.status()["discord"] == DISABLED and not stack.channels["discord"]
             assert stack.flag("slack") == stack.rig.workspace_id and stack.flag("discord") is None

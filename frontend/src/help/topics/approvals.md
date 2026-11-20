@@ -14,7 +14,7 @@ The card shows a command on the lines it was written on. A character that hides 
 
 ## Plans and questions
 
-A plan card asks **Proceed with this plan?** Choose **Approve** to exit plan mode and continue, or **Keep planning** to keep going. A question card lists its choices as buttons. Pick one (or several, where the question allows it), change your picks as often as you like, then choose **Submit**; or use **Other** to answer in your own words.
+A plan card asks **Proceed with this plan?** Choose **Approve** to exit plan mode and continue, or **Keep planning** to keep going. When a plan's text has a **Details** heading, the card folds that heading and what follows it behind a closed disclosure you open yourself; a plan with none shows in full, as before. A question card lists its choices as buttons. Pick one (or several, where the question allows it), change your picks as often as you like, then choose **Submit**; or use **Other** to answer in your own words.
 
 ## Everything waiting in one place
 

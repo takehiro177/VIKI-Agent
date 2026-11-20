@@ -235,6 +235,22 @@ async def test_success_sends_final_text_with_pinned_identity_and_metadata_only(
         assert connection.execute("SELECT count(*) FROM decision_episodes").fetchone() == (0,)
 
 
+@pytest.mark.parametrize("outcome", ["succeeded", "failed", "blocked", "expired"])
+async def test_relay_message_puts_the_run_line_after_the_body(
+    harness: Harness, outcome: Outcome
+) -> None:
+    await harness.enable()
+    attempt = await harness.begin()
+    actor, _, observer = harness.observe(attempt)
+    assert observer is not None
+    harness.text(actor, observer, "A useful final result")
+    harness.commit(attempt, outcome)
+    await harness.runtime.attempt_finished(attempt, outcome, "")
+    [message] = harness.bridge.sent
+    assert message.endswith(f"\n\nRun: {attempt.session_id}")
+    assert "Run:" not in message.split("\n\n", 1)[0]
+
+
 async def test_success_notice_uses_same_chat_wire_style_as_conversation(
     harness: Harness, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

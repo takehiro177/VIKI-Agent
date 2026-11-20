@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 STARTER_NAME = "viki"
-STARTER_VERSION = 6
+STARTER_VERSION = 7
 
 # Write order: every file the starter vault ships, as the destination path a chat session sees.
 FILES: tuple[str, ...] = (

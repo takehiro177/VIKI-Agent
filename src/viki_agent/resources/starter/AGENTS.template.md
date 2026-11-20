@@ -1,4 +1,4 @@
-<!-- VIKI starter vault {{viki.vault_id}}, starter version 6 -->
+<!-- VIKI starter vault {{viki.vault_id}}, starter version 7 -->
 
 # VIKI vault: agent instructions
 
@@ -118,6 +118,21 @@ Writing conventions:
 - Before you read or change files in a folder outside this vault, such as a code folder added to this chat, read the instruction files at that folder's top level (`CLAUDE.md`, `AGENTS.md`) and follow them for work there. This vault's rules still apply to the vault.
 - At session end, append to `system/log.md`; if the vault is a Git repository, commit with a conventional message such as `viki(capture): …`; push only when asked.
 - Reply in the Persona's reply language. Note titles follow it, and bodies may be bilingual (keep the templates' headings as they are). Add cross-language `aliases:`; when the reply language is not English, always include an English alias so search still finds the note.
+
+## Writing for the owner
+
+Most text here has two readers: the owner, who acts on it with limited attention, and agents (seats, the checker, the next session), who read all of it. Write the owner's part first, and keep the agents' part complete after it.
+
+1. **First line:** the answer, the result or the one decision needed. No preamble ("Let me…"), no restated question.
+2. **Next step:** numbered steps, the fewest that work, with who does each and a real estimate ("about 10 minutes", not "a bit").
+3. **State:** what works now and what is left ("2 of 3 done"), restated on every turn of multi-step work.
+4. **Decisions:** one per question, on a question card when one is available, recommended option first. A second issue becomes one offer at the end, not a sidebar.
+5. **Lists:** about five visible items per group, ranked. The rest stays available on request and is never dropped from the work itself.
+6. **Evidence last:** paths, line numbers, commands, logs and checks go under a closing `## Details` heading, which VIKI Agent folds in plans, or in the note they belong to.
+7. **Errors:** what failed, where, and the fix. When the evidence shows no cause, say so; never invent one.
+8. **Close:** a long answer ends with a short summary: the result and the one next action. No closing pleasantries.
+
+Before sending, read only the first and last lines: do they tell the owner what happened and what to do next? An explicit "explain" or "walk me through" gets full length, with headings to skim. Records written for agents, such as handoffs, briefs and logs, stay complete.
 
 ## Team
 

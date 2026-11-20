@@ -18,6 +18,7 @@ import type { ApprovalView } from "../../state/approvals";
 import { Markdown } from "../Conversation/Markdown";
 import { AgentFace } from "../Face/AgentFace";
 import { DecisionNotes, DecisionText, useOverflowing } from "./DecisionText";
+import { splitPlanDetails } from "./planDetails";
 import { visibleText } from "./visibleText";
 import "./Cards.css";
 
@@ -217,6 +218,7 @@ export function PermissionCard({
   const boxRef = useRef<HTMLDivElement>(null);
   const overflowing = useOverflowing(boxRef);
   const plan = visibleText(data.plan);
+  const planParts = splitPlanDetails(plan.text);
   const hidden =
     plan.hidden ||
     [data.tool, data.summary, data.reason, data.agent].some((text) => visibleText(text).hidden);
@@ -269,7 +271,13 @@ export function PermissionCard({
       </div>
       {isPlan ? (
         <div className="card-plan" ref={boxRef}>
-          <Markdown text={plan.text} onOpenUrl={onOpenUrl} />
+          <Markdown text={planParts.top} onOpenUrl={onOpenUrl} />
+          {planParts.details !== null ? (
+            <details className="card-plan-details">
+              <summary>Details</summary>
+              <Markdown text={planParts.details} onOpenUrl={onOpenUrl} />
+            </details>
+          ) : null}
         </div>
       ) : (
         <>

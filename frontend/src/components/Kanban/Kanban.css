@@ -345,6 +345,22 @@
   font-size: 13px;
   color: var(--t2);
 }
+/* The reader's closed folds for a card's Done when / Handoff / Check (CardReader.tsx); spacing
+   from the content above and a pointer cursor only, matching Cards.css's card-plan-details.
+   Open/closed look is the element's own. */
+.kanban-reader-fold > summary {
+  margin-top: 8px;
+  cursor: pointer;
+}
+/* VaultBrowser.css sets the reader's article measure on `.vault-note-content > .md`, which a
+   fold's text no longer is (it sits inside the <details>), so an opened fold repeats it. */
+.vault-note-content > .kanban-reader-fold > .md {
+  max-width: 68ch;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
 @media not all and (min-width: 800px) {
   .kanban-lanes {
     grid-template-columns: 1fr;

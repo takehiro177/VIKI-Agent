@@ -36,6 +36,7 @@ import { otherFolders, sectionOf } from "../../state/vaultOverviewStats";
 import { clearBlockedWrite, setBlockedWrite, useBlockedWrites } from "../../state/vaultWriteLocks";
 import { MAX_MARKDOWN_BYTES, Markdown } from "../Conversation/Markdown";
 import { useModalFocus } from "../Dialog/useModalFocus";
+import { CardReader, isKanbanCard } from "../Kanban/CardReader";
 import { BusyLabel, Loading, useHeld } from "../Loading/Loading";
 import { ResizeHandle } from "../Shell/ResizeHandle";
 import { MemoryPanel } from "./MemoryPanel";
@@ -2558,11 +2559,19 @@ export function VaultBrowser({
                   </section>
                 ) : (
                   <section aria-label="Note content" className="vault-note-content">
-                    <NoteMarkdown
-                      text={readerText}
-                      onOpenUrl={onOpenUrl}
-                      onOpenNoteLink={onOpenNoteLink}
-                    />
+                    {isKanbanCard(note.ref, note.source) ? (
+                      <CardReader
+                        text={readerText}
+                        onOpenUrl={onOpenUrl}
+                        onOpenNoteLink={onOpenNoteLink}
+                      />
+                    ) : (
+                      <NoteMarkdown
+                        text={readerText}
+                        onOpenUrl={onOpenUrl}
+                        onOpenNoteLink={onOpenNoteLink}
+                      />
+                    )}
                   </section>
                 )}
                 {onAttachExcerpt && api.excerpt && excerptRef === note.ref ? (

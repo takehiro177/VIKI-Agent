@@ -450,11 +450,12 @@ def test_the_brief_fills_the_template_from_the_item() -> None:
         "VIKI started this chat (Decision).\n"
         f"Goal: {WHAT}\n"
         f"Evidence:\n- {LABEL}\n- Plan\n"
-        "How: Plan only. Do not change files; present your plan for approval.\n"
+        "How: Plan only. Do not change files; present your plan for approval, opening with what "
+        "it will do in one or two plain sentences.\n"
         "Budget: this turn, at most 30 minutes.\n"
         "Done when: a plan for this, ready for approval\n"
         f"Deadline: {DEADLINE.astimezone().strftime('%Y-%m-%d %H:%M')}\n"
-        "Report: end with a short summary.\n"
+        "Report: lead with the result in one or two plain sentences; details after.\n"
         "Do not start other chats, change VIKI Agent settings, or edit AGENTS.md or memory files."
     )
     assert brief(item(evidence=()), "run") == (
@@ -465,7 +466,7 @@ def test_the_brief_fills_the_template_from_the_item() -> None:
         "Budget: this turn, at most 30 minutes.\n"
         "Done when: the work done and summarised\n"
         "Deadline: none\n"
-        "Report: end with a short summary.\n"
+        "Report: lead with the result in one or two plain sentences; details after.\n"
         "Do not start other chats, change VIKI Agent settings, or edit AGENTS.md or memory files."
     )
 
@@ -726,11 +727,13 @@ def test_a_look_brief_carries_no_folder_name_or_path() -> None:
         "more, and find what is half-done or risky.\n"
         "Evidence: none\n"
         "How: Look only: read git status, git diff and the files they name, and change nothing. "
-        "Present what you found, and what you would do about it, as a plan for approval.\n"
+        "Present what you found as a plan for approval: first what you found and what you would "
+        "do about it, in plain words with at most five numbered steps, then your evidence under "
+        '"## Details".\n'
         "Budget: this turn, at most 30 minutes.\n"
         "Done when: a short review of these changes, presented as a plan for approval\n"
         f"Deadline: {DEADLINE.astimezone().strftime('%Y-%m-%d %H:%M')}\n"
-        "Report: end with a short summary.\n"
+        "Report: lead with the result in one or two plain sentences; details after.\n"
         "Do not start other chats, change VIKI Agent settings, or edit AGENTS.md or memory files."
     )
     for named in (FOLDER_NAME, FOLDER_PATH, FOLDER, "/", "\\"):
@@ -982,16 +985,20 @@ def test_a_second_look_brief_carries_its_title_refs_and_left_out_kinds() -> None
         "and find at most one flaw, better approach or missing piece worth the owner's time.\n"
         "Evidence:\n- notes/garden-plan.md\n- Garden/Beds.MARKDOWN\n- notes/plan 2.md\n"
         "How: Look only: read the notes under Evidence, and git status and git diff if this "
-        "folder is a Git repository, and change nothing. If you find something worth the owner's "
-        'time, present it as a plan for approval whose first line is exactly "Kind: flaw", '
-        '"Kind: better approach" or "Kind: missing piece", then your evidence and the change you '
-        "propose. If nothing is worth the owner's time, say so in one line and stop without a "
-        "plan. If the owner keeps planning, stop without another plan.\n"
+        "folder is a Git repository, and change nothing. If you find something worth the "
+        "owner's time, present it as a plan for approval. Its first line, before any heading, "
+        'is exactly "Kind: flaw", "Kind: better approach" or "Kind: missing piece". Below '
+        "that line, write for the owner: a heading that states the finding in plain words, one "
+        "or two sentences on why it matters, and what approving does as at most five numbered "
+        "steps (what changes, what stays, about how long). Put your evidence, file "
+        'references and checks last, under "## Details". If nothing is worth the '
+        "owner's time, say so in one line and stop without a plan. If the owner keeps "
+        "planning, stop without another plan.\n"
         "Budget: this turn, at most 30 minutes.\n"
         "Done when: one finding presented as a plan for approval, or one line saying there is "
         "none\n"
         f"Deadline: {DEADLINE.astimezone().strftime('%Y-%m-%d %H:%M')}\n"
-        "Report: end with a short summary.\n"
+        "Report: lead with the result in one or two plain sentences; details after.\n"
         "Do not start other chats, change VIKI Agent settings, or edit AGENTS.md or memory files."
     )
     for named in (OFFER_WHAT, "due today", "note\n", CHAT, SCOPE, TURN):
@@ -1226,15 +1233,16 @@ def test_a_project_plan_brief_names_its_note_and_nothing_else() -> None:
         "its notes has changed for two weeks or more.\n"
         "Evidence:\n- 10-projects/garden/garden.md\n"
         "How: Look only: read the note under Evidence, the project's tasks.md if it has one and "
-        "its other notes, and change nothing. Present three next actions as a plan for approval, "
-        "each one a task line you would add to the project's tasks.md. If the project looks "
-        "finished or on hold, say so in one line and stop without a plan. If the owner keeps "
-        "planning, stop without another plan.\n"
+        "its other notes, and change nothing. Present three next actions as a plan for "
+        "approval: one sentence on where the project stands, then the three actions, each one "
+        "a task line you would add to the project's tasks.md, then your reasons under "
+        '"## Details". If the project looks finished or on hold, say so in one line and stop '
+        "without a plan. If the owner keeps planning, stop without another plan.\n"
         "Budget: this turn, at most 30 minutes.\n"
         "Done when: three next actions presented as a plan for approval, or one line saying the "
         "project needs none\n"
         f"Deadline: {DEADLINE.astimezone().strftime('%Y-%m-%d %H:%M')}\n"
-        "Report: end with a short summary.\n"
+        "Report: lead with the result in one or two plain sentences; details after.\n"
         "Do not start other chats, change VIKI Agent settings, or edit AGENTS.md or memory files."
     )
     for named in (PLAN_WHAT, PROJECT, "project with no recent change", "due today", SCOPE):
@@ -1247,10 +1255,11 @@ def test_a_project_plan_brief_names_its_note_and_nothing_else() -> None:
         "Evidence:",
         f"- {TASKS_NOTE}",
         "How: Look only: read the note under Evidence and the project's other notes, and change "
-        "nothing. Present one plan for approval that ticks each of those tasks that looks done, "
-        "saying what shows it, and gives each of the others a new due date, with your reason. If "
-        "you cannot tell for any of them, say so in one line and stop without a plan. If the "
-        "owner keeps planning, stop without another plan.",
+        "nothing. Present one plan for approval that opens with how many of those tasks look "
+        "done and how many need a new date, then gives one line per task: tick it if it looks "
+        "done, else a new due date. Put what shows each one, and your reasons, under "
+        '"## Details". If you cannot tell for any of them, say so in one line and stop without '
+        "a plan. If the owner keeps planning, stop without another plan.",
         "Budget: this turn, at most 30 minutes.",
         "Done when: one plan for approval, or one line saying you cannot tell",
     ]

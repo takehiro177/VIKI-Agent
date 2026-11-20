@@ -102,6 +102,19 @@ test("the old attention line is gone, replaced by the section's own heading", ()
   expect(css).not.toMatch(/\.kanban-attention/);
 });
 
+test("a reader fold's summary has spacing above it and a pointer cursor", () => {
+  const summary = ruleIn(css, ".kanban-reader-fold > summary");
+  expect(summary).toMatch(/margin-top:\s*8px/);
+  expect(summary).toMatch(/cursor:\s*pointer/);
+});
+
+test("an opened reader fold keeps the reader's 68ch, 16px article text", () => {
+  const body = ruleIn(css, ".vault-note-content > .kanban-reader-fold > .md");
+  expect(body).toMatch(/max-width:\s*68ch;/);
+  expect(body).toMatch(/font-size:\s*16px;/);
+  expect(body).toMatch(/overflow-wrap:\s*anywhere;/);
+});
+
 test("the message preview's pre wraps and shows the whole message, with no height cap", () => {
   const pre = ruleIn(css, ".kanban-needs-preview pre");
   expect(pre).toMatch(/white-space:\s*pre-wrap/);
