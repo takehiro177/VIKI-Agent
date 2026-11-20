@@ -21,6 +21,7 @@ import type { PreviewsApi } from "../../clients/code/previewsApi";
 import type { ReviewApi } from "../../clients/code/reviewApi";
 import type { RootsApi } from "../../clients/code/rootsApi";
 import type { TerminalApi } from "../../clients/code/terminalApi";
+import { t } from "../../i18n/t";
 import { type CodeBufferBase, dirtyRefs, getBuffer, useCodeBuffers } from "../../state/codeBuffers";
 import { clampResize } from "../../state/layout";
 import { ResizeHandle } from "../Shell/ResizeHandle";
@@ -48,6 +49,7 @@ export interface WorkbenchRoots {
     worktree_id: string | null;
     additional_workspace_ids?: readonly string[];
   }): Promise<string | null>;
+  onRaiseLimit?(): void;
 }
 
 /** The Review tab: the folder's or a worktree's changes, to commit, integrate or push. */
@@ -719,9 +721,16 @@ export function Workbench({
                   </span>
                 )}
                 {startRefusal?.id === folderId && (
-                  <span role="alert" className="worktrees-refusal">
-                    {rootRefusal(startRefusal.code)}
-                  </span>
+                  <>
+                    <span role="alert" className="worktrees-refusal">
+                      {rootRefusal(startRefusal.code)}
+                    </span>
+                    {startRefusal.code === "too_many_sessions" && roots.onRaiseLimit && (
+                      <button type="button" className="btn txt sm" onClick={roots.onRaiseLimit}>
+                        {t("shell.limit.change")}
+                      </button>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -869,6 +878,7 @@ export function Workbench({
                   api={roots.api}
                   folder={folder}
                   onStartSession={roots.onStartSession}
+                  {...(roots.onRaiseLimit ? { onRaiseLimit: roots.onRaiseLimit } : {})}
                   {...(review
                     ? {
                         onReview: (worktreeId: string) => {

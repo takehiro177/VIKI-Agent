@@ -11,7 +11,7 @@ from tests.conversations.test_session import watch
 from viki_agent.drivers.base import StartError
 from viki_agent.drivers.claude.control import Launch, build_argv
 from viki_agent.drivers.claude.driver import DriverConfig
-from viki_agent.session import MAX_LIVE, SessionManager
+from viki_agent.session import SessionManager
 from viki_agent.state import AppState, Prefs
 from viki_agent.storage import StateError
 
@@ -163,7 +163,8 @@ async def test_a_state_error_from_the_resolver_is_reported(tmp_path: Path) -> No
 
 async def test_the_live_limit_holds_across_roots(tmp_path: Path) -> None:
     manager, spawner = _manager(tmp_path, [])
-    ids = [f"0000000{i}-0000-4000-8000-000000000000" for i in range(MAX_LIVE + 1)]
+    manager.bind_max_live(lambda: 3)
+    ids = [f"{i:08d}-0000-4000-8000-000000000000" for i in range(4)]
     folders = {sid: Path(f"C:/Code/r{i}") for i, sid in enumerate(ids)}
 
     async def per_session(session_id: str) -> Path | None:

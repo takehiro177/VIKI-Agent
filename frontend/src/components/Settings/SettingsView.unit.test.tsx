@@ -1,6 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import { type SettingsView as SettingsDocument, ShellApiError } from "../../clients/app/shellApi";
+import {
+  type KeySpec,
+  type SettingsView as SettingsDocument,
+  ShellApiError,
+} from "../../clients/app/shellApi";
 import { t } from "../../i18n/t";
 import { createShellStore, type ShellStore } from "../../state/shell";
 import { AppStore } from "../../state/store";
@@ -20,15 +24,40 @@ async function storeWith(
   return { store, api };
 }
 
-function show(store: ShellStore, page: Parameters<typeof SettingsView>[0]["page"] = "general") {
+function show(
+  store: ShellStore,
+  page: Parameters<typeof SettingsView>[0]["page"] = "general",
+  focus: { focusKey?: string | null; onFocusKeyUsed?: () => void } = {},
+) {
   const onPage = vi.fn();
   const onNavigate = vi.fn();
   render(
-    <SettingsView store={store} page={page} onPage={onPage} onNavigate={onNavigate}>
+    <SettingsView store={store} page={page} onPage={onPage} onNavigate={onNavigate} {...focus}>
       <p data-testid="lane-page">another lane's page</p>
     </SettingsView>,
   );
   return { onPage, onNavigate };
+}
+
+// `chat.max_live_sessions` never joins testShell's SPECS (a frozen App test depends on its
+// absence), so it is added to the fixture's document here, as the server would send it.
+const BOUNDED_SPEC: KeySpec = {
+  scope: "app",
+  applies: "now",
+  kind: "number",
+  allowed: null,
+  default: 30,
+  personal: false,
+  bounds: [1, 999],
+};
+
+function withLimitKey(document: SettingsDocument = settingsFixture()): SettingsDocument {
+  return {
+    ...document,
+    effective: { ...document.effective, "chat.max_live_sessions": 30 },
+    sources: { ...document.sources, "chat.max_live_sessions": "default" },
+    keys: { ...document.keys, "chat.max_live_sessions": BOUNDED_SPEC },
+  };
 }
 
 test("a stale window sees the current values and keeps what the user typed", async () => {
@@ -239,4 +268,20 @@ test("a supplied Back replaces the header button and uses its current navigation
   expect(onNavigate).toHaveBeenCalledTimes(1);
   expect(onNavigate).toHaveBeenCalledWith({ view: "chat" });
   expect(onPage).not.toHaveBeenCalled();
+});
+
+test("focusKey moves focus to that key's control once the document page holds it, and reports back once", async () => {
+  const { store } = await storeWith(withLimitKey());
+  const onFocusKeyUsed = vi.fn();
+  show(store, "chat", { focusKey: "chat.max_live_sessions", onFocusKeyUsed });
+
+  const input = screen.getByLabelText("Sessions running at once");
+  expect(document.activeElement).toBe(input);
+  expect(onFocusKeyUsed).toHaveBeenCalledTimes(1);
+});
+
+test("with no focusKey the heading keeps the focus it took on entry", async () => {
+  const { store } = await storeWith(withLimitKey());
+  show(store, "chat");
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1 }));
 });

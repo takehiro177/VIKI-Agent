@@ -12,6 +12,7 @@ import contextlib
 import hashlib
 import json
 import re
+import time
 import unicodedata
 import uuid
 from collections.abc import Callable, Iterator, Mapping
@@ -28,6 +29,11 @@ from viki_agent.voice.voicebox_http import DEFAULT_URL, MODEL_SIZES, loopback
 
 MAX_DOCUMENT_BYTES = 65536  # matches storage._SETTINGS_SCHEMA's `document` CHECK upper bound
 MAX_CHAT_WORKSPACES = 7  # chat.workspace_ids: ADR-050's cap on ticked workspaces per chat
+# chat.max_live_sessions is read at every admission: SettingsService.max_live_sessions() caches
+# its result for this long so that hot path skips the store. A module-level name so tests can
+# monkeypatch the clock.
+MAX_LIVE_CACHE_S = 1.0
+_monotonic = time.monotonic
 
 _MESSAGES = {
     "invalid_settings": "Check the highlighted settings.",
@@ -112,6 +118,7 @@ def _spec(
     applies: str,
     personal: bool,
     max_len: int = 0,
+    bounds: tuple[int, int] | None = None,
 ) -> SettingSpec:
     return SettingSpec(
         key=key,
@@ -122,6 +129,7 @@ def _spec(
         applies=applies,  # type: ignore[arg-type]
         personal=personal,
         max_len=max_len,
+        bounds=bounds,
     )
 
 
@@ -176,6 +184,10 @@ KEYS: Mapping[str, SettingSpec] = {
     # Claude Code is set up with, not only a Claude subscription. On by default, because an app
     # that runs Claude Code may not restrict the sign-in methods built into it.
     "chat.other_sign_in": _spec("chat.other_sign_in", "bool", None, True, "next_launch", True),
+    # Read at every admission (`SessionManager.bind_max_live`).
+    "chat.max_live_sessions": _spec(
+        "chat.max_live_sessions", "number", None, 30, "now", False, bounds=(1, 999)
+    ),
     "onboarding.completed": _spec("onboarding.completed", "bool", None, False, "now", False),
     "routines.paused": _spec("routines.paused", "bool", None, False, "now", False),
     "notifications.enabled": _spec("notifications.enabled", "bool", None, False, "now", False),
@@ -696,6 +708,13 @@ def _validate_change(key: str, value: object) -> object | None:
     if spec.kind == "number":
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise _FieldError("invalid_type")
+        if spec.bounds is not None:
+            if type(value) is not int:
+                raise _FieldError("invalid_type")
+            minimum, maximum = spec.bounds
+            if not minimum <= value <= maximum:
+                raise _FieldError("not_allowed")
+            return value
         if spec.allowed is None or not any(value == candidate for candidate in spec.allowed):
             raise _FieldError("not_allowed")
         return value
@@ -801,6 +820,13 @@ def _patch_hash(expected_revision: int, changes: Mapping[str, object | None]) ->
     return hashlib.sha256(canonical).hexdigest()
 
 
+def _max_live_default() -> int:
+    """`chat.max_live_sessions`'s registered default, narrowed from `SettingSpec.default`'s
+    `object` type."""
+    default = KEYS["chat.max_live_sessions"].default
+    return default if isinstance(default, int) else 30
+
+
 class SettingsService:
     def __init__(
         self,
@@ -812,6 +838,12 @@ class SettingsService:
         self._store = store
         self._provider_defaults = provider_defaults
         self._on_chat_defaults = on_chat_defaults
+        # chat.max_live_sessions: the last value max_live_sessions() read, or the default
+        # before its first read.
+        self._last_max_live = _max_live_default()
+        # When that read happened (_monotonic() time), or None before the first read or right
+        # after a committed patch()/reset(): max_live_sessions()'s cache.
+        self._max_live_cached_at: float | None = None
 
     @contextlib.contextmanager
     def _access(self) -> Iterator[None]:
@@ -888,6 +920,30 @@ class SettingsService:
             return ()
         stored = _override(values, "chat.workspace_ids")
         return tuple(json.loads(stored)) if isinstance(stored, str) else ()
+
+    def max_live_sessions(self) -> int:
+        """`chat.max_live_sessions`'s stored value when the document is writable, else its
+        registered default; a read-only (newer or corrupt) document also gives the default. On a
+        `SettingsError`/`StateError` from the read, the last value this method read successfully
+        (the default before any). Like `flag`, it never calls `provider_defaults`. Cached for
+        `MAX_LIVE_CACHE_S` seconds, since `session.py` calls this at every admission; a
+        committed `patch()`/`reset()` expires the cache at once, but an import, another
+        `SettingsService` instance or a restore may still read up to `MAX_LIVE_CACHE_S` seconds
+        stale."""
+        if self._max_live_cached_at is not None and (
+            _monotonic() - self._max_live_cached_at < MAX_LIVE_CACHE_S
+        ):
+            return self._last_max_live
+        try:
+            with self._access():
+                row = self._store.get_settings()
+        except SettingsError:
+            return self._last_max_live
+        values, read_only, _reason = _parse_row(row)
+        stored = None if read_only else _override(values, "chat.max_live_sessions")
+        self._last_max_live = stored if isinstance(stored, int) else _max_live_default()
+        self._max_live_cached_at = _monotonic()
+        return self._last_max_live
 
     def patch(
         self, command_id: str, expected_revision: int, changes: Mapping[str, object]
@@ -995,6 +1051,8 @@ class SettingsService:
             )
             raise SettingsConflict(stale.document.revision, current) from None
 
+        if committed:
+            self._max_live_cached_at = None
         if committed and any(key in _CHAT_FIELDS for key in validated):
             self._on_chat_defaults(self.chat_defaults())
         return self._settings_from_row(row), replayed
@@ -1031,6 +1089,7 @@ class SettingsService:
             row, _receipt = self._store.update_settings(command_id, changed)
         if committed:
             self._on_chat_defaults(self.chat_defaults())
+            self._max_live_cached_at = None
         return self._settings_from_row(row)
 
     def import_snapshot(self) -> SettingsDocument:
@@ -1099,6 +1158,7 @@ def to_view(effective: EffectiveSettings) -> dict[str, object]:
                 "allowed": list(spec.allowed) if spec.allowed is not None else None,
                 "default": spec.default,
                 "personal": spec.personal,
+                **({"bounds": list(spec.bounds)} if spec.bounds is not None else {}),
             }
             for key, spec in effective.keys.items()
         },

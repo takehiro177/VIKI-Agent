@@ -1,5 +1,6 @@
 /** Lists sessions that can be closed after a new session is refused. Closing and dismissal are separate actions; the parent removes the toast after an actual close. Transcript titles render as text. */
 import { type ReactElement, useEffect } from "react";
+import { t } from "../../i18n/t";
 import "./SessionLimitToast.css";
 
 export interface LiveSessionSummary {
@@ -15,6 +16,9 @@ export interface SessionLimitToastProps {
   maxLiveSessions?: number;
   onClose: (sessionId: string) => void;
   onDismiss: () => void;
+  /** Opens Settings › Chat with the live-session-limit field focused. Absent: no raise-limit
+   * line or button renders. Never closes a session or dismisses the toast itself. */
+  onRaiseLimit?: () => void;
 }
 
 export function SessionLimitToast({
@@ -22,6 +26,7 @@ export function SessionLimitToast({
   maxLiveSessions = 3,
   onClose,
   onDismiss,
+  onRaiseLimit,
 }: SessionLimitToastProps): ReactElement {
   // Escape belongs to the window, not the toast, so it dismisses even when focus never left
   // the composer; the IME guard matches SearchPalette's — a candidate-window Escape is the
@@ -44,6 +49,14 @@ export function SessionLimitToast({
       </button>
       <div className="toast-title jp">Up to {maxLiveSessions} sessions can run at once</div>
       <div className="toast-sub jp">Close one to start a new session.</div>
+      {onRaiseLimit ? (
+        <div className="toast-raise">
+          <span className="jp">{t("shell.limit.raise")}</span>
+          <button type="button" className="btn alt sm jp toast-raise-button" onClick={onRaiseLimit}>
+            {t("shell.limit.change")}
+          </button>
+        </div>
+      ) : null}
       <div className="toast-rows">
         {live.map((session) => (
           <div className="toast-row" key={session.sessionId}>

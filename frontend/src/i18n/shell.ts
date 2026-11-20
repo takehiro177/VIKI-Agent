@@ -2,7 +2,9 @@
  * Banners, the readiness line, the app menu's own chrome, and the shared "back to chat" header
  * pattern every non-chat view uses. Banner and menu button *labels* that are also commands
  * (workspace.create, workspace.open, workspace.select, provider.setup) reuse `cmd.<id>` from
- * `i18n/commands.ts` rather than duplicating text here.
+ * `i18n/commands.ts` rather than duplicating text here. `shell.limit.*` is the session-limit
+ * wording shared by the toast (SessionLimitToast), the error card and the full-limit send
+ * refusal.
  */
 
 import { defineCatalog } from "./defineCatalog";
@@ -71,5 +73,11 @@ export const catalog = defineCatalog({
     "shell.chat_folders.starts_here": "· starts here",
     "shell.chat_folders.manage": "Manage workspaces in Settings",
     "shell.chat_folders.code_copy": "Code copy of {folder} · {branch}",
+
+    "shell.limit.raise": "Or raise the limit in Settings.",
+    "shell.limit.change": "Change limit",
+    "shell.limit.error_title": "Session limit reached",
+    "shell.limit.full":
+      "The most sessions allowed at once are running. Close one, or raise the limit in Settings › Chat.",
   },
 });

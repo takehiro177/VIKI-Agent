@@ -240,3 +240,107 @@ test("options replace the allowed list and a stored outsider is listed disabled"
   expect(outsider.value).toBe("light");
   expect([...outsider.options].map((option) => option.value)).toEqual(["light", "dark"]);
 });
+
+// `chat.max_live_sessions` never joins testShell's SPECS (a frozen App test depends on its
+// absence there), so its KeySpec is built here, the same way the brief for this key says to.
+const BOUNDED_SPEC: KeySpec = {
+  scope: "app",
+  applies: "now",
+  kind: "number",
+  allowed: null,
+  default: 30,
+  personal: false,
+  bounds: [1, 999],
+};
+
+function renderBoundedNumber(
+  options: { value?: unknown; readOnly?: boolean; error?: string | null } = {},
+): { onChange: ReturnType<typeof vi.fn> } {
+  const onChange = vi.fn();
+  render(
+    <SettingRow
+      settingKey="chat.max_live_sessions"
+      spec={BOUNDED_SPEC}
+      value={"value" in options ? options.value : 30}
+      source="default"
+      readOnlyNoticeId={options.readOnly === true ? "notice" : null}
+      status={null}
+      error={options.error ?? null}
+      onChange={onChange}
+    />,
+  );
+  return { onChange };
+}
+
+test("a bounded number key renders a plain number input, never a select", () => {
+  renderBoundedNumber();
+  const input = screen.getByLabelText("Sessions running at once") as HTMLInputElement;
+  expect(input.tagName).toBe("INPUT");
+  expect(input.type).toBe("number");
+  expect(input.min).toBe("1");
+  expect(input.max).toBe("999");
+  expect(input.value).toBe("30");
+  expect(document.querySelector("select")).toBeNull();
+  expect(document.querySelector("option")).toBeNull();
+});
+
+test("Enter saves a valid number once, and the IME's Enter does not", () => {
+  const { onChange } = renderBoundedNumber();
+  const input = screen.getByLabelText("Sessions running at once");
+  fireEvent.change(input, { target: { value: "45" } });
+  fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+  fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+  expect(onChange).not.toHaveBeenCalled();
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(onChange).toHaveBeenCalledTimes(1);
+  expect(onChange).toHaveBeenCalledWith("chat.max_live_sessions", 45);
+});
+
+test("blur saves a valid number", () => {
+  const { onChange } = renderBoundedNumber();
+  const input = screen.getByLabelText("Sessions running at once");
+  fireEvent.change(input, { target: { value: "45" } });
+  fireEvent.blur(input);
+  expect(onChange).toHaveBeenCalledWith("chat.max_live_sessions", 45);
+});
+
+test("saving the already-committed value sends nothing", () => {
+  const { onChange } = renderBoundedNumber({ value: 30 });
+  fireEvent.blur(screen.getByLabelText("Sessions running at once"));
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test("an invalid or out-of-range entry is refused inline, with no call, for every bad input", () => {
+  for (const bad of ["0", "1000", "2.5", "abc", ""]) {
+    const { onChange } = renderBoundedNumber();
+    const input = screen.getByLabelText("Sessions running at once");
+    fireEvent.change(input, { target: { value: bad } });
+    fireEvent.blur(input);
+    expect(onChange).not.toHaveBeenCalled();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("Enter a whole number from 1 to 999.");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("aria-describedby")?.split(" ")).toContain(alert.id);
+    cleanup();
+  }
+});
+
+test("typing after a refusal clears it without sending anything", () => {
+  const { onChange } = renderBoundedNumber();
+  const input = screen.getByLabelText("Sessions running at once");
+  fireEvent.change(input, { target: { value: "abc" } });
+  fireEvent.blur(input);
+  expect(screen.getByRole("alert").textContent).toBe("Enter a whole number from 1 to 999.");
+  fireEvent.change(input, { target: { value: "5" } });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test("a read-only bounded number field is readOnly and sends nothing", () => {
+  const { onChange } = renderBoundedNumber({ readOnly: true });
+  const input = screen.getByLabelText("Sessions running at once") as HTMLInputElement;
+  expect(input.readOnly).toBe(true);
+  fireEvent.change(input, { target: { value: "45" } });
+  fireEvent.blur(input);
+  expect(onChange).not.toHaveBeenCalled();
+});

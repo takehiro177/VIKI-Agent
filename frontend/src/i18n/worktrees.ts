@@ -69,5 +69,7 @@ export const catalog = defineCatalog({
     "worktrees.archive.restore_label": "Restore archived changes from {date}",
     "worktrees.refusal.bot_copy_root":
       "This worktree belongs to a Bot chat. Open that chat instead.",
+    "worktrees.refusal.too_many_sessions":
+      "The most sessions allowed at once are running. Close one, or raise the limit in Settings › Chat.",
   },
 });

@@ -896,6 +896,7 @@ async def test_closing_through_the_manager_forgets_the_session(tmp_path: Path) -
 
 async def test_at_most_eight_sessions_run_at_once(tmp_path: Path) -> None:
     manager, _ = setup(tmp_path, [])
+    manager.bind_max_live(lambda: 8)
     actors = [manager.create(f"0000000{i}-0000-4000-8000-000000000000") for i in range(9)]
     seen = watch(actors[8])
     for actor in actors[:8]:

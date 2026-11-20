@@ -317,6 +317,7 @@ async def test_a_refused_start_is_blocked_and_never_retried(
     matrix = Matrix(tmp_path, monkeypatch)
     async with _serving(matrix.app) as client:
         if launch is None:  # eight ordinary sessions hold every live slot
+            matrix.manager.bind_max_live(lambda: 8)
             for _ in range(8):
                 matrix.launches.append(TURN[:2])
                 assert await matrix.manager.create(str(uuid4())).send("hello")

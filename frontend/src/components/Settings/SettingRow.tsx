@@ -20,6 +20,9 @@
  *   — an unfocusable control is never announced, so the user would never learn
  *   why it does nothing. The text field is additionally `readOnly`, which is the honest native
  *   way to say "you may read and select this, but it will not be saved".
+ * - `spec.kind === "number" && spec.bounds` renders a plain number input instead of the
+ *   `<select>` the unbounded case uses: a string draft seeded like the text field's, saved on
+ *   blur and Enter, refused inline (and never sent) when it is not a whole number in range.
  */
 
 import { type ReactElement, useId, useState } from "react";
@@ -50,6 +53,15 @@ function rowMeta(source: SettingSource, applies: Applies): string {
   if (source !== "default") parts.push(t(`common.source.${source}`));
   if (applies !== "now") parts.push(t(`common.applies.${applies}`));
   return parts.join(" · ");
+}
+
+/** The text-like controls' seed: the string kind's own value, or — for a bounded number — its
+ * value turned into digits, so the same draft/seed mechanism below can edit either one. */
+function committedText(spec: KeySpec, value: unknown): string {
+  if (spec.kind === "string") return typeof value === "string" ? value : "";
+  if (spec.kind === "number" && spec.bounds !== undefined)
+    return typeof value === "number" ? String(value) : "";
+  return "";
 }
 
 export type RowStatus = "saving" | "saved" | null;
@@ -99,16 +111,20 @@ export function SettingRow({
   // nothing of their own; otherwise their text stays in the control so they can save it again
   // against the new revision. Adjusted during render rather than in an effect: React
   // re-runs this component before painting, so no intermediate value is ever shown.
-  const committed = typeof value === "string" ? value : "";
+  const committed = committedText(spec, value);
   const [field, setField] = useState({ seed: committed, draft: committed });
   if (field.seed !== committed)
     setField({ seed: committed, draft: field.draft === field.seed ? committed : field.draft });
   const draft = field.draft;
   const setDraft = (next: string): void => setField((current) => ({ ...current, draft: next }));
+  // The bounded number field's own client-side refusal: typing clears it, and the `error` prop
+  // (a server-driven refusal) shows whenever this is null.
+  const [numberError, setNumberError] = useState<string | null>(null);
+  const shownError = numberError ?? error;
 
   const describedBy = [
     desc === "" ? null : descId,
-    error === null ? null : errorId,
+    shownError === null ? null : errorId,
     readOnlyNoticeId,
   ]
     .filter((id): id is string => id !== null)
@@ -128,6 +144,18 @@ export function SettingRow({
     if (readOnly || draft === committed) return;
     // Clearing a key that refuses "" means "inherit", which is a null patch, not an empty string.
     onChange(settingKey, draft === "" && NONEMPTY_KEYS.has(settingKey) ? null : draft);
+  }
+
+  function saveNumber(min: number, max: number): void {
+    if (readOnly) return;
+    const trimmed = draft.trim();
+    if (trimmed === committed) return;
+    if (!/^\d+$/.test(trimmed) || Number(trimmed) < min || Number(trimmed) > max) {
+      setNumberError(tf("settings.number.range", { min, max }));
+      return;
+    }
+    setNumberError(null);
+    onChange(settingKey, Number(draft));
   }
 
   function control(): ReactElement {
@@ -168,8 +196,37 @@ export function SettingRow({
           }}
         />
       );
-    // enum and number are both a closed list, so both are a <select>; the number key's values
-    // come back through `allowed`, which is what keeps `1` a number rather than "1".
+    if (spec.kind === "number" && spec.bounds) {
+      const [min, max] = spec.bounds;
+      return (
+        <input
+          {...controlProps}
+          type="number"
+          inputMode="numeric"
+          min={min}
+          max={max}
+          step={1}
+          className="settings-text settings-number"
+          readOnly={readOnly}
+          value={draft}
+          aria-invalid={shownError === null ? undefined : "true"}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setNumberError(null);
+          }}
+          onBlur={() => saveNumber(min, max)}
+          onKeyDown={(event) => {
+            // The IME's Enter commits a conversion and is never a save (the composer's rule).
+            if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229)
+              return;
+            event.preventDefault();
+            saveNumber(min, max);
+          }}
+        />
+      );
+    }
+    // enum and an unbounded number are both a closed list, so both are a <select>; the number
+    // key's values come back through `allowed`, which is what keeps `1` a number rather than "1".
     const allowed = options ?? spec.allowed ?? [];
     // A stored value the list no longer offers stays visible, but cannot be chosen again.
     const outsider =
@@ -263,9 +320,9 @@ export function SettingRow({
             </span>
           )}
         </div>
-        {error !== null && (
+        {shownError !== null && (
           <p className="settings-error" role="alert" id={errorId}>
-            {error}
+            {shownError}
           </p>
         )}
       </div>
