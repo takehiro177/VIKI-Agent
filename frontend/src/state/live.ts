@@ -51,7 +51,30 @@
  * so an id whose session has closed or whose start failed simply stops counting; pruning the set
  * itself would buy nothing and would need a second place to remember to do it.
  */
+import type { SettingsView } from "../clients/app/shellApi";
 import type { AppSnapshot } from "./store";
+
+/**
+ * The live-session cap App gates new chats on. The settings document is authoritative once it
+ * actually carries `chat.max_live_sessions` — a document from before that key existed does not,
+ * and it never joins `testShell`'s fixed fifteen keys, so a document missing it reads the same as
+ * no document at all. Short of that, the last limit the server reported in a `session.snapshot`
+ * carries the app through before the document loads. Short of that too — no shell, or neither
+ * answer has arrived yet — 3 is what this app always refused a fourth session at before either
+ * existed (m3c, m4b's frozen tests). A value that is not a safe integer of at least 1, at either
+ * step, is treated as absent rather than as a refusal to start anything.
+ */
+export function maxLiveFrom(settings: SettingsView | null, reported: number | undefined): number {
+  const effective =
+    settings !== null && "chat.max_live_sessions" in settings.keys
+      ? settings.effective["chat.max_live_sessions"]
+      : undefined;
+  if (typeof effective === "number" && Number.isSafeInteger(effective) && effective >= 1)
+    return effective;
+  if (typeof reported === "number" && Number.isSafeInteger(reported) && reported >= 1)
+    return reported;
+  return 3;
+}
 
 export function liveSessionIds(
   snapshot: AppSnapshot,

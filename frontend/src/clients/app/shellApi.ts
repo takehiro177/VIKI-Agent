@@ -109,6 +109,9 @@ export interface KeySpec {
   allowed: readonly unknown[] | null;
   default: unknown;
   personal: boolean;
+  /** Present only on a bounded `number` key (`allowed: null`): the inclusive [min, max] a PATCH
+   * is validated against. Absent on every other key. */
+  bounds?: readonly [number, number];
 }
 
 export interface SettingsView {
@@ -646,6 +649,17 @@ function parseCheckResult(value: unknown, check: CheckName): CheckResult {
   return row as unknown as CheckResult;
 }
 
+/** `KeySpec.bounds`: two safe integers with the minimum no greater than the maximum. */
+function validBounds(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    Number.isSafeInteger(value[0]) &&
+    Number.isSafeInteger(value[1]) &&
+    (value[0] as number) <= (value[1] as number)
+  );
+}
+
 function parseKeySpec(value: unknown): boolean {
   const row = object(value);
   return (
@@ -654,7 +668,9 @@ function parseKeySpec(value: unknown): boolean {
     oneOf(row.kind, SETTING_KINDS) &&
     (row.allowed === null || Array.isArray(row.allowed)) &&
     "default" in row &&
-    flag(row.personal)
+    flag(row.personal) &&
+    (row.bounds === undefined ||
+      (row.kind === "number" && row.allowed === null && validBounds(row.bounds)))
   );
 }
 

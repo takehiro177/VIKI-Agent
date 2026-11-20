@@ -192,6 +192,196 @@ def test_a_stored_value_the_schema_refuses_reads_as_no_ticks(tmp_path: Path, raw
     assert _service(store).workspace_ids() == ()
 
 
+def test_chat_max_live_sessions_key_sits_after_other_sign_in_with_its_bounds() -> None:
+    keys = list(KEYS)
+    assert keys.index("chat.max_live_sessions") == keys.index("chat.other_sign_in") + 1
+    spec = KEYS["chat.max_live_sessions"]
+    assert (spec.kind, spec.allowed, spec.default) == ("number", None, 30)
+    assert (spec.applies, spec.personal, spec.bounds) == ("now", False, (1, 999))
+    assert settings_module.SETTINGS_VERSION == 1
+
+
+def test_chat_max_live_sessions_saves_whole_numbers_in_bounds_and_resets(tmp_path: Path) -> None:
+    service = _service(_store(tmp_path))
+    revision = 0
+    for value in (1, 30, 999):
+        saved, _replayed = service.patch(ident(), revision, {"chat.max_live_sessions": value})
+        assert saved.effective["chat.max_live_sessions"] == value
+        assert saved.sources["chat.max_live_sessions"] == "setting"
+        revision = saved.document.revision
+    reset, _replayed = service.patch(ident(), revision, {"chat.max_live_sessions": None})
+    assert reset.effective["chat.max_live_sessions"] == 30
+    assert reset.sources["chat.max_live_sessions"] == "default"
+
+
+@pytest.mark.parametrize(
+    ("bad", "code"),
+    [
+        (0, "not_allowed"),
+        (1000, "not_allowed"),
+        (-5, "not_allowed"),
+        (30.0, "invalid_type"),
+        (2.5, "invalid_type"),
+        (True, "invalid_type"),
+        ("30", "invalid_type"),
+    ],
+)
+def test_chat_max_live_sessions_refuses_out_of_bounds_and_non_integers(
+    tmp_path: Path, bad: object, code: str
+) -> None:
+    service = _service(_store(tmp_path))
+    before = service.read()
+    with pytest.raises(SettingsError) as failure:
+        service.patch(ident(), 0, {"chat.max_live_sessions": bad})
+    assert failure.value.fields == {"chat.max_live_sessions": code}
+    assert service.read() == before
+
+
+@pytest.mark.parametrize("raw", [5000, "x"])
+def test_chat_max_live_sessions_stored_bad_value_reads_as_default(
+    tmp_path: Path, raw: object
+) -> None:
+    store = _store(tmp_path)
+    with sqlite_connection(store) as connection:
+        connection.execute(
+            "INSERT INTO settings (scope,version,revision,document,updated_at) "
+            "VALUES ('app',?,?,?,?)",
+            (
+                settings_module.SETTINGS_VERSION,
+                1,
+                json.dumps({"chat.max_live_sessions": raw}),
+                "2026-01-01T00:00:00.000Z",
+            ),
+        )
+        connection.commit()
+    service = _service(store)
+    assert service.read().effective["chat.max_live_sessions"] == 30
+    assert service.max_live_sessions() == 30
+
+
+def test_max_live_sessions_reads_stored_value_and_falls_back_on_newer_or_corrupt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    service = _service(store)
+    clock = [0.0]
+    monkeypatch.setattr(settings_module, "_monotonic", lambda: clock[0])
+    assert service.max_live_sessions() == 30
+    saved, _replayed = service.patch(CID_A, 0, {"chat.max_live_sessions": 12})
+    assert saved.effective["chat.max_live_sessions"] == 12
+    assert service.max_live_sessions() == 12
+
+    # Past the cache window before each raw-SQL mutation: proves the read-only fallback itself,
+    # not stale cache that would mask it.
+    clock[0] += settings_module.MAX_LIVE_CACHE_S
+    with sqlite_connection(store) as connection:
+        connection.execute("UPDATE settings SET version=2 WHERE scope='app'")
+        connection.commit()
+    assert service.max_live_sessions() == 30  # a newer document is read-only: gives the default
+
+    clock[0] += settings_module.MAX_LIVE_CACHE_S
+    with sqlite_connection(store) as connection:
+        connection.execute(
+            "UPDATE settings SET version=1, document=? WHERE scope='app'", ("not json",)
+        )
+        connection.commit()
+    assert service.max_live_sessions() == 30  # corrupt is read-only too
+
+
+def test_max_live_sessions_store_failure_keeps_the_last_value_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    service = _service(store)
+    clock = [0.0]
+    monkeypatch.setattr(settings_module, "_monotonic", lambda: clock[0])
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            store, "get_settings", lambda: (_ for _ in ()).throw(StateError("unavailable"))
+        )
+        assert service.max_live_sessions() == 30  # the default before any successful read
+    saved, _replayed = service.patch(CID_A, 0, {"chat.max_live_sessions": 12})
+    assert saved.effective["chat.max_live_sessions"] == 12
+    assert service.max_live_sessions() == 12
+    # Past the cache window: the next call attempts a real read instead of reusing the cache.
+    clock[0] += settings_module.MAX_LIVE_CACHE_S
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            store, "get_settings", lambda: (_ for _ in ()).throw(StateError("unavailable"))
+        )
+        assert service.max_live_sessions() == 12  # last value this method read successfully
+
+
+def test_max_live_sessions_caches_a_read_within_one_second(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    service = _service(store)
+    original = store.get_settings
+    calls: list[None] = []
+
+    def spy() -> storage.SettingsRow | None:
+        calls.append(None)
+        return original()
+
+    monkeypatch.setattr(store, "get_settings", spy)
+    clock = [0.0]
+    monkeypatch.setattr(settings_module, "_monotonic", lambda: clock[0])
+
+    assert service.max_live_sessions() == 30
+    clock[0] += settings_module.MAX_LIVE_CACHE_S - 0.001
+    assert service.max_live_sessions() == 30
+    assert len(calls) == 1  # the second call, inside the window, reused the cache
+
+
+def test_max_live_sessions_reads_again_once_the_cache_expires(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    service = _service(store)
+    original = store.get_settings
+    calls: list[None] = []
+
+    def spy() -> storage.SettingsRow | None:
+        calls.append(None)
+        return original()
+
+    monkeypatch.setattr(store, "get_settings", spy)
+    clock = [0.0]
+    monkeypatch.setattr(settings_module, "_monotonic", lambda: clock[0])
+
+    assert service.max_live_sessions() == 30
+    clock[0] += settings_module.MAX_LIVE_CACHE_S
+    assert service.max_live_sessions() == 30
+    assert len(calls) == 2  # exactly at the window edge: no longer "under", so it reads again
+
+
+def test_max_live_sessions_patch_of_the_key_expires_the_cache_at_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    service = _service(store)
+    clock = [0.0]
+    monkeypatch.setattr(settings_module, "_monotonic", lambda: clock[0])
+    assert service.max_live_sessions() == 30
+    saved, _replayed = service.patch(CID_A, 0, {"chat.max_live_sessions": 12})
+    assert saved.effective["chat.max_live_sessions"] == 12
+    assert service.max_live_sessions() == 12  # no clock change: the patch itself expired it
+
+
+def test_max_live_sessions_reset_expires_the_cache_at_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    service = _service(store)
+    clock = [0.0]
+    monkeypatch.setattr(settings_module, "_monotonic", lambda: clock[0])
+    service.patch(CID_A, 0, {"chat.max_live_sessions": 12})
+    assert service.max_live_sessions() == 12
+    service.reset(CID_B)
+    assert service.max_live_sessions() == 30  # no clock change: the reset itself expired it
+
+
 def test_two_writers_the_second_commit_gets_409(tmp_path: Path) -> None:
     store = _store(tmp_path)
     first, second = _service(store), _service(store)

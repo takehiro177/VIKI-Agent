@@ -77,6 +77,7 @@ async function setup(
     folder?: WorkspaceJson;
     start?: () => Promise<string | null>;
     onReview?: (worktreeId: string) => void;
+    onRaiseLimit?: () => void;
   } = {},
 ) {
   const onStartSession = vi.fn(props.start ?? (async () => null));
@@ -86,6 +87,7 @@ async function setup(
       folder={props.folder ?? folder()}
       onStartSession={onStartSession}
       {...(props.onReview ? { onReview: props.onReview } : {})}
+      {...(props.onRaiseLimit ? { onRaiseLimit: props.onRaiseLimit } : {})}
     />,
   );
   await settle();
@@ -255,8 +257,31 @@ test("New session here passes both ids and shows a returned refusal beside the b
     worktree_id: row.worktree_id,
   });
   expect(rowOf("viki/go").getByRole("alert").textContent).toBe(
-    "Three sessions are running. Close one, then start again.",
+    "The most sessions allowed at once are running. Close one, or raise the limit in Settings › Chat.",
   );
+  expect(rowOf("viki/go").queryByRole("button", { name: "Change limit" })).toBeNull();
+});
+
+test("a too_many_sessions refusal with onRaiseLimit shows Change limit after the alert", async () => {
+  const row = worktree({ branch: "viki/cap" });
+  const onRaiseLimit = vi.fn();
+  await setup(stub([row]), { start: async () => "too_many_sessions", onRaiseLimit });
+  fireEvent.click(rowOf("viki/cap").getByRole("button", { name: "New session here" }));
+  await settle();
+  const alert = rowOf("viki/cap").getByRole("alert");
+  const button = rowOf("viki/cap").getByRole("button", { name: "Change limit" });
+  expect(alert.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(button);
+  expect(onRaiseLimit).toHaveBeenCalledTimes(1);
+});
+
+test("a refusal other than too_many_sessions shows no Change limit button, even with onRaiseLimit", async () => {
+  const row = worktree({ branch: "viki/busy" });
+  await setup(stub([row]), { start: async () => "worktree_in_use", onRaiseLimit: vi.fn() });
+  fireEvent.click(rowOf("viki/busy").getByRole("button", { name: "New session here" }));
+  await settle();
+  expect(rowOf("viki/busy").getByRole("alert")).toBeTruthy();
+  expect(rowOf("viki/busy").queryByRole("button", { name: "Change limit" })).toBeNull();
 });
 
 test("a started session shows no refusal", async () => {

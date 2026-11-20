@@ -66,6 +66,17 @@ def test_get_returns_defaults_on_an_empty_store(tmp_path: Path) -> None:
     }
     assert "key" not in body["keys"]["appearance.theme"]
     assert "max_len" not in body["keys"]["appearance.theme"]
+    assert "bounds" not in body["keys"]["appearance.theme"]
+    assert body["keys"]["chat.max_live_sessions"] == {
+        "scope": "app",
+        "applies": "now",
+        "kind": "number",
+        "allowed": None,
+        "default": 30,
+        "personal": False,
+        "bounds": [1, 999],
+    }
+    assert body["effective"]["chat.max_live_sessions"] == 30
 
 
 def test_patch_roundtrip_replay_and_stale_revision(tmp_path: Path) -> None:

@@ -2,6 +2,7 @@
  * Rate-limit cards distinguish rejected turns from warnings and format reset times locally.
  * Server-provided messages render as text. */
 import type { ReactElement } from "react";
+import { t } from "../../i18n/t";
 import type { ErrorCode, ErrorData, RateLimitData } from "../../protocol";
 import "./Cards.css"; // .card-head, .card-actions, reused rather than a second copy
 import "./Errors.css";
@@ -43,11 +44,18 @@ export interface ErrorCardProps {
   data: ErrorData;
   /** Optional retry action, shown only for a recoverable crash. */
   onRetry?: () => void;
+  /** Opens Settings › Chat with the live-session-limit field focused. Absent: the
+   * too_many_sessions card offers no button. Never retries or closes anything itself. */
+  onRaiseLimit?: () => void;
 }
 
-export function ErrorCard({ data, onRetry }: ErrorCardProps): ReactElement {
+export function ErrorCard({ data, onRetry, onRaiseLimit }: ErrorCardProps): ReactElement {
   const copy = ERROR_COPY[data.code];
-  const title = copy?.title ?? "Reply failed";
+  // too_many_sessions is deliberately not in ERROR_COPY: its line is already the server's own
+  // words (the number lives there), so only the title needs fixed copy.
+  const title =
+    copy?.title ??
+    (data.code === "too_many_sessions" ? t("shell.limit.error_title") : "Reply failed");
   const line = copy?.line ?? data.message;
   return (
     <div className="error-card">
@@ -62,6 +70,13 @@ export function ErrorCard({ data, onRetry }: ErrorCardProps): ReactElement {
         <div className="card-actions jp">
           <button type="button" className="btn alt sm" onClick={onRetry}>
             Send again
+          </button>
+        </div>
+      ) : null}
+      {data.code === "too_many_sessions" && onRaiseLimit ? (
+        <div className="card-actions jp">
+          <button type="button" className="btn alt sm" onClick={onRaiseLimit}>
+            {t("shell.limit.change")}
           </button>
         </div>
       ) : null}

@@ -6,8 +6,10 @@
  * list, live.ts reads that record.
  */
 import { expect, test } from "vitest";
+import type { KeySpec, SettingsView } from "../clients/app/shellApi";
 import type { Envelope, SessionStartedData } from "../protocol";
-import { liveSessionIds } from "./live";
+import { settingsFixture } from "../testShell";
+import { liveSessionIds, maxLiveFrom } from "./live";
 import { AppStore } from "./store";
 
 const INFO: SessionStartedData = {
@@ -141,3 +143,50 @@ test("with no vault.sessions yet there is nothing to retire with", () => {
   started(store, "a");
   expect(idsOf(store)).toEqual(["a"]);
 });
+
+/* maxLiveFrom: the live-session cap, resolved document-first. `chat.max_live_sessions` never
+ * joins testShell's fixed fifteen keys (a frozen App test depends on its absence), so each case
+ * here adds it to the fixture's document itself, as the server would send it. */
+
+const BOUNDED_SPEC: KeySpec = {
+  scope: "app",
+  applies: "now",
+  kind: "number",
+  allowed: null,
+  default: 30,
+  personal: false,
+  bounds: [1, 999],
+};
+
+function documentWithLimit(value: unknown): SettingsView {
+  const base = settingsFixture();
+  return {
+    ...base,
+    effective: { ...base.effective, "chat.max_live_sessions": value },
+    keys: { ...base.keys, "chat.max_live_sessions": BOUNDED_SPEC },
+  };
+}
+
+test("the document's value wins once the key is there and usable", () => {
+  expect(maxLiveFrom(documentWithLimit(5), 8)).toBe(5);
+});
+
+test("an older document without the key falls back to the reported snapshot value", () => {
+  expect(maxLiveFrom(settingsFixture(), 8)).toBe(8);
+});
+
+test("with no usable document at all, the reported snapshot value carries the app through", () => {
+  expect(maxLiveFrom(null, 8)).toBe(8);
+});
+
+test("with neither a usable document nor a reported value, 3 is what this app always used", () => {
+  expect(maxLiveFrom(null, undefined)).toBe(3);
+  expect(maxLiveFrom(settingsFixture(), undefined)).toBe(3);
+});
+
+test.each([0, 2.5, "30", null])(
+  "a document value that is not a usable safe integer (%p) is ignored, same as absent",
+  (value) => {
+    expect(maxLiveFrom(documentWithLimit(value), 8)).toBe(8);
+  },
+);

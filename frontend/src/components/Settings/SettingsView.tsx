@@ -42,6 +42,15 @@ export interface SettingsViewProps {
   renderBack?: (onBack: () => void) => ReactNode;
   /** The panel's content for the pages this view does not build. */
   children?: ReactNode;
+  /** A key to focus once the document page that owns it has actually rendered its control
+   * (App's "Change limit"). The heading still takes focus first on entry; this only moves it
+   * again once the target exists. Absent or unmatched: nothing beyond the usual entry focus.
+   * The caller owns scoping this to the one navigation that set it (App's `limitFocusNav`):
+   * this view has no way to tell a key meant for right now from one left over from a page the
+   * user has since clicked away from, and would act on either the moment the target appears. */
+  focusKey?: string | null;
+  /** Called once, the moment `focusKey` is used, so the caller can clear it. */
+  onFocusKeyUsed?: () => void;
 }
 
 interface Conflict {
@@ -56,9 +65,12 @@ export function SettingsView({
   onNavigate,
   renderBack,
   children,
+  focusKey,
+  onFocusKeyUsed,
 }: SettingsViewProps): ReactElement {
   const snapshot = useSnapshot(store);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const base = useId();
   const panelId = `${base}-panel`;
   const noticeId = `${base}-readonly`;
@@ -72,6 +84,21 @@ export function SettingsView({
 
   const settings = snapshot.settings;
   const readOnlyNoticeId = settings?.read_only === true ? noticeId : null;
+
+  // Runs after the heading's own mount-focus effect above, so a `focusKey` that already matches
+  // on entry wins. Guarded on `settings` and the document pages so it does nothing before the
+  // document loads or on a lane's own page — then re-fires once loading finishes, because
+  // `settings` joins the dependency list below.
+  useEffect(() => {
+    if (!focusKey || settings === null || !DOCUMENT_PAGES.includes(page)) return;
+    const target = panelRef.current?.querySelector<HTMLInputElement | HTMLSelectElement>(
+      `[data-setting-key="${focusKey}"] input, [data-setting-key="${focusKey}"] select`,
+    );
+    if (!target) return;
+    target.focus();
+    target.scrollIntoView?.({ block: "center" });
+    onFocusKeyUsed?.();
+  }, [focusKey, settings, page, onFocusKeyUsed]);
 
   function reload(): void {
     const current = conflict?.error.current ?? null;
@@ -139,6 +166,7 @@ export function SettingsView({
       <div className="settings-grid">
         <SettingsNav page={page} onPage={onPage} panelId={panelId} />
         <div
+          ref={panelRef}
           className={SETTINGS_PANEL_CLASS}
           id={panelId}
           role="tabpanel"

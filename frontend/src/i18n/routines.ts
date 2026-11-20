@@ -68,7 +68,7 @@ export const catalog = defineCatalog({
     "routines.reason.cli_missing": "Claude was not found",
     "routines.reason.not_logged_in": "Login required",
     "routines.reason.billing": "Billing needs attention",
-    "routines.reason.too_many_sessions": "Session limit reached",
+    "routines.reason.too_many_sessions": "Session limit reached; raise it in Settings › Chat",
     "routines.reason.provider_unavailable": "Claude could not be started",
     "routines.reason.provider_unsupported": "A profile that is not a Claude profile",
     "routines.reason.profile_missing": "The profile is missing",

@@ -87,6 +87,7 @@ class SettingSpec:
     applies: Applies
     personal: bool  # redacted from exports unless include_identity
     max_len: int = 0
+    bounds: tuple[int, int] | None = None  # whole-number min..max; only kind "number", allowed=None
 
 
 @dataclass(frozen=True)

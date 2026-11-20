@@ -11,7 +11,7 @@ Replay and recent snapshot content are bounded by stream_state.py; current reque
 are projected separately. Older turns come from transcript pages cut off at the fixed `since`.
 Evicted live content is marked omitted rather than silently refilled across that boundary.
 
-`SessionManager`: all actors, at most MAX_LIVE with a live process. Closing a session forgets
+`SessionManager`: all actors, at most `max_live()` with a live process. Closing a session forgets
 its actor, so reopening it reads the transcript afresh. The browser going away is
 `settle(grace_s)` — every open card is denied (nobody is there to choose) and running turns get
 up to the grace to end on their own — and then, unless a window came back meanwhile,
@@ -111,7 +111,7 @@ from viki_agent.vaults.vault_excerpts import check_block_budget, joined_text, re
 
 log = logging.getLogger(__name__)
 
-MAX_LIVE = 8
+MAX_LIVE = 30  # the built-in default only; SessionManager.max_live() is the real admission limit
 DENY_POLL_S = 1.0  # while the browser is gone, new cards are denied within this
 CLOSE_TIMEOUT_S = 15.0  # a session stuck in its start handshake must not keep the app alive
 # How long a close lets waiting steers settle: the driver config's default for an early stop.
@@ -120,9 +120,14 @@ STOP_FLUSH_S = DriverConfig.stop_flush_s
 WRITE_TOOLS = frozenset({"Edit", "Write", "NotebookEdit", "Bash", "PowerShell"})
 _COMMAND = re.compile(r"/([\w:.-]+)(?=\s|$)")
 
-MSG_TOO_MANY = (
-    f"You can run at most {MAX_LIVE} sessions at the same time. Close one, then send again."
-)
+
+def msg_too_many(limit: int) -> str:
+    return (
+        f"You can run at most {limit} sessions at the same time. Close one, or raise the "
+        "limit in Settings › Chat, then send again."
+    )
+
+
 MSG_TURN_RUNNING = "VIKI is responding. Stop it or wait for it to finish, then send again."
 MSG_LOST = (
     "Couldn't send to Claude Code. There's no way to know whether it arrived. "
@@ -370,6 +375,7 @@ class SessionActor:
         make_driver: DriverFactory,
         admit: Callable[[SessionActor], bool],
         holder: Callable[[str], Awaitable[OtherSession | None]],
+        max_live: Callable[[], int] = lambda: MAX_LIVE,
         registration_pending: bool = False,
         readiness: Readiness | None = None,
         launch_guard: Callable[[str, bool, Prefs], Awaitable[None]] | None = None,
@@ -417,6 +423,7 @@ class SessionActor:
         self._state = state
         self._make_driver = make_driver
         self._admit = admit
+        self._max_live = max_live
         self._holder = holder
         self._registration_pending = registration_pending
         self._driver: AgentDriver | None = None
@@ -578,7 +585,7 @@ class SessionActor:
             return self.events_after(after_seq)
         snapshot = self._stream.snapshot()
         snapshot["state"]["live"] = self.live
-        snapshot["state"]["max_live_sessions"] = MAX_LIVE
+        snapshot["state"]["max_live_sessions"] = self._max_live()
         return [
             {
                 "v": 2,
@@ -745,7 +752,13 @@ class SessionActor:
                 self.report_state_error(exc)
                 return False
         if not self._admit(self):
-            self._emit(Error(code="too_many_sessions", message=MSG_TOO_MANY, recoverable=True))
+            self._emit(
+                Error(
+                    code="too_many_sessions",
+                    message=msg_too_many(self._max_live()),
+                    recoverable=True,
+                )
+            )
             return False
         if (
             self._bot_code_resolver is not None
@@ -773,7 +786,13 @@ class SessionActor:
                 self._start_refused(exc)
                 return False
             if not self._admit(self):
-                self._emit(Error(code="too_many_sessions", message=MSG_TOO_MANY, recoverable=True))
+                self._emit(
+                    Error(
+                        code="too_many_sessions",
+                        message=msg_too_many(self._max_live()),
+                        recoverable=True,
+                    )
+                )
                 return False
         if self.since is None:
             self.since = now_iso()
@@ -1779,6 +1798,7 @@ class SessionManager:
         self._claude_home = claude_home
         self._readiness = readiness
         self._make_driver = make_driver or self._claude_driver
+        self._max_live: Callable[[], int] = lambda: MAX_LIVE
         self._llm_connections: Connections | None = None
         self._llm_gateway: Gateway | None = None
         self._actors: dict[str, SessionActor] = {}
@@ -1812,6 +1832,18 @@ class SessionManager:
     def bind_limits(self, observer: Callable[[dict[str, object]], None]) -> None:
         """Install the plan-limit observer every later spawn's driver reports rate limits to."""
         self._config = replace(self._config, observe_limits=observer)
+
+    def bind_max_live(self, reader: Callable[[], int]) -> None:
+        """Install the live-session cap `reader`, read at every admission and snapshot.
+
+        Applies to the next start: a session already live keeps running. `reader` must be
+        sync, so no await enters between an actor's admission check and going live; existing
+        actors reach a later bind too, since each holds a closure back to this manager rather
+        than a snapshotted int."""
+        self._max_live = reader
+
+    def max_live(self) -> int:
+        return self._max_live()
 
     def bind_profiles(
         self,
@@ -2231,7 +2263,8 @@ class SessionManager:
             launch,
             state=self._state,
             make_driver=self._make_driver,
-            admit=lambda actor: actor.live or len(self.live()) < MAX_LIVE,
+            admit=lambda actor: actor.live or len(self.live()) < self._max_live(),
+            max_live=lambda: self._max_live(),
             holder=self._find_holder,
             registration_pending=registration_pending,
             readiness=self._readiness,

@@ -4,9 +4,11 @@
 
    Shell's sticky `.conversation-overlay` keeps the card anchored to the conversation pane
    while its content scrolls. The roomy inset follows the design, measured from the pane's
-   right edge rather than the window edge. The height bound keeps the card inside that pane
-   and lets its own content scroll. The short-pane query reduces the bottom inset. z-index 40
-   clears ordinary content and the composer while staying under SearchPalette's modal layer (50/51). */
+   right edge rather than the window edge. The toast itself is the one scroller — bounded by
+   its pane's own height (`cqh`), not the window, which can be taller than a pane stacked under
+   another — with the raise-limit line first, right under the title and sub, above the rows.
+   The short-pane query reduces the bottom inset. z-index 40 clears ordinary content and the
+   composer while staying under SearchPalette's modal layer (50/51). */
 .toast {
   position: absolute;
   right: 24px;
@@ -53,6 +55,19 @@
 
 .toast-sub {
   margin-top: 3px;
+  font-size: 13px;
+  color: var(--t2);
+}
+
+/* The raise-limit line and its button, shown only when the caller passes onRaiseLimit.
+   flex-wrap lets "Change limit" sit beside the sentence when there is room and drop to its own
+   line when there is not, with no extra breakpoint needed. */
+.toast-raise {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
   font-size: 13px;
   color: var(--t2);
 }
