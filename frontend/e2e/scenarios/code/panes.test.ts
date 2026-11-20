@@ -6,7 +6,8 @@
  * lands beside it in the focused pane, Alt+1 and Alt+2 choose that pane's tabs, a reload keeps
  * `viki.panes`, below 1280 px the panes fold into one strip until the window widens, and the tab
  * menu's Split down and Move to pane 1 open and then fold a third pane. After those layout
- * checks, eight live sessions fill the slots and a ninth shows the limit toast.
+ * checks, the live-session limit is set to 8, then eight live sessions fill the slots and a
+ * ninth shows the limit toast.
  *
  * The facts only a browser can show are the layout (panes sit side by side, sized by real boxes),
  * the scroll hosts (two scrollers, neither moving the other), a real HTML5 drag onto a pane edge,
@@ -23,8 +24,9 @@
  */
 import type { Browser, Locator, Page } from "playwright-core";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { appUrl, launchEdge, send, waitForCount, waitForText } from "../../harness";
-import { PORT, type Server, startServer } from "../../server";
+import type { SettingsView } from "../../../src/clients/app/shellApi";
+import { appUrl, launchEdge, send, TEST_TOKEN, waitForCount, waitForText } from "../../harness";
+import { ORIGIN, PORT, type Server, startServer } from "../../server";
 import { newSidebarSession } from "../../sidebar-navigation";
 
 const FIXTURE = "tests/fixtures/claude/text-two-turns.jsonl";
@@ -37,6 +39,7 @@ let browser: Browser | undefined;
 
 beforeAll(async () => {
   server = await startServer({ fixture: FIXTURE });
+  await persistSessionLimit();
   browser = await launchEdge();
 }, 60_000);
 
@@ -44,6 +47,34 @@ afterAll(async () => {
   await browser?.close();
   await server?.stop();
 });
+
+/** Sets chat.max_live_sessions to 8 the way bot-settings.shots.ts's persistAppearanceSettings
+ * sets appearance settings — GET the revision, then PATCH with it — so step 8 below gates at 8
+ * instead of filling toward the real server's new default of 30. */
+async function persistSessionLimit(): Promise<void> {
+  const headers = {
+    authorization: `Bearer ${TEST_TOKEN}`,
+    origin: ORIGIN,
+    "content-type": "application/json",
+  };
+  const currentResponse = await fetch(`${ORIGIN}/api/v2/settings`, { headers });
+  if (!currentResponse.ok)
+    throw new Error(`Synthetic settings read answered ${currentResponse.status}.`);
+  const current = (await currentResponse.json()) as SettingsView;
+  const savedResponse = await fetch(`${ORIGIN}/api/v2/settings`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      command_id: crypto.randomUUID(),
+      expected_revision: current.revision,
+      changes: { "chat.max_live_sessions": 8 },
+    }),
+  });
+  if (!savedResponse.ok)
+    throw new Error(`Synthetic settings patch answered ${savedResponse.status}.`);
+  const saved = (await savedResponse.json()) as SettingsView;
+  expect(saved.effective["chat.max_live_sessions"]).toBe(8);
+}
 
 /** A page whose settings read has landed, which is what the app's own DOM writes wait for. */
 async function openApp(): Promise<Page> {
@@ -302,6 +333,9 @@ test("tabs and the panes", async () => {
   await waitForText(page, ".toast", LIMIT_TOAST, 15_000);
   expect(await page.locator(".session-tabs [role=tab]").count()).toBe(8);
   expect(await page.locator(".toast-row-close").count()).toBe(8);
+  expect(
+    await page.locator(".toast").getByRole("button", { name: "Change limit", exact: true }).count(),
+  ).toBe(1);
   await page.keyboard.press("Escape");
   await waitForCount(page, ".toast", 0, 15_000);
 

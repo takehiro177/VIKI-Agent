@@ -610,7 +610,7 @@ test("native pane scrolling keeps the session-limit panel reachable", async () =
         const host = await pane.boundingBox();
         if (!box || !host) throw new Error("Roomy panel geometry is missing");
         expect(box.width).toBe(380);
-        expect(box.height).toBe(382);
+        expect(box.height).toBe(424);
         expect(box.x + box.width).toBe(host.x + host.width - 24);
         expect(box.y + box.height).toBe(host.y + host.height - 96);
       }

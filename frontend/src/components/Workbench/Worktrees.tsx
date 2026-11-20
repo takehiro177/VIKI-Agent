@@ -40,18 +40,18 @@ const REFUSALS: Record<string, string> = {
   git_failed: GIT,
   git_common_unavailable: GIT,
   unsupported_filesystem: "This folder's drive doesn't support worktrees from VIKI.",
-  too_many_sessions: "Three sessions are running. Close one, then start again.",
 };
 
 /** The refusals with catalog text (`i18n/worktrees.ts`), checked before the older `REFUSALS`
- * table: `restore`'s three, a Bot copy's folder refusal and the Git settings that changed under a
- * Bot copy. */
+ * table: `restore`'s three, a Bot copy's folder refusal, the Git settings that changed under a
+ * Bot copy, and the session limit. */
 const CATALOG_REFUSAL_KEYS: Record<string, Key> = {
   no_archive: "worktrees.refusal.no_archive",
   branch_moved: "worktrees.refusal.branch_moved",
   branch_in_use: "worktrees.refusal.branch_in_use",
   bot_copy_root: "worktrees.refusal.bot_copy_root",
   git_settings_changed: "worktrees.refusal.git_settings_changed",
+  too_many_sessions: "worktrees.refusal.too_many_sessions",
 };
 
 /** The words for a refusal code from the roots routes or from starting a session. Own keys only:
@@ -170,6 +170,7 @@ export function Worktrees({
   folder,
   onStartSession,
   onReview,
+  onRaiseLimit,
 }: {
   api: RootsApi;
   folder: WorkspaceJson;
@@ -178,6 +179,7 @@ export function Worktrees({
     worktree_id: string | null;
   }): Promise<string | null>;
   onReview?(worktreeId: string): void;
+  onRaiseLimit?: () => void;
 }) {
   const alive = useRef<AbortController | null>(null);
   const [branch, setBranch] = useState(defaultBranch);
@@ -603,9 +605,16 @@ export function Worktrees({
                 </div>
               )}
               {startRefusal?.id === row.worktree_id && (
-                <p role="alert" className="worktrees-refusal">
-                  {rootRefusal(startRefusal.code)}
-                </p>
+                <>
+                  <p role="alert" className="worktrees-refusal">
+                    {rootRefusal(startRefusal.code)}
+                  </p>
+                  {startRefusal.code === "too_many_sessions" && onRaiseLimit && (
+                    <button type="button" className="btn txt sm" onClick={onRaiseLimit}>
+                      {t("shell.limit.change")}
+                    </button>
+                  )}
+                </>
               )}
               {restoreRefusal?.id === row.worktree_id && (
                 <p role="alert" className="worktrees-refusal">

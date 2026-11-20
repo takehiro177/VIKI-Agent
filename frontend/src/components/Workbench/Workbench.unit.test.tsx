@@ -946,11 +946,34 @@ test("a refusal from starting is shown beside the button and clears on the next 
   fireEvent.click(startButton());
   await settle();
   expect(screen.getByRole("alert").textContent).toBe(
-    "Three sessions are running. Close one, then start again.",
+    "The most sessions allowed at once are running. Close one, or raise the limit in Settings › Chat.",
   );
+  expect(screen.queryByRole("button", { name: "Change limit" })).toBeNull();
   fireEvent.click(startButton());
   await settle();
   expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("a too_many_sessions refusal with onRaiseLimit shows Change limit after the alert", async () => {
+  const onStartSession = vi.fn().mockResolvedValue("too_many_sessions");
+  const onRaiseLimit = vi.fn();
+  setup({}, undefined, A, { roots: rootsStub({ onStartSession, onRaiseLimit }) });
+  fireEvent.click(startButton());
+  await settle();
+  const alert = screen.getByRole("alert");
+  const button = screen.getByRole("button", { name: "Change limit" });
+  expect(alert.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(button);
+  expect(onRaiseLimit).toHaveBeenCalledTimes(1);
+});
+
+test("a refusal other than too_many_sessions shows no Change limit button, even with onRaiseLimit", async () => {
+  const onStartSession = vi.fn().mockResolvedValue("workspace_changed");
+  setup({}, undefined, A, { roots: rootsStub({ onStartSession, onRaiseLimit: vi.fn() }) });
+  fireEvent.click(startButton());
+  await settle();
+  expect(screen.getByRole("alert")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Change limit" })).toBeNull();
 });
 
 test("an untrusted folder disables New session in this folder and says why", async () => {

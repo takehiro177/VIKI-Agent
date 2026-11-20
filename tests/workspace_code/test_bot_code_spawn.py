@@ -16,7 +16,7 @@ from viki_agent import events
 from viki_agent.drivers.base import StartError, StartFacts
 from viki_agent.drivers.claude.control import Launch
 from viki_agent.drivers.claude.driver import DriverConfig
-from viki_agent.session import MAX_LIVE, SessionActor, SessionManager
+from viki_agent.session import SessionActor, SessionManager
 from viki_agent.state import AppState, Prefs
 from viki_agent.storage import StateError
 
@@ -246,8 +246,9 @@ async def test_existing_preflight_refusal_does_not_create_copy(
     elif checkpoint == "memory":
         startup.manager.bind_bot_memory(settings)
     else:
-        for i in range(MAX_LIVE):
-            assert await startup.manager.create(f"0000000{i}-0000-4000-8000-000000000000").start()
+        startup.manager.bind_max_live(lambda: 3)
+        for i in range(3):
+            assert await startup.manager.create(f"{i:08d}-0000-4000-8000-000000000000").start()
     actor = startup.actor()
     seen = watch(actor)
     try:
@@ -366,6 +367,7 @@ async def test_creation_await_rechecks_cancellation_and_configuration(
 
 async def test_admission_is_rechecked_after_creation(tmp_path: Path) -> None:
     startup = Startup(tmp_path)
+    startup.manager.bind_max_live(lambda: 3)
     actor = startup.actor()
     created, release = asyncio.Event(), asyncio.Event()
 
@@ -375,9 +377,7 @@ async def test_admission_is_rechecked_after_creation(tmp_path: Path) -> None:
         return startup.copy()
 
     startup.manager.bind_bot_code(resolve)
-    others = [
-        startup.manager.create(f"0000000{i}-0000-4000-8000-000000000000") for i in range(MAX_LIVE)
-    ]
+    others = [startup.manager.create(f"{i:08d}-0000-4000-8000-000000000000") for i in range(3)]
     for other in others[:-1]:
         await other.start()
     task = asyncio.create_task(actor.send("synthetic prompt"))
@@ -387,7 +387,7 @@ async def test_admission_is_rechecked_after_creation(tmp_path: Path) -> None:
         assert await others[-1].start()
         release.set()
         await task
-        assert len(startup.launches) == MAX_LIVE and not actor.live
+        assert len(startup.launches) == 3 and not actor.live
         assert any(e["type"] == "error" and e["data"]["code"] == "too_many_sessions" for e in seen)
     finally:
         release.set()

@@ -41,6 +41,8 @@ is in **Routines**, and chat bridges are in **Messaging**.
 
 On the **Chat** page, **Default mode**, **Default effort** and **Default model** set what a new session starts with. They never change a session that is already open.
 
+**Sessions running at once**: how many sessions can run Claude Code at the same time, 30 by default, any whole number from 1 to 999. Chats, routines and Bots all count. It applies to the next chat you start, with no restart. A lower number stops nothing that is running; new sessions can start once enough have closed. Each running session is its own Claude Code process and uses memory.
+
 ## Connecting your own model
 
 On **Providers**, **Chat models** offers your **Claude Code sign-in** and models or routing

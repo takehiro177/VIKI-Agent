@@ -297,7 +297,7 @@ import {
 } from "./state/editors";
 import type { ExcerptApi, VaultExcerptPart } from "./state/excerptApi";
 import { observeGit } from "./state/git";
-import { liveSessionIds } from "./state/live";
+import { liveSessionIds, maxLiveFrom } from "./state/live";
 import {
   commitBack,
   type NavigationContext,
@@ -1907,6 +1907,7 @@ export function App({
         ? {
             api: rootsApi,
             onStartSession: (root) => startSessionInRef.current(root),
+            onRaiseLimit: () => openLimitSettingRef.current(),
           }
         : undefined,
     [rootsApi],
@@ -2217,6 +2218,17 @@ export function App({
   // can still be refused and so proves nothing on its own about the count.
   const [toastOpen, setToastOpen] = useState(false);
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
+  // Set by `openLimitSetting` below for `SettingsView` to focus once the field it names
+  // actually renders; cleared by that view's own `onFocusKeyUsed` once it does. Scoped to the
+  // one navigation that set it by `limitFocusNav` below — without that, a key set while the
+  // document is still loading would survive a page change or a trip out of Settings and fire
+  // later, focus and scroll jumping on a visit that never asked for either.
+  const [limitFocusKey, setLimitFocusKey] = useState<string | null>(null);
+  // The `nav` object `limitFocusKey` was set under (every `navigate()` call, including a page
+  // change within Settings — `onPage` below — produces a new one). Read only alongside `nav`
+  // at render time, never by itself: a stale key under a `nav` no longer current is the same as
+  // no key at all.
+  const limitFocusNav = useRef<Navigation | null>(null);
 
   // The sessions THIS window asked the server to start eagerly, which it does for a brand-new
   // id and never for an existing transcript. They hold a slot from the click, not from the
@@ -2227,6 +2239,9 @@ export function App({
   // installed once and this must still call the freshest `handleNewSession`, which closes over
   // `liveIds` and changes identity every render.
   const newSessionRef = useRef<() => void>(() => {});
+  // `workbenchRoots` below is memoized by `rootsApi` alone, so its `onRaiseLimit` reaches this
+  // render's `navigate` and focus-setting the same way `onStartSession` reaches `startSessionInRef`.
+  const openLimitSettingRef = useRef<() => void>(() => {});
   // The same pattern for the two shortcuts: Ctrl+, runs one command, Escape leaves a view and
   // reports whether it did anything (so the key is only swallowed when it was).
   const commandRef = useRef<(id: CommandId) => void>(() => {});
@@ -2935,7 +2950,7 @@ export function App({
     complete: listingReady && !metadata.loading && metadata.error === null,
   });
   const liveIds = liveSessionIds(appSnapshot, startedHereRef.current);
-  const maxLiveSessions = appSnapshot.maxLiveSessions ?? 3;
+  const maxLiveSessions = maxLiveFrom(shellSnapshot.settings, appSnapshot.maxLiveSessions);
   // Tells a missing record apart from an actually-gone transcript: a record whose session was
   // only ever prepared for a profile launch still answers `inspect` at 200 with `started`
   // false. A started one answers 200 too, but with its transcript gone it can never reopen. A
@@ -4462,6 +4477,17 @@ export function App({
     return true;
   }
 
+  /** The toast's, the error card's and the Workbench's own "Change limit": Settings › Chat with
+   * the live-session field focused. A cancelled unsaved-work prompt leaves the toast and the
+   * focus key alone, exactly as `navigate` already does for every other caller. */
+  function openLimitSetting(): void {
+    if (!navigate({ view: "settings", page: "chat" })) return;
+    setToastOpen(false);
+    limitFocusNav.current = currentNavigation.current;
+    setLimitFocusKey("chat.max_live_sessions");
+  }
+  openLimitSettingRef.current = openLimitSetting;
+
   function showBot(botId: string | null): boolean {
     // A profile editor can be replaced without changing the view or selected Bot.
     if (
@@ -5706,7 +5732,17 @@ export function App({
       (id !== null && archivingNow.current.has(id)) ||
       (id === null && (sessionsBlocked || liveIds.size >= maxLiveSessions))
     ) {
-      setLauncherNotice(LAUNCHER_SEND_UNCONFIRMED);
+      // The limit alone, with nothing else wrong — the socket open, no id to miss and no other
+      // refusal — gets the full sentence (the number and the way out); every other refusal here,
+      // a dropped socket included, keeps the generic "didn't confirm" line.
+      setLauncherNotice(
+        viki.store.getSnapshot().status === "open" &&
+          id === null &&
+          !sessionsBlocked &&
+          liveIds.size >= maxLiveSessions
+          ? t("shell.limit.full")
+          : LAUNCHER_SEND_UNCONFIRMED,
+      );
       return false;
     }
     if (id === null) {
@@ -6024,6 +6060,7 @@ export function App({
           <ErrorCard
             data={view.error}
             // Submitted-text recovery below lets the user inspect uncertain attempts first.
+            onRaiseLimit={openLimitSetting}
           />
         ) : null}
         {view.error?.code === "not_logged_in" && signIn ? <SignInStrip api={signIn} /> : null}
@@ -6943,6 +6980,9 @@ export function App({
           page={nav.page}
           onPage={(page) => navigate({ page })}
           onNavigate={goBack}
+          // Stale once `nav` has moved past the navigation that set it — see limitFocusNav.
+          focusKey={nav === limitFocusNav.current ? limitFocusKey : null}
+          onFocusKeyUsed={() => setLimitFocusKey(null)}
         >
           {settingsPage()}
         </SettingsView>
@@ -8951,6 +8991,7 @@ export function App({
               maxLiveSessions={maxLiveSessions}
               onClose={requestClose}
               onDismiss={() => setToastOpen(false)}
+              onRaiseLimit={openLimitSetting}
             />
           ) : null
         }

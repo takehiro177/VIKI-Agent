@@ -4,7 +4,7 @@ Chats are Claude Code conversations you start, answer and organize from the left
 
 ## Start a chat
 
-Select **New session** at the top of the left rail, or press `Alt`+`N` (also `Ctrl`+`Shift`+`O`, or `⌘`+`Shift`+`O` on macOS). Type your message and press `Enter`; press `Shift`+`Enter` for a new line. Type `/` to pick a command or skill. Press `↑` in an empty message box to recall your last message. You can also paste or drop an image onto the chat bar. Past 8 chats running at once, VIKI Agent says: "You can run at most 8 sessions at the same time. Close one, then send again."
+Select **New session** at the top of the left rail, or press `Alt`+`N` (also `Ctrl`+`Shift`+`O`, or `⌘`+`Shift`+`O` on macOS). Type your message and press `Enter`; press `Shift`+`Enter` for a new line. Type `/` to pick a command or skill. Press `↑` in an empty message box to recall your last message. You can also paste or drop an image onto the chat bar. VIKI Agent runs up to 30 sessions at once by default; chats, routines and Bots all count. To change that, set **Sessions running at once** in Settings › Chat to any whole number from 1 to 999. At the limit, starting another chat lists the running ones so you can close one, and **Change limit** opens that setting.
 
 ## Send, steer and stop
 

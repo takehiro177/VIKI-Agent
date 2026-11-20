@@ -22,3 +22,19 @@ test("a row's dot is ringed by default and filled while writing", () => {
   const writing = ruleIn(css, ".toast-row-dot-writing");
   expect(writing).toMatch(/background:\s*var\(--or\)/);
 });
+
+test(".toast stays the one scroller, bounded by its own pane, not a flex column", () => {
+  const toast = ruleIn(css, ".toast");
+  expect(toast).toMatch(/max-height:\s*calc\(100cqh - 112px\)/);
+  expect(toast).toMatch(/overflow-y:\s*auto/);
+  expect(toast).not.toMatch(/display:\s*flex/);
+  expect(toast).not.toMatch(/flex-direction:\s*column/);
+});
+
+test(".toast-rows has no overflow rule of its own; the toast above it is the only scroller", () => {
+  const rows = ruleIn(css, ".toast-rows");
+  expect(rows).not.toMatch(/overflow-y/);
+  expect(rows).not.toMatch(/overscroll-behavior/);
+  expect(rows).not.toMatch(/max-height/);
+  expect(rows).not.toMatch(/min-height/);
+});

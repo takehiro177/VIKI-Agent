@@ -276,6 +276,12 @@ PROTOCOL_MISMATCH = 4406
 RESYNC_REQUIRED = 4410
 MAX_SOCKET_CONNECTIONS = 8
 MAX_SOCKET_COMMANDS = 32
+# In-flight `session.open` and `history.more` tasks per socket, checked against this alone and
+# left out of MAX_SOCKET_COMMANDS and MAX_APP_SOCKET_COMMANDS: on each connect a window
+# re-subscribes every chat it tracks at once (`socket.ts` `dial`) and asks each chat with no
+# history yet for its first page as it syncs (`state/viki.ts`), and `chat.max_live_sessions`
+# goes up to 999.
+MAX_SOCKET_OPENS = 1024
 MAX_APP_SOCKET_COMMANDS = 64
 MAX_SOCKET_RECEIPTS = 1024
 MAX_OUTBOUND_BYTES = 4 << 20
@@ -754,6 +760,7 @@ def create_app(
     magpie = Magpie(config.data_dir, host=window_host, opener=opener)
     hub = _VaultHub(live=lambda: [actor.session_id for actor in manager.live()])
     background: set[asyncio.Task[None]] = set()
+    opening: set[asyncio.Task[None]] = set()  # every socket's MAX_SOCKET_OPENS tasks, also here
     socket_slots = anyio.CapacityLimiter(MAX_SOCKET_CONNECTIONS)
     draft_workers: set[asyncio.Task[Any]] = set()
     command_workers: set[asyncio.Task[Any]] = set()
@@ -809,6 +816,8 @@ def create_app(
     manager.bind_assets(assets.resolve)
     plan_limits = PlanLimits()
     manager.bind_limits(plan_limits.observe)
+    if settings is not None:
+        manager.bind_max_live(settings.max_live_sessions)
     catalog.bind_history_media(assets.find_by_digest)
     catalog.bind_artifacts()
 
@@ -1573,6 +1582,7 @@ def create_app(
         subs: dict[str, Callable[[], None]] = {}
         subscriptions: dict[str, str] = {}
         local_tasks: set[asyncio.Task[None]] = set()
+        open_tasks: set[asyncio.Task[None]] = set()
         receipts: dict[str, tuple[str, Envelope | None]] = {}
 
         def require_resync() -> None:
@@ -2015,10 +2025,18 @@ def create_app(
                         await websocket.close(code=RESYNC_REQUIRED)
                         break
                     receipts[command_id] = (fingerprint, None)
-                if (
-                    len(local_tasks) >= MAX_SOCKET_COMMANDS
-                    or len(background) >= MAX_APP_SOCKET_COMMANDS
-                ):
+                # A connect's burst of opens and first history asks passes MAX_SOCKET_COMMANDS
+                # once many chats run, so both have their own bound (MAX_SOCKET_OPENS).
+                syncing = type_ in ("session.open", "history.more")
+                if syncing:
+                    tasks, full = open_tasks, len(open_tasks) >= MAX_SOCKET_OPENS
+                else:
+                    tasks = local_tasks
+                    full = (
+                        len(local_tasks) >= MAX_SOCKET_COMMANDS
+                        or len(background) - len(opening) >= MAX_APP_SOCKET_COMMANDS
+                    )
+                if full:
                     if "command_id" in msg:
                         result = receipt(msg, "rejected", "overloaded")
                         receipts[msg["command_id"]] = (receipts[msg["command_id"]][0], result)
@@ -2028,8 +2046,11 @@ def create_app(
                         break
                     continue
                 task = asyncio.create_task(dispatch(type_, msg))
-                local_tasks.add(task)
-                task.add_done_callback(local_tasks.discard)
+                tasks.add(task)
+                task.add_done_callback(tasks.discard)
+                if syncing:
+                    opening.add(task)
+                    task.add_done_callback(opening.discard)
                 _track(task)
         finally:
             closed = True

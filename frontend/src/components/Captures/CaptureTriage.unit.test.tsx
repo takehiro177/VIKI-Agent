@@ -427,7 +427,11 @@ describe("CaptureTriage: suggestion bar", () => {
 
 describe("CaptureTriage: failed runs", () => {
   it.each([
-    ["too_many_sessions", "No free chat slot. Close a chat and try again.", false],
+    [
+      "too_many_sessions",
+      "No free session slot. Close a session or raise the limit in Settings › Chat, then try again.",
+      false,
+    ],
     ["deadline", "VIKI did not answer within 5 minutes.", true],
     [
       "no_suggestions",

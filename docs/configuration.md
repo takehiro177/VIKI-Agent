@@ -94,6 +94,16 @@ VIKI Agent uses the normal Claude Code configuration.
 - **Inherited variables:** VIKI Agent starts Claude Code without inherited `ANTHROPIC_*` and
   `CLAUDE_CODE_*` variables, so set an API key or provider in Claude Code's own settings.
 
+### Sessions running at once
+
+**Sessions running at once** in **Settings › Chat** controls how many sessions can run Claude Code
+at the same time, 30 by default, any whole number from 1 to 999. Chats, routines and Bots all
+count. The setting applies to the next chat you start, with no restart. A lower number stops
+nothing that is running; new sessions can start once enough have closed. Each running session is
+its own Claude Code process and uses memory. The setting is stored as `chat.max_live_sessions` in
+the app settings document. An older VIKI Agent keeps the key but ignores it and runs at its own
+limit of 8.
+
 ### Where VIKI Agent looks for Claude Code
 
 VIKI Agent does not install or modify Claude Code; it only looks for it. Without

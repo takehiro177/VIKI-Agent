@@ -26,9 +26,7 @@ does not open on any OS, run `claude auth login` yourself in a terminal.
 
 ## A chat will not start or send
 
-VIKI Agent runs at most 8 Claude Code chats at once. Starting or sending in a ninth shows
-"You can run at most 8 sessions at the same time. Close one, then send again." Close a
-running chat, then try again.
+VIKI Agent runs at most 30 Claude Code sessions at once unless you change **Sessions running at once** in Settings › Chat. At the limit, starting or sending shows "You can run at most 30 sessions at the same time. Close one, or raise the limit in Settings › Chat, then send again.", with your limit in place of 30. Close a running chat, or select **Change limit** and raise the number, then try again.
 
 ## Connection and windows
 

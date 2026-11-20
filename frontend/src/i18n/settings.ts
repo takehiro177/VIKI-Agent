@@ -121,6 +121,10 @@ export const catalog = defineCatalog({
     "settings.key.chat_other_sign_in.label": "Let Claude Code use its other sign-in methods",
     "settings.key.chat_other_sign_in.desc":
       "On by default: chats, routines and Bots use the sign-in your Claude Code is set up with, such as your Claude plan, an API key, an Anthropic Console login or a cloud provider, and that account is billed. When off, chats start only on your Claude subscription sign-in, and a chat that would bill another account does not start. Set your sign-in in Claude Code's own settings: VIKI Agent does not pass ANTHROPIC_ or CLAUDE_CODE_ variables from your shell, such as ANTHROPIC_API_KEY, to Claude Code. Model connections are not affected.",
+    "settings.key.chat_max_live_sessions.label": "Sessions running at once",
+    "settings.key.chat_max_live_sessions.desc":
+      "How many sessions can run Claude Code at the same time, from 1 to 999. Each running session is its own Claude Code process and uses memory. Chats, routines and Bots all count. A lower number stops nothing that is running; new sessions can start once enough have closed.",
+    "settings.number.range": "Enter a whole number from {min} to {max}.",
 
     "settings.value.chat_default_mode.acceptEdits": "Accept edits",
     "settings.value.chat_default_mode.auto": "Auto",

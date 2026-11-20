@@ -30,7 +30,7 @@ const OPEN_CHAT_REASONS = new Set(["deadline", "no_suggestions", "cancelled", "e
 function failureText(reason: string | null): string {
   switch (reason) {
     case "too_many_sessions":
-      return "No free chat slot. Close a chat and try again.";
+      return "No free session slot. Close a session or raise the limit in Settings › Chat, then try again.";
     case "deadline":
       return "VIKI did not answer within 5 minutes.";
     case "no_suggestions":
