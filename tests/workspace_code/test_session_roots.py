@@ -473,6 +473,7 @@ def test_lookup_store_failures_answer_nothing_and_log_no_id(
     roots = env.roots
     with caplog.at_level(logging.WARNING, logger="viki_agent.code.session_roots"):
         assert roots.root_of(SESSION) is None
-        assert roots.transcript_roots() == {}
-    assert len(caplog.records) == 2
+        with pytest.raises(StateError):
+            roots.transcript_roots()
+    assert len(caplog.records) == 1
     assert all(SESSION not in record.getMessage() for record in caplog.records)

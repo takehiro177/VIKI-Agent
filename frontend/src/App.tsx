@@ -346,7 +346,12 @@ import {
 } from "./state/rows";
 import { groupRuns, runElapsed, runKey } from "./state/runGroups";
 import { useCardArrivals, useRunNotifications } from "./state/runNotifications";
-import { missingRecords, organizedSessions, sessionLabel } from "./state/sessionOrganization";
+import {
+  isArchiveOnly,
+  missingRecords,
+  organizedSessions,
+  sessionLabel,
+} from "./state/sessionOrganization";
 import { codeFolderOf, folderLabel, noteRoot, refreshRoots, useRoots } from "./state/sessionRoots";
 import { createShellStore, vaultSurfaces } from "./state/shell";
 import type { SkillProposalsApi } from "./state/skillProposalsApi";
@@ -380,6 +385,14 @@ import "./styles/app.css";
  * load: reading every missing record's launch would scale with however many labels this app
  * happens to still hold. */
 const MAX_MISSING_INSPECT = 8;
+
+/** Caps how many archive-only missing records (`isArchiveOnly`: nothing but the Archive mark)
+ * this app inspects, and deletes on a 404 `not_found`, in one page load. A budget of their own,
+ * so they never take a labelled record's inspect; larger, because such a label is cleared
+ * rather than listed, and Claude Code removing old transcripts can leave many at once; still
+ * bounded, because each one costs an inspect and a DELETE, sent one at a time. One past it stays
+ * listed until a later page load. */
+const MAX_ARCHIVE_ONLY_CLEARS = 64;
 
 /** Match the encrypted draft service's UTF-8 body limit before starting a target. */
 const TOO_LONG_NOTE =
@@ -2925,49 +2938,116 @@ export function App({
   const maxLiveSessions = appSnapshot.maxLiveSessions ?? 3;
   // Tells a missing record apart from an actually-gone transcript: a record whose session was
   // only ever prepared for a profile launch still answers `inspect` at 200 with `started`
-  // false. A started one answers 200 too, but with its transcript gone it can never reopen.
-  // Each id is inspected once, ever, in this page load (a failed read is final too), one at a
+  // false. A started one answers 200 too, but with its transcript gone it can never reopen. A
+  // 404 `not_found` says no profile session has the id (server.py's `inspect_profile_session`),
+  // so it is neither a draft nor a Bot chat. Two budgets per page load: labelled records get
+  // MAX_MISSING_INSPECT inspects; archive-only ones (`isArchiveOnly`) get
+  // MAX_ARCHIVE_ONLY_CLEARS, queued after them, and each is deleted quietly only on that 404
+  // while the latest render still has its id in `missing` (`missingIdsNow`). Any other answer,
+  // a failed delete, or no budget left keeps it (`missingKept`): listed like any other record.
+  // Each id is queued at most once in this page load (a failed read is final too), one at a
   // time: the profile routes share a small limiter that answers a burst with 429.
   const missingInspectedIds = useRef<Set<string>>(new Set());
+  const missingClearIds = useRef<Set<string>>(new Set());
+  const missingKeptIds = useRef<Set<string>>(new Set());
   const missingInspectRef = useRef<{
     signal: AbortSignal;
     queue: string[];
     running: boolean;
   } | null>(null);
+  // Written on every render, as `lastListingReady` is: an answer that arrives renders later
+  // checks the id against the newest `missing`, not the one its read started from.
+  const missingIdsNow = useRef<ReadonlySet<string>>(new Set());
+  missingIdsNow.current = new Set(missing.map((record) => record.session_id));
   const [missingDrafts, setMissingDrafts] = useState<ReadonlySet<string>>(new Set());
+  const [missingKept, setMissingKept] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
     const controller = new AbortController();
     missingInspectRef.current = { signal: controller.signal, queue: [], running: false };
     missingInspectedIds.current = new Set();
+    missingClearIds.current = new Set();
+    missingKeptIds.current = new Set();
     return () => controller.abort();
   }, []);
   useEffect(() => {
     const run = missingInspectRef.current;
     if (!profileLaunchApi || !run) return;
     for (const record of missing) {
-      if (missingInspectedIds.current.size >= MAX_MISSING_INSPECT) break;
-      if (missingInspectedIds.current.has(record.session_id)) continue;
-      missingInspectedIds.current.add(record.session_id);
-      run.queue.push(record.session_id);
+      const id = record.session_id;
+      if (isArchiveOnly(record) || missingInspectedIds.current.has(id)) continue;
+      if (missingInspectedIds.current.size >= MAX_MISSING_INSPECT) continue;
+      missingInspectedIds.current.add(id);
+      run.queue.push(id);
     }
+    const kept: string[] = [];
+    for (const record of missing) {
+      const id = record.session_id;
+      if (
+        !isArchiveOnly(record) ||
+        missingClearIds.current.has(id) ||
+        missingKeptIds.current.has(id)
+      )
+        continue;
+      // Past its budget, or already read as a labelled record (an Unpin since left only the
+      // Archive mark): kept, not read again. missingKeptIds remembers it too, so a kept id is
+      // dispatched to setMissingKept once, not on every commit this page load.
+      if (
+        missingClearIds.current.size >= MAX_ARCHIVE_ONLY_CLEARS ||
+        missingInspectedIds.current.has(id)
+      ) {
+        kept.push(id);
+        missingKeptIds.current.add(id);
+        continue;
+      }
+      missingClearIds.current.add(id);
+      run.queue.push(id);
+    }
+    if (kept.length > 0)
+      setMissingKept((prev) => {
+        const fresh = kept.filter((id) => !prev.has(id));
+        return fresh.length === 0 ? prev : new Set([...prev, ...fresh]);
+      });
     if (run.running) return;
     run.running = true;
     void (async () => {
       while (!run.signal.aborted) {
         const id = run.queue.shift();
         if (id === undefined) break;
+        let notFound = false;
         try {
           const answer = await profileLaunchApi.inspect(id, run.signal);
           if (answer.bot_memory && !run.signal.aborted) markBotSession(id, answer.profile_id);
           if (answer.started === false && !run.signal.aborted)
             setMissingDrafts((prev) => new Set(prev).add(id));
-        } catch {
-          // A 404 not_found (an ordinary missing record) or any other failure: not a draft.
+        } catch (cause) {
+          // Any failure: not a draft. Only a 404 not_found also says no profile session has it.
+          notFound =
+            cause instanceof ProfileLaunchApiError &&
+            cause.status === 404 &&
+            cause.code === "not_found";
         }
+        if (!missingClearIds.current.has(id)) continue;
+        const cleared =
+          notFound &&
+          !run.signal.aborted &&
+          missingIdsNow.current.has(id) &&
+          (await metadata.clearArchiveOnly(id));
+        if (!cleared && !run.signal.aborted) setMissingKept((prev) => new Set(prev).add(id));
       }
       run.running = false;
     })();
-  }, [missing, profileLaunchApi, markBotSession]);
+  }, [missing, profileLaunchApi, markBotSession, metadata.clearArchiveOnly]);
+  // The rail's own list: an archive-only record shows only once kept or a confirmed draft, so
+  // one still waiting for its answer never flashes up and a cleared one never shows. Without
+  // profileLaunchApi nothing is read or cleared, and every record shows.
+  const missingListed = profileLaunchApi
+    ? missing.filter(
+        (record) =>
+          !isArchiveOnly(record) ||
+          missingDrafts.has(record.session_id) ||
+          missingKept.has(record.session_id),
+      )
+    : missing;
   const agents = rails?.agents ?? [];
   const running = rosterRunning(agents, runningAgents(appSnapshot));
   const agentsCount = hereNowLabel(online, running);
@@ -7547,7 +7627,7 @@ export function App({
             </details>
           ) : null}
           <MissingSessions
-            records={missing}
+            records={missingListed}
             onUnpin={handleMissingUnpin}
             onRemove={(sessionId) => void handleMissingRemove(sessionId)}
             onOpen={openSidebarSession}

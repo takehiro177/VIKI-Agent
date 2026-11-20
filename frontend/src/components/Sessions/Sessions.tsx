@@ -14,6 +14,7 @@ import {
   SessionMetadataError,
   type SessionMetadataPatch,
 } from "../../clients/conversations/sessionMetadataApi";
+import { isArchiveOnly } from "../../state/sessionOrganization";
 import { RootLabel } from "../RootLabel/RootLabel";
 import "./Sessions.css";
 
@@ -38,6 +39,12 @@ export interface SessionMetadataStore {
   reload(): Promise<void>;
   update(sessionId: string, patch: SessionMetadataPatch): Promise<SessionMetadata | null>;
   remove(sessionId: string): Promise<boolean>;
+  /** Delete a label only when `isArchiveOnly` holds for its freshest known row, quietly: it
+   * never sets `error`. False with no request when there is no api, no known row, the row is
+   * not archive-only, or it is already pending; false if the delete throws, keeping the row;
+   * true once the row is dropped locally, whether the server deleted it or had already lost it
+   * (404). */
+  clearArchiveOnly(sessionId: string): Promise<boolean>;
 }
 
 export function useSessionMetadata(api: SessionMetadataApi | undefined): SessionMetadataStore {
@@ -151,6 +158,28 @@ export function useSessionMetadata(api: SessionMetadataApi | undefined): Session
     },
     [api],
   );
+  const clearArchiveOnly = useCallback(
+    async (sessionId: string) => {
+      const row = latest.current.find((item) => item.session_id === sessionId);
+      if (!api || !row || !isArchiveOnly(row) || pendingNow.current.has(sessionId)) return false;
+      pendingNow.current.add(sessionId);
+      setPending(new Set(pendingNow.current));
+      try {
+        await api.remove(sessionId, row.revision);
+        removedIds.current.set(sessionId, generation.current);
+        const updated = latest.current.filter((item) => item.session_id !== sessionId);
+        latest.current = updated;
+        setSessions(updated);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        pendingNow.current.delete(sessionId);
+        setPending(new Set(pendingNow.current));
+      }
+    },
+    [api],
+  );
   return {
     sessions,
     loading: loading || readApi.current !== api,
@@ -159,6 +188,7 @@ export function useSessionMetadata(api: SessionMetadataApi | undefined): Session
     reload,
     update,
     remove,
+    clearArchiveOnly,
   };
 }
 

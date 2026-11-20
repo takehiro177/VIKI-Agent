@@ -212,11 +212,10 @@ class SessionRoots:
         return Path(row["display_root"]) if row is not None else None
 
     def transcript_roots(self) -> dict[str, Path]:
-        try:
-            rows, _ = self._store.list_session_roots(MAX_ROOT_ROWS)
-        except StateError as exc:
-            logger.warning("session roots unreadable: %s", exc.code)
-            return {}
+        """Every recorded session's id to its cwd, for the catalog's listing and search.
+        Raises StateError on an unreadable store: the catalog is what decides what that means
+        for a listing, and logs about it; this layer does not."""
+        rows, _ = self._store.list_session_roots(MAX_ROOT_ROWS)
         return {row["session_id"]: Path(row["display_root"]) for row in rows}
 
     # --- removal blocking --------------------------------------------------------------------

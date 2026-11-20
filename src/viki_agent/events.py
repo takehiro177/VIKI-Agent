@@ -154,7 +154,8 @@ class SearchHit:
 @dataclass(frozen=True, kw_only=True)
 class SessionsResult:
     """The sessions list as an observation: `partial` when files went unread, `error`
-    when the project folder itself could not be listed. An unknown count is never zero."""
+    when the project folder itself could not be listed, or the recorded session roots could not
+    be read (then only the vault's own rows travel). An unknown count is never zero."""
 
     sessions: list[SessionRow]
     state: Literal["ready", "partial", "error"]
