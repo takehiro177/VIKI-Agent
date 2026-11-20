@@ -405,7 +405,7 @@ def test_failed_fork_save_replays_its_error_and_preserves_its_source_on_retry(
         command = _mutate_v2(ws, fork_target, "turn.send", text="retry")
         assert [recv(ws, timeout=0.05)["seq"] for _ in range(3)] == [2, 3, 4]
         assert _receipt_v2(ws, command)["data"]["status"] == "applied"
-        assert len(launches) == 1 and launches[0] == Launch(fork_id, fork_of=NEW)
+        assert len(launches) == 1 and launches[0] == Launch(fork_id, fork_of=NEW, agent_cli=True)
 
 
 def test_open_url_opens_an_uppercase_scheme_because_the_renderer_draws_it(tmp_path: Path) -> None:
@@ -1589,6 +1589,7 @@ def _p1_app(
     cli_version: str = "",
     prepare: Callable[[WorkspaceService], None] = lambda _spaces: None,
     make_driver: Callable[..., Any] | None = None,
+    agent_cli: Path | None = None,
 ) -> Starlette:
     """create_app with every optional service wired (settings, workspaces, bootstrap, readiness,
     checks, diagnostics, data), the way the launcher wires them.
@@ -1640,6 +1641,7 @@ def _p1_app(
         static_dir=None,
         settings=settings,
         workspaces=spaces,
+        agent_cli=agent_cli,
         bootstrap=VaultBootstrap(
             spaces, resources=tmp_path / "resources", home=tmp_path / "profile"
         ),

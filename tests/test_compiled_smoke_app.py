@@ -11,6 +11,7 @@ that, that the script refuses at once when the port is already taken.
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
 import secrets
@@ -20,11 +21,12 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from tests.stand_in_browser import ARGV_FILE_NAME, HANG_GUARD_S, QUIT_FILE_NAME
-from viki_agent import winproc
+from viki_agent import agent_cli, winproc
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -223,6 +225,127 @@ def test_stand_in_nuitka_argv_is_minimal_and_never_downloads(tmp_path: Path) -> 
     assert not any("onefile" in arg for arg in argv)
     assert not any("--include-distribution-metadata" in arg for arg in argv)
     assert "--assume-yes-for-downloads" not in argv
+
+
+# --- cli_dispatch_result() --------------------------------------------------------------------
+
+
+def test_cli_dispatch_result_passes_agent_clis_own_no_agent_chat_reply() -> None:
+    """Feeds `cli_dispatch_result` `agent_cli.main`'s own real reply to `status --json` with no
+    VIKI_AGENT_* variable (an empty env) -- AC-10's exact contract -- rather than a hand-written
+    JSON string that could drift from it."""
+    out, err = io.StringIO(), io.StringIO()
+    code = agent_cli.main(["status", "--json"], env={}, out=out, err=err)
+
+    assert compiled_smoke_app.cli_dispatch_result(code, out.getvalue(), err.getvalue()) == (
+        True,
+        "",
+    )
+
+
+def test_cli_dispatch_result_fails_on_the_wrong_exit_code() -> None:
+    out = io.StringIO()
+    agent_cli.main(["status", "--json"], env={}, out=out, err=io.StringIO())
+
+    ok, detail = compiled_smoke_app.cli_dispatch_result(0, out.getvalue(), "")
+
+    assert ok is False
+    assert "expected 5" in detail
+
+
+def test_cli_dispatch_result_fails_on_more_than_one_stdout_line() -> None:
+    out = io.StringIO()
+    agent_cli.main(["status", "--json"], env={}, out=out, err=io.StringIO())
+
+    ok, detail = compiled_smoke_app.cli_dispatch_result(
+        agent_cli.EXIT_NO_KEY, out.getvalue() + out.getvalue(), ""
+    )
+
+    assert ok is False
+    assert "stdout line" in detail
+
+
+def test_cli_dispatch_result_fails_on_invalid_json() -> None:
+    ok, detail = compiled_smoke_app.cli_dispatch_result(agent_cli.EXIT_NO_KEY, "not json\n", "")
+
+    assert ok is False
+    assert "not JSON" in detail
+
+
+def test_cli_dispatch_result_fails_on_the_wrong_error_code() -> None:
+    ok, detail = compiled_smoke_app.cli_dispatch_result(
+        agent_cli.EXIT_NO_KEY, '{"error":{"code":"unreachable"}}\n', ""
+    )
+
+    assert ok is False
+    assert "no_agent_chat" in detail
+
+
+# --- _check_cli_dispatch() -----------------------------------------------------------------
+
+
+def _no_agent_chat_stdout() -> str:
+    """`agent_cli.main`'s own real `status --json` reply with no chat connection (no subprocess
+    involved): what a correctly dispatching binary would print to stdout."""
+    out = io.StringIO()
+    agent_cli.main(["status", "--json"], env={}, out=out, err=io.StringIO())
+    return out.getvalue()
+
+
+def test_check_cli_dispatch_env_points_at_the_temp_folders_with_no_viki_agent_vars(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W8: the dispatch step must never run in the session's own environment -- a temp
+    VIKI_DATA_DIR/HOME/USERPROFILE, a minimal PATH, and no inherited VIKI_AGENT_* -- so a
+    regressed dispatch cannot reach a developer's real data, lock, port or browser."""
+    data_dir, home = tmp_path / "data", tmp_path / "home"
+    home.mkdir()
+    stdout = _no_agent_chat_stdout()
+    captured: dict[str, dict[str, str]] = {}
+
+    def fake_run(
+        argv: list[str], *, cwd: Path, env: dict[str, str] | None = None
+    ) -> SimpleNamespace:
+        assert env is not None
+        captured["env"] = env
+        return SimpleNamespace(returncode=agent_cli.EXIT_NO_KEY, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(compiled_smoke_app.winproc, "run", fake_run)
+    monkeypatch.setenv("VIKI_AGENT_URL", "http://127.0.0.1:1/api/agent/x")
+    monkeypatch.setenv("VIKI_AGENT_KEY", "k" * 20)
+
+    ok, detail = compiled_smoke_app._check_cli_dispatch(tmp_path / "app.exe", data_dir, home)
+
+    assert (ok, detail) == (True, "")
+    env = captured["env"]
+    assert env["VIKI_DATA_DIR"] == str(data_dir)
+    assert env["HOME"] == str(home) == env["USERPROFILE"]
+    assert env["PATH"] == compiled_smoke_app.system_path()
+    assert not any(key.startswith("VIKI_AGENT_") for key in env)
+
+
+def test_check_cli_dispatch_fails_when_the_temp_data_dir_is_left_non_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W8: even a correct exit/stdout must not pass once something wrote into the temp data
+    dir -- the one proof that the dispatch really ran before any start-up."""
+    data_dir, home = tmp_path / "data", tmp_path / "home"
+    home.mkdir()
+    stdout = _no_agent_chat_stdout()
+
+    def fake_run(
+        argv: list[str], *, cwd: Path, env: dict[str, str] | None = None
+    ) -> SimpleNamespace:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        (data_dir / "store.sqlite3").write_bytes(b"")  # a regressed dispatch starts here
+        return SimpleNamespace(returncode=agent_cli.EXIT_NO_KEY, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(compiled_smoke_app.winproc, "run", fake_run)
+
+    ok, detail = compiled_smoke_app._check_cli_dispatch(tmp_path / "app.exe", data_dir, home)
+
+    assert ok is False
+    assert "not empty" in detail
 
 
 async def test_the_posix_wrapper_runs_its_script_outside_the_isolation_probe(

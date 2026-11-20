@@ -438,6 +438,31 @@ Claude Code instead. Profiles inherit those servers too.
 > [!IMPORTANT]
 > Keep credentials out of profile definitions.
 
+### Ask a chat to change settings
+
+A chat you opened in the VIKI Agent window can read and change your settings, add and test
+routines, and create Bots, if you ask it to, by running its own command. It answers four kinds of
+request: **status**, **settings**, **routines** and **bots**.
+
+- **New vaults:** **Start with VIKI** ships the skill that teaches a chat to use this. Add it to
+  an existing vault yourself for the same behavior there.
+- **Permission:** running it is an ordinary tool call, so it shows the chat's usual permission
+  card in every mode except **Auto**.
+- **What changes right away:** how the window looks (theme, density, font scale, reduced
+  motion), the rails' and launcher's layout, the code editor's font and wrap, a Bot's color and
+  icon, and read-aloud speed and voice.
+- **Everything else waits for your Apply:** every other setting, and turning a routine on, adds
+  a banner naming the chat and the exact change — a setting's old and new value, or a routine's
+  schedule, profile, workspace and prompt — with **Apply** and **Reject**. **Reject**, or
+  leaving it for 10 minutes, changes nothing.
+- **Testing a routine:** add it, then test it once before turning it on, and wait for that run to
+  finish before enabling it. Still a draft once the run has ended means the test failed.
+- **Which chats can do this:** a chat you opened in the window. A chat VIKI starts and runs on
+  its own — a Decision mission, an inbox suggestion run, a messaging bridge's conversation — gets
+  none of its own while VIKI runs it, but behaves like any other chat you opened once you reopen
+  it from the window. A profile chat, a Bot's chat or task thread, and a routine run never do,
+  reopened or not.
+
 ## Read and organize conversations
 
 The left rail lists sessions; opening an old session resumes its conversation.

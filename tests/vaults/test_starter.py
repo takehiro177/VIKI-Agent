@@ -47,6 +47,7 @@ SKILLS = frozenset(
         "retro",
         "kanban",
         "standup",
+        "viki-agent",
     }
 )
 MEMORY_FILES = ("system/memory/user.md", "system/memory/preferences.md", "system/memory/lessons.md")
@@ -74,7 +75,7 @@ def _resource_files() -> dict[str, str]:
 
 
 def test_the_resource_tree_is_exactly_the_starter_set() -> None:
-    assert len(starter.FILES) == len(set(starter.FILES)) == 38
+    assert len(starter.FILES) == len(set(starter.FILES)) == 39
     found = set(_resource_files())
     assert found == {starter.source_of(target) for target in starter.FILES}
     assert all(".claude" not in Path(name).parts for name in found)
@@ -280,7 +281,7 @@ def test_welcome_and_moc_name_exactly_the_skill_set() -> None:
     moc = sources["50-maps/Second Brain MOC.md"]
     section = re.search(r"## Skills\n(.*?)\n\n", moc, re.DOTALL)
     assert section is not None
-    assert frozenset(re.findall(r"^- /(\w+)", section.group(1), re.MULTILINE)) == SKILLS
+    assert frozenset(re.findall(r"^- /([\w-]+)", section.group(1), re.MULTILINE)) == SKILLS
 
 
 @pytest.mark.parametrize("name", ["Welcome.md", "system/log.md"])

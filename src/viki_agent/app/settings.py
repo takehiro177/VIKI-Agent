@@ -784,6 +784,15 @@ def _validate_change(key: str, value: object) -> object | None:
     raise _FieldError("invalid_type")  # pragma: no cover - every KEYS entry has a known kind
 
 
+def check_change(key: str, value: object) -> str | None:
+    """The field code `_validate_change` refuses `value` for `key` with, or None when valid."""
+    try:
+        _validate_change(key, value)
+    except _FieldError as exc:
+        return exc.code
+    return None
+
+
 def _stored_value(key: str, raw: object) -> object | None:
     try:
         return _validate_change(key, raw)

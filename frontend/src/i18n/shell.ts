@@ -27,6 +27,17 @@ export const catalog = defineCatalog({
     "shell.readiness.signed_out": "Not signed in to Claude Code; sessions cannot start.",
     "shell.readiness.storage": "The app store is not ready; sessions cannot start.",
 
+    "shell.agent_changes.region": "Changes waiting for you",
+    "shell.agent_changes.change": "Chat “{title}” asks to change {key} from {from} to {to}.",
+    "shell.agent_changes.reset": "Chat “{title}” asks to reset {key}.",
+    "shell.agent_changes.routine": "Chat “{title}” asks to turn on routine “{name}”.",
+    "shell.agent_changes.shortened": "{value} (shortened)",
+    "shell.agent_changes.schedule": "Runs: {when}.",
+    "shell.agent_changes.profile": "Profile: {name}.",
+    "shell.agent_changes.workspace": "Workspace: {name}.",
+    "shell.agent_changes.prompt_truncated":
+      "Showing the first 2,000 characters. The full prompt is in Routines.",
+
     "shell.status.claude_signed_out": "claude: signed out",
     "shell.status.claude_outdated": "claude: update needed",
     "shell.status.git_missing": "git: missing",

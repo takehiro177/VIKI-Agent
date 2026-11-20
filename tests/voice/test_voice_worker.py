@@ -820,13 +820,15 @@ def test_only_the_worker_imports_the_engine_and_voice_gpu() -> None:
 
 def test_no_module_imports_a_network_client() -> None:
     # ruff bans all of these but httpx, which is a dev-only test dependency. Its exceptions, as
-    # in ruff: voicebox_http.py's loopback-only calls to the Voicebox app (ADR-047), and
-    # voice_pack_fetch.py's pinned download for the setup child (ADR-048).
+    # in ruff: voicebox_http.py's loopback-only calls to the Voicebox app (ADR-047),
+    # voice_pack_fetch.py's pinned download for the setup child (ADR-048), and agent_cli.py's
+    # loopback-only calls to VIKI Agent's own server (ADR-086).
     clients = ("httpx", "urllib3", "requests", "urllib.request", "http.client")
     allowed = {
         ("voicebox_http.py", "http.client"),
         ("voice_pack_fetch.py", "urllib.request"),
         ("voice_pack_fetch.py", "http.client"),
+        ("agent_cli.py", "http.client"),
     }
     for path in (SRC / "viki_agent").rglob("*.py"):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):

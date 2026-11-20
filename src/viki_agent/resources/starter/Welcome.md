@@ -1,6 +1,6 @@
 # Welcome
 
-This vault was set up from the VIKI starter v5. The assistant `{{viki.assistant_name}}` reads `AGENTS.md` and `.claude/` when a chat starts here.
+This vault was set up from the VIKI starter v6. The assistant `{{viki.assistant_name}}` reads `AGENTS.md` and `.claude/` when a chat starts here.
 
 ## What is here
 - `AGENTS.md` — the persona between its markers, plus the rules. Change the persona in Settings › Instructions and Persona, by hand, or by asking `{{viki.assistant_name}}`.
@@ -8,7 +8,7 @@ This vault was set up from the VIKI starter v5. The assistant `{{viki.assistant_
 - `_templates/` — one template per note type; copy from it rather than inventing structure.
 - `kanban/` — the team's Kanban cards: one card per job; /kanban works a card and /standup summarizes the cards (see Team in `AGENTS.md`).
 - `system/` — empty memory changed only through /retro, the `retro/` folder, and the log.
-- `.claude/agents` and `.claude/skills` — the shipped agents (librarian, curator, connector, researcher, checker) and skills (capture, inbox, daily, weekly, think, research, learn, connect, lint, retro, kanban, standup).
+- `.claude/agents` and `.claude/skills` — the shipped agents (librarian, curator, connector, researcher, checker) and skills (capture, inbox, daily, weekly, think, research, learn, connect, lint, retro, kanban, standup, viki-agent).
 - `.claude/settings.json` — deny rules only, no hooks.
 - `.viki/vault.json` — the vault id, the starter version, and the file fingerprints.
 

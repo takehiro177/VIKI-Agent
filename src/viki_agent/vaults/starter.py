@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 STARTER_NAME = "viki"
-STARTER_VERSION = 5
+STARTER_VERSION = 6
 
 # Write order: every file the starter vault ships, as the destination path a chat session sees.
 FILES: tuple[str, ...] = (
@@ -56,6 +56,7 @@ FILES: tuple[str, ...] = (
     ".claude/skills/retro/SKILL.md",
     ".claude/skills/kanban/SKILL.md",
     ".claude/skills/standup/SKILL.md",
+    ".claude/skills/viki-agent/SKILL.md",
 )
 
 # Folders that ship empty: no FILES entry ever lives under them.

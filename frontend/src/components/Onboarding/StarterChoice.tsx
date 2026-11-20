@@ -19,7 +19,7 @@ const WRITES_BULLETS: readonly string[] = [
   "Home.md, 50-maps/, an empty kanban/ and the folders 00-inbox to 90-archive",
   "_templates/: one template per note type",
   "system/: empty memory files, a retro folder and the log",
-  ".claude/: the librarian, curator, connector, researcher and checker agents, twelve skills, and settings with deny rules only",
+  ".claude/: the librarian, curator, connector, researcher and checker agents, thirteen skills, and settings with deny rules only",
   ".viki/vault.json: the vault's id, the starter version and a fingerprint of each file",
 ];
 
@@ -78,7 +78,7 @@ export function StarterChoice({
         </label>
         <p className="starter-choice-desc">
           A ready second brain: folders, note templates, empty memory, Kanban, five agents and
-          twelve skills, with a persona in AGENTS.md you can change at any time. No hooks. Your
+          thirteen skills, with a persona in AGENTS.md you can change at any time. No hooks. Your
           team's Bots come with it: Chief, Ops, Research, Writer, Engineer, Desk and Checker.
         </p>
       </div>

@@ -92,6 +92,34 @@ Listing connections and saving one make no inference request.
 
 Set up models and connections in **Settings › Providers › Chat models**.
 
+## The viki-agent command in chats
+
+A chat you opened in the VIKI Agent window can run its own `viki-agent` command to read and
+change settings, routines and Bots.
+
+- **Who gets a key:** VIKI Agent issues a new credential to each ordinary chat's Claude process,
+  including on resume, and revokes it when that process closes. A profile chat, a Bot's chat or
+  task thread, and a routine run never get one, reopened or not. A chat VIKI starts and runs on
+  its own — a Decision mission, an inbox suggestion run, a messaging bridge's conversation — gets
+  none of its own either, but reopening its transcript from the window gets it a key like any
+  chat you opened there.
+- **The three variables:** `VIKI_AGENT_URL`, `VIKI_AGENT_KEY` and `VIKI_AGENT_CLI`, set only in
+  that process's own environment. Nothing logs the key, even by accident.
+- **Loopback only:** the command reaches only `127.0.0.1`, on this computer.
+- **Access:** the surface accepts only that chat process's own key, refuses a request carrying
+  an Origin, and accepts no window token.
+- **Credentials stay out of reach:** a request to read or change a credential setting is
+  refused, and the surface leaves it out of every reply.
+- **Apply:** changing how the window looks, its layout, the code editor, a Bot's color or icon,
+  or read-aloud speed and voice takes effect at once. Every other setting, and turning on a
+  routine, waits for your **Apply** in the window; that Apply route accepts only the window's own
+  token, never a chat's. **Reject**, or leaving it, changes nothing.
+- **If it doesn't answer:** a command that times out exits with code 4, and its JSON error code
+  `no_reply` means the request may already have gone through; its own guidance checks `status`
+  before running anything again rather than assuming nothing happened.
+- **Limit:** these levels, and the Apply route above, guard only this one command's surface.
+  Claude Code's own permission rules still decide what every other command in that chat may do.
+
 ## Magpie routing and management
 
 **Open Magpie** starts the bundled Magpie process and its dashboard. Magpie manages its own
