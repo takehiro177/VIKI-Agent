@@ -222,6 +222,10 @@ export function SettingRow({
             event.preventDefault();
             saveNumber(min, max);
           }}
+          // A number input's wheel bump is a scroll the user almost never means, and "Change
+          // limit" scrolls this exact field to the centre, so blurring it sends the wheel to the
+          // page instead of nudging the session limit.
+          onWheel={(event) => event.currentTarget.blur()}
         />
       );
     }

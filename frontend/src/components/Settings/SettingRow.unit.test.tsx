@@ -344,3 +344,14 @@ test("a read-only bounded number field is readOnly and sends nothing", () => {
   fireEvent.blur(input);
   expect(onChange).not.toHaveBeenCalled();
 });
+
+test("a wheel over the focused bounded field blurs it instead of changing its value", () => {
+  const { onChange } = renderBoundedNumber();
+  const input = screen.getByLabelText("Sessions running at once") as HTMLInputElement;
+  input.focus();
+  expect(document.activeElement).toBe(input);
+  fireEvent.wheel(input, { deltaY: -100 });
+  expect(document.activeElement).not.toBe(input);
+  expect(input.value).toBe("30");
+  expect(onChange).not.toHaveBeenCalled();
+});
