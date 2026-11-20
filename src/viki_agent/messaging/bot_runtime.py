@@ -74,8 +74,12 @@ def _name(value: object) -> str:
     raise BotError("corrupt")
 
 
-def _prefix(context: _Context, outcome: Outcome) -> str:
-    return f"{context.name} · Routine {outcome}\nRun: {context.attempt.session_id}\n\n"
+def _head(context: _Context, outcome: Outcome) -> str:
+    return f"{context.name} · Routine {outcome}\n\n"
+
+
+def _tail(context: _Context) -> str:
+    return f"\n\nRun: {context.attempt.session_id}"
 
 
 class BotRuntime:
@@ -261,7 +265,7 @@ class BotRuntime:
             return None
         context.generation, context.sequence = actor.generation, actor.seq
         context.prepared = context.collecting = True
-        reserved = chat_text(_prefix(context, "succeeded") + _SHORTENED)
+        reserved = chat_text(_head(context, "succeeded") + _SHORTENED + _tail(context))
         context.budget = MAX_NOTICE_BYTES - len(reserved.encode("utf-8"))
         return lambda envelope: self._observe(context, envelope)
 
@@ -329,12 +333,12 @@ class BotRuntime:
                 parts.append(char)
                 remaining -= size
             fragment = "".join(parts)
-            prefix = _prefix(context, "succeeded")
+            head, tail = _head(context, "succeeded"), _tail(context)
 
             def fits(length: int) -> bool:
                 body = context.text + (separator + fragment[:length] if length else "")
                 try:
-                    rendered = chat_text(prefix + body + _SHORTENED)
+                    rendered = chat_text(head + body + _SHORTENED + tail)
                 except ValueError:
                     return False
                 return len(rendered.encode("utf-8")) <= MAX_NOTICE_BYTES
@@ -427,7 +431,7 @@ class BotRuntime:
         return True
 
     def _message(self, context: _Context) -> str:
-        prefix = _prefix(context, context.outcome)
+        head, tail = _head(context, context.outcome), _tail(context)
         if context.outcome == "succeeded":
             body = (
                 context.text or "The routine completed. Open VIKI Agent desktop to review the run."
@@ -441,7 +445,7 @@ class BotRuntime:
                 "expired": "The routine reached its deadline.",
             }[context.outcome]
             body += "\nOpen VIKI Agent desktop to review the run."
-        message = prefix + body
+        message = head + body + tail
         if len(chat_text(message).encode("utf-8")) > MAX_NOTICE_BYTES:
             raise BotError("capacity")
         return message

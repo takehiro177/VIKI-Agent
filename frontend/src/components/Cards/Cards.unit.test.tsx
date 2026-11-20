@@ -343,6 +343,39 @@ test("a command or a plan taller than its box says part of it is out of view", (
   }
 });
 
+test("a plan with a Details heading shows the top content and folds the evidence behind a closed disclosure", () => {
+  const { container } = render(
+    <PermissionCard
+      data={permission({
+        kind: "plan",
+        tool: "ExitPlanMode",
+        plan: "### Add a /recall skill\n\nOwner approves this plan.\n\n## Details\n\n- [Steps](https://example.com/x)\n",
+      })}
+      onRespond={vi.fn()}
+      onOpenUrl={vi.fn()}
+    />,
+  );
+  const top = container.querySelector(".card-plan > .md");
+  expect(top?.textContent).toContain("Owner approves this plan.");
+  expect(top?.textContent).not.toContain("Steps");
+  const details = container.querySelector(".card-plan > details.card-plan-details");
+  expect(details?.hasAttribute("open")).toBe(false);
+  expect(details?.querySelector("summary")?.textContent).toBe("Details");
+  expect(details?.querySelector("a")?.getAttribute("href")).toBe("https://example.com/x");
+});
+
+test("a plan with no Details heading renders no disclosure at all", () => {
+  const { container } = render(
+    <PermissionCard
+      data={permission({ kind: "plan", tool: "ExitPlanMode", plan: "Just a plan body." })}
+      onRespond={vi.fn()}
+      onOpenUrl={vi.fn()}
+    />,
+  );
+  expect(container.querySelector(".card-plan-details")).toBeNull();
+  expect(container.querySelector(".card-plan > .md")?.textContent).toContain("Just a plan body.");
+});
+
 test("a question card writes hidden characters out in its header, question, labels and descriptions, and still answers with the label as asked", () => {
   const onAnswer = vi.fn();
   const label = `Inbox${at(0x202e)}`;

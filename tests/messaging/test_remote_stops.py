@@ -374,7 +374,7 @@ async def test_stop_line_is_posted_before_the_reader_closes_the_channel(tmp_path
     bot = module.RemoteBot(channel, rig.manager, rig.approvals, create_actor=rig.create)
     run = asyncio.create_task(bot.run())
     try:
-        assert "startup" in (await take(channel.sent))[0]
+        assert "ready" in (await take(channel.sent))[0]
         channel.entered.clear()
         channel.release.clear()
         bot.disarm("turned_off")

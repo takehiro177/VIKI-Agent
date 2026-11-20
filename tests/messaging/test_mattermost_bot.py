@@ -219,7 +219,7 @@ class Rig:
     async def start(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(module, "posted", self.posted)
         self.run = asyncio.create_task(self.bot.run())
-        assert "startup" in (await take(self.http.sent))[0].lower()
+        assert "ready" in (await take(self.http.sent))[0].lower()
 
     async def chat(self) -> tuple[SessionActor, Driver]:
         self.post("Synthetic prompt")

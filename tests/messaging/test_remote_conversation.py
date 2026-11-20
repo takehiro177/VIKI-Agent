@@ -96,7 +96,7 @@ class Conversation:
 
     async def start(self) -> None:
         self.task = asyncio.create_task(self.bot.run())
-        assert "startup" in (await take(self.channel.sent))[0]
+        assert "ready" in (await take(self.channel.sent))[0]
 
     async def chat(self) -> tuple[SessionActor, Driver]:
         self.channel.post("Synthetic prompt")
@@ -392,7 +392,7 @@ async def test_stop_reason_prefers_the_channel_reason(
         else:
             # Reached ready before the connection drops: state wins over the channel's reason.
             task = asyncio.create_task(bot.run())
-            assert "startup" in (await take(channel.sent))[0]
+            assert "ready" in (await take(channel.sent))[0]
             channel.reason = reason
             channel.incoming.put_nowait(OSError("synthetic connection loss"))
             await task

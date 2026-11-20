@@ -149,7 +149,8 @@ function parseNeeds(text: string): { question: string; options: CardOption[] } {
   return { question: questionLines.join("\n"), options };
 }
 
-function parseDone(text: string): { done: number; total: number } | null {
+/** Exported for CardReader.tsx's Done-when fold label, which needs the same N-of-M count. */
+export function parseDone(text: string): { done: number; total: number } | null {
   let done = 0;
   let total = 0;
   // Not trimmed: a leading space means the item is nested, not top-level, and must not count.
@@ -162,7 +163,8 @@ function parseDone(text: string): { done: number; total: number } | null {
   return total === 0 ? null : { done, total };
 }
 
-function parseVerdict(text: string): "PASS" | "FAIL" | null {
+/** Exported for CardReader.tsx's Check fold label, which needs the same last-Verdict-wins rule. */
+export function parseVerdict(text: string): "PASS" | "FAIL" | null {
   let verdict: "PASS" | "FAIL" | null = null;
   for (const raw of text.split("\n")) {
     const m = VERDICT_RE.exec(raw.trim());

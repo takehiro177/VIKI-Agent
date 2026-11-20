@@ -2402,6 +2402,61 @@ describe("VaultBrowser reader body", () => {
   });
 });
 
+describe("VaultBrowser kanban card reader", () => {
+  // CardReader.unit.test.tsx covers the fold behaviour itself; this only proves VaultBrowser.tsx
+  // routes a kanban/ card to it (and an otherwise-identical non-card note to plain NoteMarkdown).
+  const CARD_TEXT = `---
+type: card
+status: blocked
+---
+
+## Summary
+Ship the thing.
+
+## Needs you
+Ship now?
+
+## Done when
+- [x] one
+- [ ] two
+
+## Handoff
+- 2026-11-20 · engineer · blocked · this card · waits · none
+
+## Check
+Verdict: PASS
+`;
+
+  it("folds a kanban/ card's Done when, Handoff and Check in the reader", async () => {
+    const api = vaultApi({
+      entries: vi.fn(async () => scan([{ ref: "kanban/x.md", title: "x.md" }])),
+      note: vi.fn(async () => note("kanban/x.md", CARD_TEXT)),
+    });
+    render(<VaultBrowser workspaceId={W1} api={api} onOpenUrl={vi.fn()} />);
+    await debounce();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "x.md" })));
+    expect(screen.getByText("Ship now?").closest("details")).toBeNull();
+    const details = screen
+      .getByText("Done when · 1 of 2 done", { selector: "summary" })
+      .closest("details");
+    expect(details?.open).toBe(false);
+    expect(screen.getByText("Handoff · 1 entry", { selector: "summary" })).toBeTruthy();
+    expect(screen.getByText("Check · PASS", { selector: "summary" })).toBeTruthy();
+  });
+
+  it("renders a non-card note with the same headings, unfolded", async () => {
+    const api = vaultApi({
+      entries: vi.fn(async () => scan([{ ref: "kanban/x.md", title: "x.md" }])),
+      note: vi.fn(async () => note("kanban/x.md", CARD_TEXT.replace("type: card", "type: note"))),
+    });
+    render(<VaultBrowser workspaceId={W1} api={api} onOpenUrl={vi.fn()} />);
+    await debounce();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "x.md" })));
+    expect(screen.queryByText("Done when · 1 of 2 done", { selector: "summary" })).toBeNull();
+    expect(screen.getAllByText("Done when")[0]?.closest("details")).toBeNull();
+  });
+});
+
 describe("VaultBrowser note chips", () => {
   it("lists section, type, status and up to six tags, with an overflow count", async () => {
     const tags = Array.from({ length: 8 }, (_, index) => `t${index}`);

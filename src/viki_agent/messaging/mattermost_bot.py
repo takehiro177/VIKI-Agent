@@ -109,8 +109,8 @@ _DESKTOP_TOO_LONG = (
     "desktop to answer it."
 )
 _READY = (
-    "VIKI Agent is ready. The startup boundary is the next whole server second; messages "
-    "before that boundary are refused. Use !viki help for commands."
+    "VIKI Agent is ready. Send a message to start, or !viki help for commands. Messages sent "
+    "before the next whole server second are refused."
 )
 NoticeResult = Literal["sent", "unavailable", "failed", "unknown"]
 STOP_NOTICE_DEADLINE_S = 3.0

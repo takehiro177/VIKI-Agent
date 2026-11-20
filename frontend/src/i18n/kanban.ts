@@ -1,4 +1,4 @@
-/** `kanban.*`: the Kanban page's strings (KanbanView, KanbanNeedsYou, kanbanMessage and App's Kanban fallback); its missing-skill line is Bots' `READINESS_TEXT.missing`. */
+/** `kanban.*`: the Kanban page's strings (KanbanView, KanbanNeedsYou, kanbanMessage, CardReader and App's Kanban fallback); its missing-skill line is Bots' `READINESS_TEXT.missing`. */
 
 import { defineCatalog } from "./defineCatalog";
 
@@ -109,5 +109,13 @@ export const catalog = defineCatalog({
       "Kanban: I answered one of your cards. Load /kanban, find the card named on the next line, write the answer on the line after it under that card's question, word for word, set status: todo, then continue the card. Both lines are JSON strings.\n{card}\n{line}",
     "kanban.message.done":
       "Kanban: I approved one of your cards. Load /kanban, find the card named on the next line, write the answer on the line after it under that card's question, word for word, and set status: done. Both lines are JSON strings.\n{card}\n{line}",
+    "kanban.reader.fold_done_when": "Done when",
+    "kanban.reader.fold_done_when_count": "Done when · {done} of {total} done",
+    "kanban.reader.fold_handoff": "Handoff",
+    "kanban.reader.fold_handoff_count_one": "Handoff · 1 entry",
+    "kanban.reader.fold_handoff_count": "Handoff · {count} entries",
+    "kanban.reader.fold_check": "Check",
+    "kanban.reader.fold_check_pass": "Check · PASS",
+    "kanban.reader.fold_check_fail": "Check · FAIL",
   },
 });

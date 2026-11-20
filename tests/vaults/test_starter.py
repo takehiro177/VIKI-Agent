@@ -419,6 +419,9 @@ def test_the_kanban_skill_holds_the_card_format_and_every_seats_rules(
         "Fetch any fact that could change an action",
         "propose lessons for /retro, and do not edit `system/memory/` yourself",
         "`system/log.md`",
+        # the checker loop
+        "in place of any earlier one",
+        "A card made without `## Summary` gets one now.",
     ):
         assert token in flat, token
     assert "prime directive" not in flat
@@ -440,6 +443,23 @@ def test_a_cancelled_card_is_not_waiting_stale_or_moved_work(
     assert rules.present("card_needs_you", {"status": "cancelled"}) is False
     assert rules.present("card_stale", {"status": "cancelled"}) is False
     assert "cancelled" not in seats.MOVED
+
+
+def test_the_checker_starts_its_verdict(rendered: dict[str, str]) -> None:
+    assert "Start with one line: `Verdict: PASS`" in rendered[".claude/agents/checker.md"]
+
+
+# --- writing for the owner -------------------------------------------------------------------
+
+
+def test_agents_md_has_the_writing_for_the_owner_section(rendered: dict[str, str]) -> None:
+    text = rendered["AGENTS.md"]
+    assert text.count("## Writing for the owner") == 1
+    assert (
+        text.index("<!-- /viki:persona -->")
+        < text.index("## Writing for the owner")
+        < text.index("## Team")
+    )
 
 
 # --- the persona section's shared grammar --------------------------------------------------

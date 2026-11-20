@@ -112,7 +112,7 @@ class Harness:
         result = await self.runtime.set_enabled(provider, True)
         assert result["state"] == "connecting"
         channel = self.factories[provider].channels[-1]
-        assert "startup" in (await take(channel.sent))[0]
+        assert "ready" in (await take(channel.sent))[0]
         assert self.runtime.status()[provider]["state"] == "connected"
         return channel
 

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { answerCard, type CardAnswer, cardDate, parseCardBody, readCard } from "./kanbanBody";
+import {
+  answerCard,
+  type CardAnswer,
+  cardDate,
+  parseCardBody,
+  parseDone,
+  parseVerdict,
+  readCard,
+} from "./kanbanBody";
 
 const SHA = "a".repeat(64);
 const toCrlf = (text: string) => `\uFEFF${text.replace(/\n/g, "\r\n")}`;
@@ -385,6 +393,18 @@ describe("cardDate", () => {
   it("formats a local timestamp as YYYY-MM-DD, zero-padded", () => {
     expect(cardDate(new Date(2026, 10, 18, 23, 59).getTime())).toBe("2026-11-18");
     expect(cardDate(new Date(2026, 0, 5, 0, 0).getTime())).toBe("2026-01-05");
+  });
+});
+
+describe("parseDone and parseVerdict (exported for CardReader.tsx's fold labels)", () => {
+  it("parseDone counts only top-level checkbox items, null when there are none", () => {
+    expect(parseDone("- [x] one\n- [ ] two\n  - [x] nested\n")).toEqual({ done: 1, total: 2 });
+    expect(parseDone("no items here\n")).toBeNull();
+  });
+
+  it("parseVerdict takes the last Verdict line, null when there is none", () => {
+    expect(parseVerdict("Verdict: FAIL\nretried\nVerdict: PASS\n")).toBe("PASS");
+    expect(parseVerdict("no verdict here\n")).toBeNull();
   });
 });
 

@@ -13,5 +13,6 @@ Write `60-calendar/YYYY/YYYY-Www.md` from `_templates/weekly.md` (ISO week numbe
 4. **Inbox-zero check:** if `00-inbox/` isn't empty, run the /inbox flow first, then continue.
 5. **Insights:** patterns from the week's daily notes worth keeping — promote durable ones to `30-knowledge/` or flag them as /retro candidates.
 6. Append to `system/log.md`; recommend running `/retro` if the week contained corrections or repeated friction.
+7. **Reply** with the decisions first: one batch question for the proposals in steps 1 and 2, recommended option first. Then the week in the note's three-sentence Summary; the tables stay in the note.
 
 Tone: a chief-of-staff weekly sit-down — candid about drift, concrete about next week.

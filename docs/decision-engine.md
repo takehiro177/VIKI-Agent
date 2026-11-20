@@ -765,7 +765,9 @@ more:
 - **Ask first:** offers **Take a look** in the launcher.
 
 VIKI starts the chat in plan mode and asks it to look the changes over and present what is half-done
-or risky as a plan. The chat waits for your approval before it changes anything. VIKI starts one
+or risky as a plan. VIKI asks the plan to lead with what it found and, in at most five numbered
+steps, what approving does, with its evidence under a closing **Details** heading that the card
+folds shut until you open it. The chat waits for your approval before it changes anything. VIKI starts one
 such chat for each state of a folder's changes.
 
 **Daily limit: looks VIKI starts**, 3 by default and from 0 to 10, counts across workspaces and
@@ -786,7 +788,10 @@ notes in the vault:
 - **Ask first:** offers **Take a second look**.
 
 VIKI asks that chat to read those notes and present at most one flaw, better approach or missing
-piece as a plan. The chat waits for your approval before it changes anything. On that plan:
+piece as a plan. VIKI asks the plan to lead with a heading naming the finding, why it matters and,
+in at most five numbered steps, what approving does, with its evidence under a closing **Details**
+heading that the card folds shut until you open it. The chat waits for your approval before it changes
+anything. On that plan:
 
 - **Approve:** makes the change.
 - **Keep planning:** turns it down only if that chat then ends without your approval, so approving
@@ -816,7 +821,10 @@ plan:
 - three next actions for the project;
 - ticks for the overdue tasks that look done, and new dates for the rest.
 
-The chat waits for your approval before it changes anything. On that plan:
+VIKI asks each plan to open with a line on where things stand — the project overall, or how many
+tasks look done and how many need a new date — before that list, with its reasons under a closing
+**Details** heading that the card folds shut until you open it. The chat waits for your approval
+before it changes anything. On that plan:
 
 - **Approve:** makes the change.
 - **Keep planning:** turns it down only if that chat then ends without your approval, so approving

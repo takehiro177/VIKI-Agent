@@ -120,7 +120,7 @@ def test_start_with_viki_writes_exactly_the_starter_set(tmp_path: Path) -> None:
         "My Vault",
     )
     assert set(document["starter"]) == {"name", "version", "files"}
-    assert (document["starter"]["name"], document["starter"]["version"]) == ("viki", 5)
+    assert (document["starter"]["name"], document["starter"]["version"]) == ("viki", 6)
     assert list(document["starter"]["files"]) == list(FILES)
     for name, digest in document["starter"]["files"].items():
         assert hashlib.sha256((destination / name).read_bytes()).hexdigest() == digest, name

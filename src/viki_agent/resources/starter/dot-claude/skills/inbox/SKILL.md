@@ -18,4 +18,4 @@ For each item, in capture order (oldest first):
 3. **Preserve provenance:** the owner's verbatim words survive — quote them in the filed note; never silently rewrite them.
 4. **Delete the inbox file** only after its content demonstrably lives elsewhere (the filed note links make this checkable). This deletion is pre-approved by prime directive 5 in `AGENTS.md`. Note the librarian subagent has no shell and cannot delete — when it did the filing, it reports which files are safe to delete and the calling session removes them.
 
-Finish with: a filing report (item → destination, one line each), append a line to `system/log.md`, and flag anything you were unsure about instead of guessing.
+Finish with a filing report: first anything you were unsure about (flag it instead of guessing) and how many items you filed, then item → destination, one line each, grouped by destination when there are more than about five. Append a line to `system/log.md`.
