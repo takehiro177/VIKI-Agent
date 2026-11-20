@@ -260,6 +260,312 @@ test("a 409 from remove is reported as a conflict and keeps the row", async () =
   expect(screen.getByTestId("error").textContent).toBe("conflict");
 });
 
+const archiveOnlyRow: SessionMetadata = {
+  session_id: session.session_id,
+  revision: 5,
+  title: "",
+  pinned: false,
+  archived: true,
+};
+
+test("clearArchiveOnly deletes an archive-only label and leaves an earlier error showing", async () => {
+  const api = {
+    list: vi.fn(async () => [archiveOnlyRow]),
+    patch: vi.fn(async () => {
+      throw new Error("boom");
+    }),
+    remove: vi.fn(async () => true),
+  };
+  let cleared: boolean | undefined;
+  function Harness() {
+    const store = useSessionMetadata(api);
+    return (
+      <div>
+        <span data-testid="count">{store.sessions.length}</span>
+        <span data-testid="error">{store.error}</span>
+        <button
+          type="button"
+          onClick={() => void store.update(archiveOnlyRow.session_id, { title: "x" })}
+        >
+          update
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            void store.clearArchiveOnly(archiveOnlyRow.session_id).then((value) => {
+              cleared = value;
+            });
+          }}
+        >
+          clear
+        </button>
+      </div>
+    );
+  }
+  render(<Harness />);
+  await waitFor(() => expect(screen.getByTestId("count").textContent).toBe("1"));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "update" })));
+  expect(screen.getByTestId("error").textContent).toBe("update_failed");
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "clear" })));
+  expect(api.remove).toHaveBeenCalledTimes(1);
+  expect(api.remove).toHaveBeenCalledWith(archiveOnlyRow.session_id, 5);
+  expect(screen.getByTestId("count").textContent).toBe("0");
+  expect(cleared).toBe(true);
+  // A failed `update` from before the clear is unrelated: clearArchiveOnly never touches `error`.
+  expect(screen.getByTestId("error").textContent).toBe("update_failed");
+});
+
+test("clearArchiveOnly makes no request and keeps a row titled, pinned, unread or colored", async () => {
+  const titled: SessionMetadata = {
+    ...archiveOnlyRow,
+    session_id: "623e4567-e89b-12d3-a456-426614174000",
+    title: "Keep",
+  };
+  const pinned: SessionMetadata = {
+    ...archiveOnlyRow,
+    session_id: "723e4567-e89b-12d3-a456-426614174000",
+    pinned: true,
+  };
+  const unread: SessionMetadata = {
+    ...archiveOnlyRow,
+    session_id: "923e4567-e89b-12d3-a456-426614174000",
+    unread: true,
+  };
+  const colored: SessionMetadata = {
+    ...archiveOnlyRow,
+    session_id: "a23e4567-e89b-12d3-a456-426614174000",
+    color: "blue",
+  };
+  const rows = [titled, pinned, unread, colored];
+  const api = {
+    list: vi.fn(async () => rows),
+    patch: vi.fn(),
+    remove: vi.fn(async () => true),
+  };
+  const results = new Map<string, boolean>();
+  function Harness() {
+    const store = useSessionMetadata(api);
+    return (
+      <div>
+        <span data-testid="count">{store.sessions.length}</span>
+        {rows.map((row) => (
+          <button
+            key={row.session_id}
+            type="button"
+            onClick={() => {
+              void store.clearArchiveOnly(row.session_id).then((value) => {
+                results.set(row.session_id, value);
+              });
+            }}
+          >
+            {`clear-${row.session_id}`}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  render(<Harness />);
+  await waitFor(() => expect(screen.getByTestId("count").textContent).toBe("4"));
+  for (const row of rows) {
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: `clear-${row.session_id}` })),
+    );
+  }
+  expect(api.remove).not.toHaveBeenCalled();
+  expect(screen.getByTestId("count").textContent).toBe("4");
+  expect(rows.map((row) => results.get(row.session_id))).toEqual([false, false, false, false]);
+});
+
+test("clearArchiveOnly refuses a label with a request pending", async () => {
+  let resolvePatch: (row: SessionMetadata) => void = () => {};
+  const api = {
+    list: vi.fn(async () => [archiveOnlyRow]),
+    patch: vi.fn(() => new Promise<SessionMetadata>((resolve) => (resolvePatch = resolve))),
+    remove: vi.fn(async () => true),
+  };
+  let cleared: boolean | undefined;
+  function Harness() {
+    const store = useSessionMetadata(api);
+    return (
+      <div>
+        <span data-testid="count">{store.sessions.length}</span>
+        <button
+          type="button"
+          onClick={() => void store.update(archiveOnlyRow.session_id, { archived: true })}
+        >
+          update
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            void store.clearArchiveOnly(archiveOnlyRow.session_id).then((value) => {
+              cleared = value;
+            });
+          }}
+        >
+          clear
+        </button>
+      </div>
+    );
+  }
+  render(<Harness />);
+  await waitFor(() => expect(screen.getByTestId("count").textContent).toBe("1"));
+  // This patch stays unresolved through the clear below: the row itself never changes, so only
+  // the pending check can refuse the clear.
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "update" })));
+  expect(api.patch).toHaveBeenCalledTimes(1);
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "clear" })));
+  expect(api.remove).not.toHaveBeenCalled();
+  expect(cleared).toBe(false);
+  expect(screen.getByTestId("count").textContent).toBe("1");
+  // Settle the held patch so nothing resolves after the test ends.
+  await act(async () => resolvePatch({ ...archiveOnlyRow, revision: 6 }));
+});
+
+test("clearArchiveOnly keeps the row and the error untouched when the delete answers conflict", async () => {
+  const api = {
+    list: vi.fn(async () => [archiveOnlyRow]),
+    patch: vi.fn(),
+    remove: vi.fn(async () => {
+      throw new SessionMetadataError(409, "conflict", 2);
+    }),
+  };
+  let cleared: boolean | undefined;
+  function Harness() {
+    const store = useSessionMetadata(api);
+    return (
+      <div>
+        <span data-testid="count">{store.sessions.length}</span>
+        <span data-testid="error">{store.error}</span>
+        <button
+          type="button"
+          onClick={() => {
+            void store.clearArchiveOnly(archiveOnlyRow.session_id).then((value) => {
+              cleared = value;
+            });
+          }}
+        >
+          clear
+        </button>
+      </div>
+    );
+  }
+  render(<Harness />);
+  await waitFor(() => expect(screen.getByTestId("count").textContent).toBe("1"));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "clear" })));
+  expect(screen.getByTestId("count").textContent).toBe("1");
+  expect(screen.getByTestId("error").textContent).toBe("");
+  expect(cleared).toBe(false);
+});
+
+test("clearArchiveOnly keeps the row and the error untouched when the delete throws offline", async () => {
+  const api = {
+    list: vi.fn(async () => [archiveOnlyRow]),
+    patch: vi.fn(),
+    remove: vi.fn(async () => {
+      throw new Error("offline");
+    }),
+  };
+  let cleared: boolean | undefined;
+  function Harness() {
+    const store = useSessionMetadata(api);
+    return (
+      <div>
+        <span data-testid="count">{store.sessions.length}</span>
+        <span data-testid="error">{store.error}</span>
+        <button
+          type="button"
+          onClick={() => {
+            void store.clearArchiveOnly(archiveOnlyRow.session_id).then((value) => {
+              cleared = value;
+            });
+          }}
+        >
+          clear
+        </button>
+      </div>
+    );
+  }
+  render(<Harness />);
+  await waitFor(() => expect(screen.getByTestId("count").textContent).toBe("1"));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "clear" })));
+  expect(screen.getByTestId("count").textContent).toBe("1");
+  expect(screen.getByTestId("error").textContent).toBe("");
+  expect(cleared).toBe(false);
+});
+
+test("clearArchiveOnly drops the row and answers true when the delete resolves false (404)", async () => {
+  const api = {
+    list: vi.fn(async () => [archiveOnlyRow]),
+    patch: vi.fn(),
+    remove: vi.fn(async () => false),
+  };
+  let cleared: boolean | undefined;
+  function Harness() {
+    const store = useSessionMetadata(api);
+    return (
+      <div>
+        <span data-testid="count">{store.sessions.length}</span>
+        <span data-testid="error">{store.error}</span>
+        <button
+          type="button"
+          onClick={() => {
+            void store.clearArchiveOnly(archiveOnlyRow.session_id).then((value) => {
+              cleared = value;
+            });
+          }}
+        >
+          clear
+        </button>
+      </div>
+    );
+  }
+  render(<Harness />);
+  await waitFor(() => expect(screen.getByTestId("count").textContent).toBe("1"));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "clear" })));
+  expect(screen.getByTestId("count").textContent).toBe("0");
+  expect(cleared).toBe(true);
+  expect(screen.getByTestId("error").textContent).toBe("");
+});
+
+test("a reload in flight from before the clear does not bring the row back", async () => {
+  let resolveList: (rows: SessionMetadata[]) => void = () => {};
+  const api = {
+    list: vi.fn(() => new Promise<SessionMetadata[]>((resolve) => (resolveList = resolve))),
+    patch: vi.fn(),
+    remove: vi.fn(async () => true),
+  };
+  // The initial mount's reload resolves right away; the next one (triggered below) hangs, open
+  // to `resolveList`, like the other in-flight-reload tests above.
+  api.list.mockResolvedValueOnce([archiveOnlyRow]);
+  function Harness() {
+    const store = useSessionMetadata(api);
+    return (
+      <div>
+        <span data-testid="count">{store.sessions.length}</span>
+        <button type="button" onClick={() => void store.reload()}>
+          reload
+        </button>
+        <button
+          type="button"
+          onClick={() => void store.clearArchiveOnly(archiveOnlyRow.session_id)}
+        >
+          clear
+        </button>
+      </div>
+    );
+  }
+  render(<Harness />);
+  await waitFor(() => expect(screen.getByTestId("count").textContent).toBe("1"));
+  // This reload starts, and is still in flight, before the clear below runs.
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "reload" })));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "clear" })));
+  expect(screen.getByTestId("count").textContent).toBe("0");
+  // The stale pre-delete row from that in-flight reload lands only now; it must not come back.
+  await act(async () => resolveList([archiveOnlyRow]));
+  expect(screen.getByTestId("count").textContent).toBe("0");
+});
+
 const second = { ...session, session_id: "223e4567-e89b-12d3-a456-426614174000", title: "Second" };
 const third = { ...session, session_id: "323e4567-e89b-12d3-a456-426614174000", title: "Third" };
 

@@ -3,18 +3,19 @@
  * session the current listing no longer has. sessionOrganization.unit.test.ts pins
  * `missingRecords` itself and MissingSessions.unit.test.tsx pins the component's own rendering;
  * this file pins only what App is responsible for supplying (the placement, the two actions,
- * and telling a prepared-but-never-started profile session apart from an actually-gone
- * transcript).
+ * telling a prepared-but-never-started profile session apart from an actually-gone transcript,
+ * and quietly deleting an archive-only label whose transcript is gone).
  */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../../App";
 import { emptyRails, fakeRest, fakeViki, GENERATION, sessionRow } from "../../accept/m3b/fakes";
 import type { Rest } from "../../api";
-import type {
-  SessionMetadata,
-  SessionMetadataApi,
-  SessionMetadataPatch,
+import {
+  type SessionMetadata,
+  type SessionMetadataApi,
+  SessionMetadataError,
+  type SessionMetadataPatch,
 } from "../../clients/conversations/sessionMetadataApi";
 import {
   type PreparedProfilePreview,
@@ -99,17 +100,53 @@ function heldProfileLaunchApi(started: ReadonlyMap<string, boolean>): ProfileLau
   };
 }
 
+/** How `profileLaunchApiBy` answers an id: draft (started false) and started (true) resolve;
+ * busy (429 overloaded), down (503 unavailable), offline (0 unavailable) and no_route (a plain
+ * 404 with no error code, which the client reads as `unavailable`) reject. */
+type InspectOutcome = "draft" | "started" | "busy" | "down" | "offline" | "no_route";
+
+/** Answers every `inspect` at once from `outcomes`, 404 `not_found` for any other id; `calls`
+ * gets each id asked, in order. */
+function profileLaunchApiBy(
+  outcomes: ReadonlyMap<string, InspectOutcome> = new Map(),
+): ProfileLaunchApi & { calls: string[] } {
+  const calls: string[] = [];
+  return {
+    calls,
+    capabilities: vi.fn(),
+    models: vi.fn(),
+    prepare: vi.fn(),
+    inspect: async (id) => {
+      calls.push(id);
+      const outcome = outcomes.get(id);
+      if (outcome === "draft" || outcome === "started")
+        return preparedPreview(id, outcome === "started");
+      if (outcome === "busy") throw new ProfileLaunchApiError(429, "overloaded");
+      if (outcome === "down") throw new ProfileLaunchApiError(503, "unavailable");
+      if (outcome === "offline") throw new ProfileLaunchApiError(0, "unavailable");
+      if (outcome === "no_route") throw new ProfileLaunchApiError(404, "unavailable");
+      throw new ProfileLaunchApiError(404, "not_found");
+    },
+  };
+}
+
 function metadataRow(
   overrides: Partial<SessionMetadata> & { session_id: string },
 ): SessionMetadata {
   return { revision: 1, title: "", pinned: false, archived: false, ...overrides };
 }
 
+/** What `remove` does: deleted (the default) drops the row and resolves true; gone drops it and
+ * resolves false, as the server does for a row another window already deleted; conflict and
+ * offline throw and keep the row. */
+type RemoveOutcome = "deleted" | "gone" | "conflict" | "offline";
+
 /** Resolves `list` immediately; tracks every `patch`/`remove` call for assertions. `order`, when
  * given, also gets each call, so a caller can compare its position against another fake's. */
 function instantMetadataApi(
   rows: SessionMetadata[],
   order: string[] = [],
+  removeOutcome: RemoveOutcome = "deleted",
 ): SessionMetadataApi & {
   patchCalls: { sessionId: string; patch: SessionMetadataPatch }[];
   removeCalls: string[];
@@ -134,8 +171,10 @@ function instantMetadataApi(
     async remove(sessionId) {
       order.push(`metadata.remove:${sessionId}`);
       removeCalls.push(sessionId);
+      if (removeOutcome === "conflict") throw new SessionMetadataError(409, "conflict", 2);
+      if (removeOutcome === "offline") throw new Error("offline");
       current = current.filter((item) => item.session_id !== sessionId);
-      return true;
+      return removeOutcome === "deleted";
     },
   };
 }
@@ -493,4 +532,302 @@ test("missing records are inspected one at a time, at most 8, and only a never-s
   });
   await flush();
   expect(container.querySelector(".conversation-title")?.textContent).toBe("Draft convo");
+});
+
+const NOTICE = "Session settings could not be loaded or saved.";
+
+/** Renders App with the label store and the profile client, then opens its socket. */
+async function renderRail(
+  metadata: SessionMetadataApi,
+  launch: ProfileLaunchApi,
+  rest: Rest = fakeRest(),
+): Promise<ReturnType<typeof fakeViki>> {
+  const fake = fakeViki();
+  render(
+    <App
+      viki={fake.viki}
+      rest={rest}
+      durable={fakeDurable()}
+      organization={metadata}
+      profileLaunchApi={launch}
+    />,
+  );
+  await act(async () => {
+    fake.socket.open();
+  });
+  return fake;
+}
+
+/** The rail row that shows `label`. */
+function missingRow(label: string) {
+  return within(screen.getByText(label).closest("li") as HTMLElement);
+}
+
+test("an archive-only label whose transcript is gone is deleted quietly and never listed", async () => {
+  // Each labelled row differs from the archive-only one by one mark of its own.
+  const metadata = instantMetadataApi([
+    metadataRow({ session_id: "archived-only", archived: true }),
+    metadataRow({ session_id: "titled-1", archived: true, title: "Titled convo" }),
+    metadataRow({ session_id: "pinned-1", archived: true, pinned: true }),
+    metadataRow({ session_id: "colored-1", archived: true, color: "blue" }),
+    metadataRow({ session_id: "unread-1", archived: true, unread: true }),
+  ]);
+  const launch = heldProfileLaunchApi(new Map());
+  await renderRail(metadata, launch);
+  await waitFor(() => expect(launch.calls).toHaveLength(1));
+  for (let settled = 1; settled <= 5; settled++) {
+    expect(launch.calls).toHaveLength(settled);
+    // Still waiting for its answer, the archive-only record never shows.
+    expect(screen.queryByText("Untitled session (archived)")).toBeNull();
+    await act(async () => {
+      launch.settle(); // 404 not_found
+    });
+    await flush();
+  }
+  // The labelled records come first (pinned, then by id), the archive-only one after them.
+  expect(launch.calls).toEqual(["pinned-1", "colored-1", "titled-1", "unread-1", "archived-only"]);
+  await waitFor(() => expect(metadata.removeCalls).toEqual(["archived-only"]));
+  expect(screen.queryByText("Untitled session (archived)")).toBeNull();
+  for (const label of [
+    "Titled convo",
+    "Untitled session (pinned-1)",
+    "Untitled session (colored-)",
+    "Untitled session (unread-1)",
+  ]) {
+    expect(missingRow(label).getByText("Source missing")).not.toBeNull();
+    expect(missingRow(label).getByRole("button", { name: "Remove" })).not.toBeNull();
+  }
+  const section = within(
+    screen.getByRole("region", { name: "Conversations whose record is missing" }),
+  );
+  expect(section.getAllByRole("button", { name: "Unpin" })).toHaveLength(1);
+  expect(
+    missingRow("Untitled session (pinned-1)").getByRole("button", { name: "Unpin" }),
+  ).not.toBeNull();
+  expect(screen.queryByText(NOTICE)).toBeNull();
+});
+
+test("an archive-only profile draft shows with Open and is kept", async () => {
+  const metadata = instantMetadataApi([
+    metadataRow({ session_id: "archived-draft", archived: true }),
+  ]);
+  await renderRail(metadata, profileLaunchApiBy(new Map([["archived-draft", "draft"]])));
+  await waitFor(() => expect(screen.getByText("Profile draft, not started")).not.toBeNull());
+  const row = missingRow("Untitled session (archived)");
+  expect(row.getByRole("button", { name: "Open" })).not.toBeNull();
+  expect(row.queryByRole("button", { name: "Remove" })).toBeNull();
+  expect(metadata.removeCalls).toEqual([]);
+});
+
+test("an archive-only label is kept and listed unless inspect answers 404 not_found", async () => {
+  const outcomes = new Map<string, InspectOutcome>([
+    ["started1", "started"],
+    ["busy0001", "busy"],
+    ["down0001", "down"],
+    ["offline1", "offline"],
+    ["noroute1", "no_route"],
+  ]);
+  const metadata = instantMetadataApi(
+    [...outcomes.keys(), "gone0001"].map((session_id) =>
+      metadataRow({ session_id, archived: true }),
+    ),
+  );
+  const launch = profileLaunchApiBy(outcomes);
+  await renderRail(metadata, launch);
+  await waitFor(() => expect(screen.getAllByText("Source missing")).toHaveLength(5));
+  expect(launch.calls).toHaveLength(6);
+  expect(metadata.removeCalls).toEqual(["gone0001"]);
+  for (const id of outcomes.keys()) {
+    const row = missingRow(`Untitled session (${id})`);
+    expect(row.getByText("Source missing")).not.toBeNull();
+    expect(row.getByRole("button", { name: "Remove" })).not.toBeNull();
+  }
+  expect(screen.queryByText("Untitled session (gone0001)")).toBeNull();
+  expect(screen.queryByText(NOTICE)).toBeNull();
+});
+
+test("an archive-only label left by an Unpin stays listed and is not read again", async () => {
+  const metadata = instantMetadataApi([
+    metadataRow({ session_id: "pinned-archived", archived: true, pinned: true }),
+  ]);
+  const launch = profileLaunchApiBy();
+  await renderRail(metadata, launch);
+  await waitFor(() => expect(launch.calls).toEqual(["pinned-archived"]));
+  await act(async () => {
+    fireEvent.click(
+      missingRow("Untitled session (pinned-a)").getByRole("button", { name: "Unpin" }),
+    );
+  });
+  await flush();
+  expect(metadata.patchCalls).toEqual([{ sessionId: "pinned-archived", patch: { pinned: false } }]);
+  const row = missingRow("Untitled session (pinned-a)");
+  expect(row.queryByRole("button", { name: "Unpin" })).toBeNull();
+  expect(row.getByText("Source missing")).not.toBeNull();
+  expect(row.getByRole("button", { name: "Remove" })).not.toBeNull();
+  expect(launch.calls).toEqual(["pinned-archived"]);
+  expect(metadata.removeCalls).toEqual([]);
+});
+
+test("a failed clear stays quiet and is not retried; a lost race drops the row", async () => {
+  vi.useFakeTimers();
+  try {
+    for (const outcome of ["conflict", "offline"] as const) {
+      const metadata = instantMetadataApi(
+        [metadataRow({ session_id: "archived-1", archived: true })],
+        [],
+        outcome,
+      );
+      await renderRail(metadata, profileLaunchApiBy());
+      await flush();
+      const expectListedQuietly = () => {
+        const row = missingRow("Untitled session (archived)");
+        expect(row.getByText("Source missing")).not.toBeNull();
+        expect(row.getByRole("button", { name: "Remove" })).not.toBeNull();
+        expect(screen.queryByText(NOTICE)).toBeNull();
+      };
+      expect(metadata.removeCalls).toEqual(["archived-1"]);
+      expectListedQuietly();
+      for (let poll = 1; poll <= 2; poll++) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(60_000); // the store's own poll interval
+        });
+        await flush();
+      }
+      expect(metadata.removeCalls).toEqual(["archived-1"]);
+      expectListedQuietly();
+      cleanup();
+      sessionStorage.clear();
+    }
+
+    // Another window deleted the label first: the DELETE answers 404, and the row just drops.
+    const metadata = instantMetadataApi(
+      [metadataRow({ session_id: "archived-2", archived: true })],
+      [],
+      "gone",
+    );
+    await renderRail(metadata, profileLaunchApiBy());
+    await flush();
+    expect(metadata.removeCalls).toEqual(["archived-2"]);
+    expect(screen.queryByText("Untitled session (archived)")).toBeNull();
+    expect(screen.queryByText(NOTICE)).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("no clear while the listing is partial, or for a held or live session", async () => {
+  vi.useFakeTimers();
+  try {
+    const metadata = instantMetadataApi(
+      ["archived-gone", "archived-held", "archived-live"].map((session_id) =>
+        metadataRow({ session_id, archived: true }),
+      ),
+    );
+    const launch = profileLaunchApiBy();
+    const rest = partialThenReadyRest();
+    const { viki, socket } = await renderRail(metadata, launch, rest);
+    act(() => {
+      viki.actions.openSession("archived-held");
+    });
+    act(() => {
+      socket.receive({
+        v: 2,
+        generation: GENERATION,
+        request_id: "",
+        type: "vault.sessions",
+        session_id: "",
+        seq: 1,
+        data: { others: [], live: ["archived-live"] },
+      });
+    });
+    await flush();
+    expect(launch.calls).toEqual([]);
+    expect(metadata.removeCalls).toEqual([]);
+
+    rest.turnReady();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000); // the store's own poll interval
+    });
+    await flush();
+    // Only the record neither held nor live is read, and cleared.
+    expect(launch.calls).toEqual(["archived-gone"]);
+    expect(metadata.removeCalls).toEqual(["archived-gone"]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a listing that turns partial before the answer clears nothing", async () => {
+  vi.useFakeTimers();
+  try {
+    const metadata = instantMetadataApi([
+      metadataRow({ session_id: "archived-1", archived: true }),
+    ]);
+    const launch = heldProfileLaunchApi(new Map());
+    const rest = holdingRest();
+    await renderRail(metadata, launch, rest);
+    await flush();
+    await act(async () => {
+      rest.resolveCall(1, { sessions: [], state: "ready", reason: "", omitted: 0 });
+      await flush();
+    });
+    expect(launch.calls).toEqual(["archived-1"]);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000); // the store's own poll interval, starts call 2
+    });
+    await act(async () => {
+      rest.resolveCall(2, { sessions: [], state: "partial", reason: "time_budget", omitted: 1 });
+      await flush();
+    });
+    await act(async () => {
+      launch.settle(); // 404 not_found, after the listing turned partial
+    });
+    await flush();
+    expect(metadata.removeCalls).toEqual([]);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000); // starts call 3
+    });
+    await act(async () => {
+      rest.resolveCall(3, { sessions: [], state: "ready", reason: "", omitted: 0 });
+      await flush();
+    });
+    expect(missingRow("Untitled session (archived)").getByText("Source missing")).not.toBeNull();
+    expect(launch.calls).toEqual(["archived-1"]);
+    expect(metadata.removeCalls).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("archive-only records have their own budget of 64", async () => {
+  // Eight labelled records use up their own 8 inspects; the archive-only one, sorted last, is
+  // still read and deleted.
+  const titled = Array.from({ length: 8 }, (_, i) => `m-${i}`);
+  const first = instantMetadataApi([
+    ...titled.map((session_id, i) => metadataRow({ session_id, title: `Gone convo ${i}` })),
+    metadataRow({ session_id: "z-archived", archived: true }),
+  ]);
+  const firstLaunch = profileLaunchApiBy();
+  await renderRail(first, firstLaunch);
+  await waitFor(() => expect(first.removeCalls).toEqual(["z-archived"]));
+  expect(firstLaunch.calls).toEqual([...titled, "z-archived"]);
+  for (let i = 0; i < 8; i++)
+    expect(missingRow(`Gone convo ${i}`).getByText("Source missing")).not.toBeNull();
+  cleanup();
+  sessionStorage.clear();
+
+  // 65 archive-only records: 64 are read and deleted, the one past the budget stays listed.
+  const ids = Array.from({ length: 65 }, (_, i) => `a-${String(i).padStart(2, "0")}`);
+  const second = instantMetadataApi(
+    ids.map((session_id) => metadataRow({ session_id, archived: true })),
+  );
+  const secondLaunch = profileLaunchApiBy();
+  await renderRail(second, secondLaunch);
+  await waitFor(() => expect(second.removeCalls).toHaveLength(64));
+  await waitFor(() => expect(screen.getByText("Untitled session (a-64)")).not.toBeNull());
+  expect(secondLaunch.calls).toEqual(ids.slice(0, 64));
+  expect(second.removeCalls).toEqual(ids.slice(0, 64));
+  expect(screen.getAllByText("Source missing")).toHaveLength(1);
 });

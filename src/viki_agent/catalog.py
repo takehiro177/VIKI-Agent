@@ -79,8 +79,9 @@ exists, transcript_path, history and conversation_chain find its file there, and
 search anchors map tool paths relative to that folder. sessions() and search add each recorded
 session whose project is not the vault's after the vault's own files, from one snapshot of the
 lookup per listing and one per search; the deadline, ordering and `omitted` rules above cover
-them. An unrecorded transcript of another folder is not listed. A snapshot that raises lists the
-vault's project alone and logs one WARNING with no ids.
+them. An unrecorded transcript of another folder is not listed. A snapshot that raises makes the
+listing `error` (reason `read_failed`) carrying only the vault's own rows, so search answers
+`error`; it logs one WARNING with no ids.
 
 conversation_chain(session_id, until=None, cancelled=never) → ConversationChain: history's kept
 entries minus any whose uuid is not a canonical UUID, taken from the same cached chain, with the
@@ -767,18 +768,18 @@ class Catalog:
         root = self._roots.root_of(session_id) if self._roots is not None else None
         return self.vault if root is None else root
 
-    def _recorded_roots(self) -> Mapping[str, Path]:
-        """One snapshot of the recorded roots, or none when the lookup fails: the listing and
-        search then carry the active project alone."""
+    def _recorded_roots(self) -> Mapping[str, Path] | None:
+        """One snapshot of the recorded roots, or None when the lookup fails: the listing then
+        answers `error` and carries the vault's own rows only (see the module docstring)."""
         if self._roots is None:
             return {}
         try:
             return self._roots.transcript_roots()
         except Exception as exc:
             log.warning(
-                "session roots unavailable; listing the active folder only: %s", type(exc).__name__
+                "session roots unreadable; the listing answers error: %s", type(exc).__name__
             )
-            return {}
+            return None
 
     def history_mapper(self, root: Path | None = None) -> Mapper:
         """Use the same launch-bound history grammar for paging and searched windows."""
@@ -1093,8 +1094,9 @@ class Catalog:
         # Then each session VIKI recorded in another folder, from that folder's project; an
         # unrecorded transcript there is never listed. The id guard is defense in depth, since a
         # recorded id becomes a path.
+        roots = self._recorded_roots()
         folders: dict[Path, Path] = {}
-        for sid, root in self._recorded_roots().items():
+        for sid, root in (roots or {}).items():
             if root not in folders:
                 folders[root] = project_dir(self.claude_home, root)
             if _UUID_RE.match(sid) and folders[root] != self._project_dir:
@@ -1145,6 +1147,9 @@ class Catalog:
                 rows.append(row)
 
         rows.sort(key=lambda r: r.modified, reverse=True)
+        if roots is None:
+            # A `ready` list would present chats run in other folders as gone.
+            return SessionsResult(sessions=rows, state="error", reason="read_failed")
         # `partial` and a count travel together, in both directions, and one expression decides
         # both: the rail's only sentence for a partial listing names the number it could not
         # read, so `partial` with nothing omitted has nothing truthful to say, and `ready` with
@@ -1279,7 +1284,7 @@ class Catalog:
             return SearchResult(hits=[], state="error", reason=listing.reason)
         eligible = [row for row in listing.sessions if not row.other]
         # One snapshot for every row: a listed session that is not in it is the vault's own.
-        roots = self._recorded_roots()
+        roots = self._recorded_roots() or {}
 
         hits: list[SearchHit] = []
         scanned = 0

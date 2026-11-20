@@ -12,7 +12,10 @@ second transcript database.
 
 - **Closing or archiving a chat in VIKI Agent:** does not preserve its transcript.
 - **Removed transcripts:** if Claude Code removes a transcript, that conversation disappears from
-  the list and search and cannot be resumed there.
+  the list and search and cannot be resumed there. If you had only archived it, VIKI Agent also
+  deletes that archive label, unless it is a profile chat. Otherwise it is listed under
+  **Conversations whose record is missing**, where **Remove** deletes its labels; a profile chat
+  that has not started is listed there with **Open** instead.
 - **Archiving:** hides a chat from the active sidebar list. You can archive a listed chat even
   when it shows "This conversation is unavailable."
 

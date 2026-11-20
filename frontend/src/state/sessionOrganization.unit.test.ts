@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import type { SessionMetadata } from "../clients/conversations/sessionMetadataApi";
 import type { SessionRow } from "../protocol";
 import {
+  isArchiveOnly,
   type MissingRecord,
   missingRecords,
   moveTab,
@@ -148,6 +149,21 @@ test("pinned records sort first, then every record sorts by id", () => {
     MISSING_PINNED,
     MISSING_TITLED,
   ]);
+});
+
+test("isArchiveOnly holds for an archive mark with nothing else the user wrote", () => {
+  expect(isArchiveOnly(label(ROW_A, { archived: true, color: null }))).toBe(true);
+});
+
+test("isArchiveOnly is false once the label also carries a title, pin, unread or color", () => {
+  expect(isArchiveOnly(label(ROW_A, { archived: true, title: "named" }))).toBe(false);
+  expect(isArchiveOnly(label(ROW_A, { archived: true, pinned: true }))).toBe(false);
+  expect(isArchiveOnly(label(ROW_A, { archived: true, unread: true }))).toBe(false);
+  expect(isArchiveOnly(label(ROW_A, { archived: true, color: "blue" }))).toBe(false);
+});
+
+test("isArchiveOnly is false without the archive mark itself", () => {
+  expect(isArchiveOnly(label(ROW_A, { archived: false }))).toBe(false);
 });
 
 const A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";

@@ -109,6 +109,14 @@ export function missingRecords(input: {
   return records;
 }
 
+/** A label that holds nothing the user wrote: just the Archive mark, with no title, pin, color
+ * or unread flag of its own. Safe for the app to delete quietly once its transcript is gone. */
+export function isArchiveOnly(
+  label: Pick<SessionMetadata, "archived" | "title" | "pinned" | "unread" | "color">,
+): boolean {
+  return label.archived && !label.title && !label.pinned && !label.unread && !label.color;
+}
+
 export function organizedSessions(
   rows: readonly SessionRow[],
   metadata: readonly SessionMetadata[],

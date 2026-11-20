@@ -234,17 +234,26 @@ def test_a_recorded_sessions_cached_row_survives_the_next_listing(
     assert scanned == []
 
 
-def test_a_raising_lookup_lists_the_active_rows_only_and_logs_no_ids(
+def test_a_raising_lookup_answers_error_with_the_active_rows_and_logs_no_ids(
     home: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     catalog = _bound(home, BrokenRoots({RECORDED: OTHER}))
 
     with caplog.at_level(logging.WARNING, logger="viki_agent.catalog"):
-        assert _ids(catalog) == [ACTIVE]
+        result = catalog.list_sessions()
+
+    assert (result.state, result.reason, result.omitted) == ("error", "read_failed", 0)
+    assert [row.session_id for row in result.sessions] == [ACTIVE]
 
     [record] = caplog.records
     assert record.levelno == logging.WARNING
     assert RECORDED not in record.getMessage() and str(OTHER) not in record.getMessage()
+
+
+def test_a_raising_lookup_fails_the_search(home: Path) -> None:
+    catalog = _bound(home, BrokenRoots({RECORDED: OTHER}))
+
+    assert catalog.run_search("needle").state == "error"
 
 
 def test_a_lookup_naming_no_canonical_id_is_ignored(home: Path) -> None:
