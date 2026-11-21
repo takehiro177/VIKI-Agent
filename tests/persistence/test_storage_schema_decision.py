@@ -87,6 +87,8 @@ def _other_tables(connection: sqlite3.Connection) -> dict[str, list[Any]]:
     rows.setdefault("bot_thread_sessions", [])
     for name in storage.BOT_CODE_SCHEMAS:
         rows.setdefault(name, [])
+    for name in storage.BOT_USAGE_SCHEMAS:
+        rows.setdefault(name, [])
     return rows
 
 
@@ -382,12 +384,12 @@ def _step_19_rows(connection: sqlite3.Connection) -> dict[str, list[Any]]:
 
 
 def test_fresh_store_has_the_decision_tables(tmp_path: Path) -> None:
-    assert storage.SCHEMA_VERSION == 40
+    assert storage.SCHEMA_VERSION == 41
     assert storage.DECISION_LOOP_SCHEMA_STEP == 24
     assert storage.JEV_SCHEMA_STEP == 19  # kept to validate and migrate stores 19 to 23
     database = AppState(tmp_path / "state.json", Prefs()).database_path
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (40,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
         assert _tables(connection, "decision_*") == _CURRENT_DECISION_TABLES
         assert _tables(connection, "jev_*") == {}
         indexes = {table: _indexes(connection, table) for table in storage.DECISION_LOOP_SCHEMAS}
@@ -422,7 +424,7 @@ def test_a_v23_store_moves_every_episode(tmp_path: Path) -> None:
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v23-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (40,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
         assert _tables(connection, "jev_*") == {}
         assert _tables(connection, "decision_*") == _CURRENT_DECISION_TABLES
         assert _rows(connection, "SELECT * FROM decision_episodes ORDER BY episode_id") == [
@@ -472,7 +474,7 @@ def test_a_copy_mismatch_leaves_v23(
                 len(_OLD_PREFERENCES),
             ]
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (40,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
         assert connection.execute("SELECT count(*) FROM decision_episodes").fetchone() == (
             len(_MOVES),
         )
@@ -529,7 +531,7 @@ def test_a_v18_store_upgrades_through_24(tmp_path: Path) -> None:
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v18-model")
     assert sorted(
         int(path.name.split(".")[2].split("-")[0][1:]) for path in tmp_path.glob("*backup*")
-    ) == list(range(18, 40))
+    ) == list(range(18, 41))
     for version, step_19 in ((18, {}), (23, storage.JEV_SCHEMAS)):
         (backup,) = tmp_path.glob(f"app.sqlite3.v{version}-backup-*.sqlite3")
         with contextlib.closing(sqlite3.connect(f"{backup.as_uri()}?mode=ro", uri=True)) as saved:
@@ -539,7 +541,7 @@ def test_a_v18_store_upgrades_through_24(tmp_path: Path) -> None:
             state.store._validate(saved, (version,))
             assert _kept_rows(saved) == rows
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (40,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
         assert _tables(connection, "jev_*") == {}
         assert _tables(connection, "decision_*") == _CURRENT_DECISION_TABLES
         indexes = {table: _indexes(connection, table) for table in storage.DECISION_LOOP_SCHEMAS}

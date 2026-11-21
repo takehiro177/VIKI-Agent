@@ -11,6 +11,8 @@ Run it as `"$VIKI_AGENT_CLI" status --json` in Bash, or `& $env:VIKI_AGENT_CLI s
 
 Look first, before any change — `status` again any time, plus:
 - `"$VIKI_AGENT_CLI" settings get <key> --json` — one setting's value and revision; no key lists every key.
+- `"$VIKI_AGENT_CLI" bots usage --days 30 --json` — token use of this vault's Bots.
+- `"$VIKI_AGENT_CLI" bots trace <session-id> --json` — one conversation's calls.
 
 Change, one command at a time:
 - `"$VIKI_AGENT_CLI" settings set appearance.theme dark --json`

@@ -1,0 +1,94 @@
+/* BotUsage: the Bot usage dashboard container. Full content width (never `.bots-view`'s 1200px
+   cap); no side padding of its own at any width — the page shell's `.app-view` (Shell.css)
+   already pads every view (24px, 16px below 800px), so a second copy here would double it (F12).
+   Chrome stays on the monochrome --hair/--t0/--t1/--t2/--err tokens, the same ones
+   UsageTables.css, UsageNotes.css, UsageTrace.css and UsageColumns.css use; no data colour of its
+   own (UsageColumns.css already scopes --usage-series onto .bot-usage in styles/tokens.css). */
+
+.bot-usage {
+  display: grid;
+  gap: 24px;
+  width: 100%;
+  min-width: 0;
+  color: var(--t1);
+}
+
+.bot-usage [role="alert"] {
+  color: var(--err);
+}
+
+.bot-usage-period {
+  flex-wrap: wrap;
+}
+
+.bot-usage-period [aria-pressed="true"] {
+  color: var(--or);
+}
+
+/* The reloading state: the previous render stays up as is, dimmed, with no fade (the numbers
+   underneath jump straight to the new answer once it lands, same as UsageColumns.css's own
+   instant highlight — no transition or animation on this element). */
+.bot-usage-body {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.bot-usage-body[aria-busy="true"] {
+  opacity: 0.6;
+}
+
+.bot-usage-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.bot-usage-stat-label {
+  margin: 0 0 4px;
+}
+
+.bot-usage-hero-value {
+  margin: 0;
+  color: var(--t0);
+  font-size: 48px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.bot-usage-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 16px;
+  flex: 1 1 260px;
+}
+
+.bot-usage-tile-value {
+  margin: 0;
+  color: var(--t0);
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.bot-usage-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bot-usage-section h2 {
+  margin: 0;
+  color: var(--t0);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bot-usage-bybot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+  min-width: 0;
+}

@@ -215,6 +215,8 @@ def test_ops_and_their_levels_are_the_pinned_table() -> None:
         ("POST", "routines/{id}/run"): "change",
         ("POST", "routines/{id}/enable"): "safety",
         ("POST", "bots"): "change",
+        ("GET", "usage/{days}"): "read",
+        ("GET", "usage/sessions/{id}"): "read",
     }
     assert set(COVERS) == set(OPS)
     # The Apply card's list, D-1's additions, then every other `decision.*` key.

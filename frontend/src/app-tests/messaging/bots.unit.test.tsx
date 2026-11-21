@@ -24,6 +24,7 @@ import type { SessionMetadataApi } from "../../clients/conversations/sessionMeta
 import { createFakeDecisionLoopApi } from "../../clients/decisionLoop/fake";
 import type { BotRow, BotsApi } from "../../clients/messaging/botsApi";
 import type { SavedBotThread } from "../../clients/messaging/botThreadGroups";
+import type { BotUsageApi, UsageSummary } from "../../clients/messaging/botUsageApi";
 import type {
   NativeAssetsApi,
   NativeAssetView,
@@ -130,6 +131,53 @@ function memoryApiFixture(): VaultApi {
     metadata: vi.fn(),
     note: vi.fn(),
   } as unknown as VaultApi;
+}
+/** One largest-conversation row (`SESSION`, transcript kept) so a test can click its Open button;
+ * every other summary field is the type's zero/empty value, which every usage panel renders
+ * without crashing (`BotUsage.unit.test.tsx` covers those panels' own behaviour). */
+function botUsageApiFixture(): BotUsageApi {
+  const summary: UsageSummary = {
+    workspace_id: FAKE_WORKSPACE_ID,
+    days: 30,
+    dates: [],
+    totals: { input: 0, output: 0, cache_read: 0, cache_write: 0, calls: 0 },
+    daily: [],
+    bots: [],
+    bots_omitted: 0,
+    kinds: [],
+    routes: [],
+    routes_omitted: 0,
+    largest: [
+      {
+        session_id: SESSION,
+        bot_id: BOT,
+        kind: "main",
+        input: 10,
+        output: 0,
+        cache_read: 0,
+        cache_write: 0,
+        calls: 1,
+        first_at: STAMP,
+        last_at: STAMP,
+        transcript: true,
+      },
+    ],
+    coverage: {
+      sessions: 1,
+      log_only_sessions: 0,
+      log_only_calls: 0,
+      unlogged: 0,
+      pending: 0,
+      rows: 1,
+      oldest_at: null,
+      max_rows: 5000,
+      max_age_days: 30,
+    },
+  };
+  return {
+    summary: vi.fn().mockResolvedValue(summary),
+    trace: vi.fn(),
+  };
 }
 type Hook = { memoizedState: unknown; next: Hook | null };
 type Fiber = { memoizedState: Hook | null; child: Fiber | null; sibling: Fiber | null };
@@ -3114,6 +3162,40 @@ test("returning to Team keeps the Bot settings unsaved-work guard", async () => 
   expect(confirm).toHaveBeenCalledTimes(1);
   expect(screen.getByRole("heading", { name: "Bot settings" })).toBeTruthy();
   expect(name).toHaveProperty("value", "Unsent name");
+});
+
+test("Bots nav has no Usage button without botUsageApi", async () => {
+  setup();
+  await settled();
+  await openBots();
+  expect(screen.queryByRole("button", { name: t("botUsage.nav.usage") })).toBeNull();
+  expect(screen.getByRole("button", { name: "Team" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Bot settings" })).toBeTruthy();
+});
+
+test("Usage opens the Bot usage dashboard and its Open button sends session.open", async () => {
+  const botUsageApi = botUsageApiFixture();
+  const { socket } = setup({ botUsageApi });
+  await settled();
+  await openBots();
+  await click(t("botUsage.nav.usage"));
+  await settled();
+  expect(
+    screen.getByRole("button", { name: t("botUsage.nav.usage") }).getAttribute("aria-current"),
+  ).toBe("page");
+  expect(screen.getByRole("heading", { level: 1, name: "Bot usage" })).toBeTruthy();
+  expect(botUsageApi.summary).toHaveBeenCalledWith(30, expect.any(AbortSignal));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: /^Open\b/ })));
+  await settled();
+  expect(sessionStorage.getItem("viki.selected")).toBe(SESSION);
+  expect(
+    socket.sent.some(
+      (message) =>
+        message.type === "session.open" &&
+        message.session_id === SESSION &&
+        message.existing_only === true,
+    ),
+  ).toBe(true);
 });
 
 test("a fresh task thread opens with its Bot identity and leaves the main chat available", async () => {

@@ -46,6 +46,34 @@ BOT_CODE_INDEXES = {
     "ON bot_code_copies(thread_id,workspace_id) WHERE state='bound' AND thread_id IS NOT NULL",
 }
 
+BOT_USAGE_SCHEMA_STEP = 41
+BOT_USAGE_SCHEMAS = {
+    "bot_usage_sessions": """CREATE TABLE bot_usage_sessions (
+    session_id TEXT PRIMARY KEY NOT NULL CHECK(length(session_id) = 36),
+    workspace_id TEXT NOT NULL CHECK(length(workspace_id) = 36),
+    bot_id TEXT NOT NULL CHECK(length(bot_id) = 36),
+    profile_id TEXT NOT NULL CHECK(length(profile_id) = 36),
+    kind TEXT NOT NULL CHECK(kind IN ('main','task','bot_thread','routine')),
+    connection_id TEXT CHECK(connection_id IS NULL OR length(connection_id) = 36),
+    read_ns INTEGER CHECK(read_ns IS NULL OR read_ns BETWEEN 0 AND 9223372036854775807)
+) STRICT""",
+    "bot_usage_calls": """CREATE TABLE bot_usage_calls (
+    session_id TEXT NOT NULL CHECK(length(session_id) = 36),
+    message_id TEXT NOT NULL CHECK(length(message_id) BETWEEN 1 AND 128),
+    prompt_id TEXT CHECK(prompt_id IS NULL OR length(prompt_id) BETWEEN 1 AND 64),
+    at TEXT NOT NULL CHECK(length(at) = 24),
+    model TEXT NOT NULL CHECK(length(model) <= 256),
+    agent INTEGER NOT NULL CHECK(agent IN (0,1)),
+    input_tokens INTEGER NOT NULL CHECK(input_tokens BETWEEN 0 AND 9007199254740991),
+    output_tokens INTEGER NOT NULL CHECK(output_tokens BETWEEN 0 AND 9007199254740991),
+    cache_read_tokens INTEGER NOT NULL CHECK(cache_read_tokens BETWEEN 0 AND 9007199254740991),
+    cache_write_tokens INTEGER NOT NULL CHECK(cache_write_tokens BETWEEN 0 AND 9007199254740991),
+    UNIQUE (session_id, message_id),
+    FOREIGN KEY (session_id) REFERENCES bot_usage_sessions(session_id)
+) STRICT""",
+}
+BOT_USAGE_INDEXES = {"bot_usage_calls_at": "CREATE INDEX bot_usage_calls_at ON bot_usage_calls(at)"}
+
 BOT_MEMORY_SCHEMAS = {
     "session_bot_memory": """CREATE TABLE session_bot_memory (
     session_id TEXT PRIMARY KEY NOT NULL CHECK(length(session_id) = 36),
