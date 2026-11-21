@@ -32,8 +32,8 @@ The app's own data folder holds `app.sqlite3`, images used by drafts and submitt
 a browser profile. The **Data locations** view shows the active paths.
 
 The database holds workspace registrations, settings, session labels and bookmarks, sealed drafts
-and submitted text, recorded card answers, queues, routines, task records and other app state. It
-is not a copy of the Claude Code conversations.
+and submitted text, recorded card answers, queues, routines, task records, Bot usage counts and
+other app state. It is not a copy of the Claude Code conversations.
 
 Default app-data folders are:
 
@@ -53,6 +53,19 @@ To make a cold copy:
 
 Sealed values depend on the Windows account or on the matching macOS/Linux keychain item, so
 copying the files alone may not make those values readable under another account or path.
+
+### Bot usage log
+
+The database also keeps a Bot usage log: each Bot chat's calls as token counts and ids, never
+message text. A capture runs at the end of each chat turn and before each usage dashboard or CLI
+read; closing VIKI Agent stops a running capture before its next write, and what it had not yet
+written is read again next time.
+
+- **Outlives transcript cleanup:** a logged call stays even after Claude Code's own cleanup
+  (30 days by default, above) removes the transcript it came from. See
+  [Bots](bots.md#token-usage) for how long VIKI Agent itself keeps a call.
+- **Not a Reset category:** **Reset** does not clear it; see [Reset](#reset).
+- **Not exported:** **Export settings** and **Export diagnostics** omit it.
 
 ### Magpie data
 

@@ -148,6 +148,14 @@ def parser() -> argparse.ArgumentParser:
     bots_create.add_argument("--workspace")
     bots_create.set_defaults(handler=_cmd_bots_create)
 
+    bots_usage = _leaf(bots_sub, "usage")
+    bots_usage.add_argument("--days", type=int, choices=(7, 30, 90), default=30)
+    bots_usage.set_defaults(handler=_cmd_bots_usage)
+
+    bots_trace = _leaf(bots_sub, "trace")
+    bots_trace.add_argument("id")
+    bots_trace.set_defaults(handler=_cmd_bots_trace)
+
     return top
 
 
@@ -635,3 +643,17 @@ def _cmd_bots_create(
         )
 
     return _respond(body, status, as_json, out, err, fix_for=fix_for)
+
+
+def _cmd_bots_usage(
+    args: argparse.Namespace, call: _Call, as_json: bool, out: TextIO, err: TextIO
+) -> int:
+    status, body = call("GET", f"usage/{args.days}")
+    return _respond(body, status, as_json, out, err)
+
+
+def _cmd_bots_trace(
+    args: argparse.Namespace, call: _Call, as_json: bool, out: TextIO, err: TextIO
+) -> int:
+    status, body = call("GET", f"usage/sessions/{args.id}")
+    return _respond(body, status, as_json, out, err)

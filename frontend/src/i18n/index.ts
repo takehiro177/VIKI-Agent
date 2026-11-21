@@ -15,6 +15,7 @@
 import { catalog as appearance } from "./appearance";
 import { catalog as botHues } from "./botHues";
 import { catalog as bots } from "./bots";
+import { catalog as botUsage } from "./botUsage";
 import { catalog as commands } from "./commands";
 import { catalog as common } from "./common";
 import { catalog as data } from "./data";
@@ -43,6 +44,7 @@ export { defineCatalog } from "./defineCatalog";
 
 export const en = {
   ...bots.en,
+  ...botUsage.en,
   ...botHues.en,
   ...common.en,
   ...commands.en,
@@ -78,6 +80,7 @@ export type Key = keyof typeof en;
  * `{...a, ...b}` with the same key in both just keeps `b`'s value). Not for component use. */
 export const modules = {
   bots,
+  botUsage,
   botHues,
   common,
   commands,

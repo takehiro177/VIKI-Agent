@@ -1,0 +1,190 @@
+{
+  "summary": {
+    "workspace_id": "00000000-0000-4000-8000-000000000001",
+    "days": 30,
+    "dates": [
+      "2026-09-15",
+      "2026-09-16",
+      "2026-09-17",
+      "2026-09-18",
+      "2026-09-19",
+      "2026-09-20",
+      "2026-09-21",
+      "2026-09-22",
+      "2026-09-23",
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-26",
+      "2026-09-27",
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-05",
+      "2026-10-06",
+      "2026-10-07",
+      "2026-10-08",
+      "2026-10-09",
+      "2026-10-10",
+      "2026-10-11",
+      "2026-10-12",
+      "2026-10-13",
+      "2026-10-14"
+    ],
+    "totals": {
+      "input": 6,
+      "output": 232,
+      "cache_read": 127782,
+      "cache_write": 67732,
+      "calls": 3
+    },
+    "daily": [
+      {
+        "date": "2026-10-14",
+        "bot_id": "00000000-0000-4000-8000-000000000002",
+        "tokens": 195752,
+        "calls": 3
+      }
+    ],
+    "bots": [
+      {
+        "bot_id": "00000000-0000-4000-8000-000000000002",
+        "profile_id": "00000000-0000-4000-8000-000000000003",
+        "name": "Review helper",
+        "current": true,
+        "input": 6,
+        "output": 232,
+        "cache_read": 127782,
+        "cache_write": 67732,
+        "calls": 3,
+        "sessions": 1
+      }
+    ],
+    "bots_omitted": 0,
+    "kinds": [
+      {
+        "kind": "main",
+        "input": 6,
+        "output": 232,
+        "cache_read": 127782,
+        "cache_write": 67732,
+        "calls": 3
+      },
+      {
+        "kind": "task",
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "calls": 0
+      },
+      {
+        "kind": "bot_thread",
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "calls": 0
+      },
+      {
+        "kind": "routine",
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "calls": 0
+      },
+      {
+        "kind": "subagent",
+        "input": 0,
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0,
+        "calls": 0
+      }
+    ],
+    "routes": [
+      {
+        "connection_id": null,
+        "connection_name": null,
+        "model": "claude-sonnet-5",
+        "input": 6,
+        "output": 232,
+        "cache_read": 127782,
+        "cache_write": 67732,
+        "calls": 3
+      }
+    ],
+    "routes_omitted": 0,
+    "largest": [
+      {
+        "session_id": "00000000-0000-4000-8000-000000000004",
+        "bot_id": "00000000-0000-4000-8000-000000000002",
+        "kind": "main",
+        "input": 6,
+        "output": 232,
+        "cache_read": 127782,
+        "cache_write": 67732,
+        "calls": 3,
+        "first_at": "2026-10-14T12:00:00.000Z",
+        "last_at": "2026-10-14T12:00:00.000Z",
+        "transcript": true
+      }
+    ],
+    "coverage": {
+      "sessions": 1,
+      "log_only_sessions": 0,
+      "log_only_calls": 0,
+      "unlogged": 0,
+      "pending": 0,
+      "rows": 3,
+      "oldest_at": "2026-10-14T12:00:00.000Z",
+      "max_rows": 100000,
+      "max_age_days": 90
+    }
+  },
+  "trace": {
+    "session_id": "00000000-0000-4000-8000-000000000004",
+    "bot_id": "00000000-0000-4000-8000-000000000002",
+    "kind": "main",
+    "connection_id": null,
+    "connection_name": null,
+    "transcript": true,
+    "omitted": 0,
+    "calls": [
+      {
+        "at": "2026-10-14T12:00:00.000Z",
+        "prompt_id": "00000000-0000-4000-8000-000000000005",
+        "model": "claude-sonnet-5",
+        "agent": false,
+        "input": 2,
+        "output": 221,
+        "cache_read": 0,
+        "cache_write": 60569
+      },
+      {
+        "at": "2026-10-14T12:00:00.000Z",
+        "prompt_id": "00000000-0000-4000-8000-000000000005",
+        "model": "claude-sonnet-5",
+        "agent": false,
+        "input": 2,
+        "output": 5,
+        "cache_read": 60569,
+        "cache_write": 6644
+      },
+      {
+        "at": "2026-10-14T12:00:00.000Z",
+        "prompt_id": "00000000-0000-4000-8000-000000000006",
+        "model": "claude-sonnet-5",
+        "agent": false,
+        "input": 2,
+        "output": 6,
+        "cache_read": 67213,
+        "cache_write": 519
+      }
+    ]
+  }
+}

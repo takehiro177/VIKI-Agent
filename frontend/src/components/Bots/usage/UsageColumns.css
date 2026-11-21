@@ -1,0 +1,188 @@
+/* UsageColumns: a single-series daily bar chart, plus the same numbers as a table (`DailyTable`).
+   The bars' only colour is `--usage-series`, scoped onto `.bot-usage` in styles/tokens.css; every
+   other rule here stays on the monochrome `--hair`/`--line`/`--t1`/`--t2`/`--or` tokens, the same
+   ones DataParts.css uses for the Decision data charts. No transition or animation: the
+   highlighted day changes instantly on hover, focus and key presses. */
+
+.bot-usage-columns {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bot-usage-columns-title {
+  margin: 0;
+  color: var(--t1);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.bot-usage-columns-empty {
+  margin: 0;
+  color: var(--t2);
+  font-size: 12px;
+}
+
+.bot-usage-columns-plot {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bot-usage-columns-plot:focus-visible {
+  outline: 2px solid var(--or);
+  outline-offset: 3px;
+}
+
+.bot-usage-columns-chart {
+  /* Reserved for the axis tick text (F2): wide enough for a compact count like "123.4M" at 12px,
+     with room to spare. The grid and row below are both inset by this same amount, so a tick
+     label never sits over a column. */
+  --tick-gutter: 42px;
+  position: relative;
+  padding-right: var(--tick-gutter);
+  min-width: 0;
+}
+
+.bot-usage-columns-grid {
+  position: absolute;
+  top: 0;
+  right: var(--tick-gutter);
+  bottom: 0;
+  left: 0;
+}
+
+.bot-usage-columns-gridline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--hair);
+}
+
+.bot-usage-columns-ticks {
+  position: absolute;
+  inset: 0;
+}
+
+.bot-usage-columns-tick {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+  color: var(--t2);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.bot-usage-columns-row {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bot-usage-columns-slot {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex: 1 1 0;
+  height: 100%;
+  min-width: 0;
+}
+
+.bot-usage-columns-bar {
+  display: block;
+  width: min(24px, 70%);
+  border-radius: 4px 4px 0 0;
+  background: var(--usage-series);
+}
+
+.bot-usage-columns-peak {
+  position: absolute;
+  /* F10: the inline `bottom` (set in UsageColumns.tsx) already lands this label's bottom edge on
+     the bar's top, so lifting it a further 100% of its own height (as this used to) stacked a
+     second label-height of lift on top, landing the tallest bar's label on the title row. A fixed
+     4px gap is the only lift it needs; the pinned line box below keeps "4px + its own height"
+     inside PEAK_HEADROOM's 20px budget (UsageColumns.tsx). */
+  transform: translateY(-4px);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--t1);
+  font-size: 12px;
+}
+
+/* F11: centred by default (the common case); `data-anchor` (set from the peak's position among
+   the days, `peakAnchor` in UsageColumns.tsx) pins it to its own slot's near edge instead in the
+   first or last third of the row, so a centred label never hangs past the row's own left edge or
+   into the tick gutter on the right. */
+.bot-usage-columns-peak[data-anchor="start"] {
+  left: 0;
+}
+
+.bot-usage-columns-peak[data-anchor="center"] {
+  left: 50%;
+  transform: translate(-50%, -4px);
+}
+
+.bot-usage-columns-peak[data-anchor="end"] {
+  right: 0;
+}
+
+.bot-usage-columns-xlabels {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  color: var(--t2);
+  font-size: 12px;
+}
+
+.bot-usage-columns-tooltip {
+  margin: 0;
+  min-height: 15px;
+  color: var(--t1);
+  font-size: 12px;
+}
+
+.bot-usage-columns-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.bot-usage-columns-table th,
+.bot-usage-columns-table td {
+  padding: 6px 8px 6px 0;
+  border-bottom: 1px solid var(--hair);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.bot-usage-columns-table th {
+  color: var(--t2);
+  font-weight: 500;
+}
+
+.bot-usage-columns-table tbody th {
+  color: var(--t1);
+}
+
+.bot-usage-columns-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (forced-colors: active) {
+  .bot-usage-columns-bar {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+
+  .bot-usage-columns-gridline {
+    forced-color-adjust: none;
+    background: GrayText;
+  }
+}

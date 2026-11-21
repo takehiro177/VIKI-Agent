@@ -59,9 +59,11 @@ from viki_agent.automation.routines import (
 )
 from viki_agent.automation.scheduler import Scheduler
 from viki_agent.automation.tasks import TaskRunner
+from viki_agent.catalog import _UUID_RE
 from viki_agent.conversations.command_runtime import storage_call
 from viki_agent.domain import EffectiveSettings
-from viki_agent.messaging import bots_api
+from viki_agent.messaging import bot_usage_api, bots_api
+from viki_agent.messaging.bot_usage import BotUsageError
 from viki_agent.messaging.bots import BotError, BotService
 from viki_agent.profiles.service import ProfileService
 from viki_agent.workspaces import WorkspaceService
@@ -89,6 +91,8 @@ OPS: dict[tuple[str, str], str] = {
     ("POST", "routines/{id}/run"): "change",
     ("POST", "routines/{id}/enable"): "safety",
     ("POST", "bots"): "change",
+    ("GET", "usage/{days}"): "read",
+    ("GET", "usage/sessions/{id}"): "read",
 }
 
 # (method, operation) -> the window routes, as (method, route path), whose work it does. A route
@@ -110,6 +114,8 @@ COVERS: dict[tuple[str, str], frozenset[tuple[str, str]]] = {
     ("POST", "routines/{id}/run"): frozenset({("POST", "/api/v2/routines/{routine_id}/run")}),
     ("POST", "routines/{id}/enable"): frozenset({("POST", "/api/v2/routines/{routine_id}/enable")}),
     ("POST", "bots"): frozenset({("POST", "/api/v2/bots")}),
+    ("GET", "usage/{days}"): frozenset({("GET", "/api/v2/bot-usage/summary/{days}")}),
+    ("GET", "usage/sessions/{id}"): frozenset({("GET", "/api/v2/bot-usage/sessions/{session_id}")}),
 }
 
 # The settings a chat changes without Apply. A key is listed only when no value of it can widen
@@ -191,6 +197,9 @@ def _answer(error: Exception) -> Response:
     elif isinstance(error, BotError) and error.code in bots_api._STATUS:
         code, status = error.code, bots_api._STATUS[error.code]
         message = "The Bot operation could not be completed."
+    elif isinstance(error, BotUsageError) and error.code in bot_usage_api._STATUS:
+        code, status = error.code, bot_usage_api._STATUS[error.code]
+        message = "The Bot usage request could not be completed."
     else:
         code, status, message = "unavailable", 503, "VIKI Agent couldn't do that just now."
     if status >= 500:
@@ -200,10 +209,15 @@ def _answer(error: Exception) -> Response:
 
 
 def _operation(method: str, path: str) -> tuple[tuple[str, str] | None, str | None]:
-    """The `OPS` key a request names, with the routine id a routine action carries."""
+    """The `OPS` key a request names, with the routine id a routine action, or the day count or
+    session id a usage operation, carries."""
     parts = path.split("/")
     if len(parts) == 3 and parts[0] == "routines":
         operation, target = (method, f"routines/{{id}}/{parts[2]}"), parts[1]
+    elif len(parts) == 3 and parts[0] == "usage" and parts[1] == "sessions":
+        operation, target = (method, "usage/sessions/{id}"), parts[2]
+    elif len(parts) == 2 and parts[0] == "usage":
+        operation, target = (method, "usage/{days}"), parts[1]
     else:
         operation, target = (method, path), None
     return (operation, target) if operation in OPS else (None, None)
@@ -255,8 +269,9 @@ def agent_routes(
     admission_lock: asyncio.Lock,
     app_version: str,
     workers: set[asyncio.Task[Any]],
+    usage: bot_usage_api.UsageViews | None = None,
 ) -> list[Route]:
-    """The agent surface's one route; `bots` is None when the app has no Bots."""
+    """The agent surface's one route; `bots` and `usage` are None when the app has no Bots."""
     capacity = anyio.CapacityLimiter(MAX_IN_FLIGHT)
 
     def status(grant: AgentGrant) -> dict[str, Any]:
@@ -531,6 +546,24 @@ def agent_routes(
         view = {key: bot[key] for key in ("bot_id", "profile_id", "workspace_id")}
         return json_response({"bot": view}, 200 if replayed else 201)
 
+    async def get_usage_summary(
+        _grant: AgentGrant, target: str | None, _body: dict[str, Any]
+    ) -> Response:
+        if target is None or target not in bot_usage_api._DAYS:
+            raise _refused("invalid_input")
+        if usage is None:
+            raise AgentChangeError("unavailable", 503, "Bot usage isn't available.")
+        return json_response(await run_sync(usage.summary, bot_usage_api._DAYS[target]))
+
+    async def get_usage_trace(
+        _grant: AgentGrant, target: str | None, _body: dict[str, Any]
+    ) -> Response:
+        if target is None or not _UUID_RE.match(target):
+            raise _refused("invalid_input")
+        if usage is None:
+            raise AgentChangeError("unavailable", 503, "Bot usage isn't available.")
+        return json_response(await run_sync(usage.trace, target))
+
     handlers: dict[tuple[str, str], _Handler] = {
         ("GET", "status"): get_status,
         ("GET", "settings"): get_settings,
@@ -540,6 +573,8 @@ def agent_routes(
         ("POST", "routines/{id}/run"): run_routine,
         ("POST", "routines/{id}/enable"): enable_routine,
         ("POST", "bots"): create_bot,
+        ("GET", "usage/{days}"): get_usage_summary,
+        ("GET", "usage/sessions/{id}"): get_usage_trace,
     }
 
     async def admitted(request: Request) -> Response:

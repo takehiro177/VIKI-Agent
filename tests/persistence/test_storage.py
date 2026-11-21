@@ -498,6 +498,7 @@ def test_version_one_migrates_once_and_preserves_a_valid_metadata_backup(tmp_pat
         "v38",
         "v39",
         "v4",
+        "v40",
         "v5",
         "v6",
         "v7",
@@ -641,6 +642,7 @@ def test_failed_private_leaf_creation_never_publishes_a_database(
 def _drop_schema_five(connection: sqlite3.Connection) -> None:
     """Undo every post-v3 object so a current store can pose as a released older one."""
     for table in (
+        *reversed(storage.BOT_USAGE_SCHEMAS),
         *reversed(storage.BOT_CODE_SCHEMAS),
         *storage.DECISION_PROPOSAL_SCHEMAS,
         *storage.MESSAGING_SCHEMAS,
@@ -960,6 +962,8 @@ _CURRENT_SCHEMA_NAMES = sorted(
         *storage.DECISION_PROPOSAL_SCHEMAS,
         *storage.BOT_CODE_SCHEMAS,
         *storage.BOT_CODE_INDEXES,
+        *storage.BOT_USAGE_SCHEMAS,
+        *storage.BOT_USAGE_INDEXES,
     ]
 )
 _ROUTINE_TABLES = ",".join(f"'{name}'" for name in storage.ROUTINE_SCHEMAS)
@@ -980,6 +984,8 @@ _BOT_TABLES = ",".join(
         *storage.BOT_THREAD_SCHEMAS,
         *storage.BOT_CODE_SCHEMAS,
         *storage.BOT_CODE_INDEXES,
+        *storage.BOT_USAGE_SCHEMAS,
+        *storage.BOT_USAGE_INDEXES,
     )
 )
 _MESSAGING_TABLES = ",".join(f"'{name}'" for name in storage.MESSAGING_SCHEMAS)
@@ -1612,7 +1618,7 @@ def test_fresh_schema_13_ddl_is_frozen(tmp_path: Path) -> None:
     store in the wild means exactly these objects and their autoindexes, so a later change takes
     its own schema step. The version literal is pinned here, so the refusals elsewhere really
     describe a store one version newer than this build's."""
-    assert SCHEMA_VERSION == 40
+    assert SCHEMA_VERSION == 41
     # What the rebuild changes is read off the shipped text rather than retyped: one CHECK each.
     for current, before, widened, narrow in (
         (
@@ -1632,7 +1638,7 @@ def test_fresh_schema_13_ddl_is_frozen(tmp_path: Path) -> None:
         assert current.replace(widened, narrow) == before
     state = AppState(tmp_path / "state.json", Prefs())
     with contextlib.closing(sqlite3.connect(state.database_path)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (40,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
         rows = connection.execute(
             "SELECT type,name,sql FROM sqlite_schema "
             f"WHERE tbl_name IN ({_SCHEMA_THIRTEEN_TABLES}) ORDER BY type,name"
@@ -2100,6 +2106,8 @@ _SCHEMA_SEVEN_TABLES = [
     and name not in storage.BOT_THREAD_SCHEMAS
     and name not in storage.BOT_CODE_SCHEMAS
     and name not in storage.BOT_CODE_INDEXES
+    and name not in storage.BOT_USAGE_SCHEMAS
+    and name not in storage.BOT_USAGE_INDEXES
     and name not in storage.BOT_SCHEMAS
     and name not in storage.MESSAGING_SCHEMAS
     and name not in storage.DECISION_PROPOSAL_SCHEMAS
@@ -2172,6 +2180,8 @@ def _downgrade_format_checks(connection: sqlite3.Connection) -> None:
 
 def _downgrade_bot_code(connection: sqlite3.Connection) -> None:
     """Restore the shipped v39 binding DDL before lowering a current fixture's version."""
+    for table in reversed(storage.BOT_USAGE_SCHEMAS):
+        connection.execute(f"DROP TABLE IF EXISTS {table}")
     for table in reversed(storage.BOT_CODE_SCHEMAS):
         connection.execute(f"DROP TABLE IF EXISTS {table}")
     columns = [row[1] for row in connection.execute("PRAGMA table_info(session_profile_bindings)")]
