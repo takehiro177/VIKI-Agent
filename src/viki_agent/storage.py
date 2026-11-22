@@ -811,6 +811,7 @@ _BOT_CODE_BASELINE_FIELDS = ("workspace_id", "git_fingerprint", "created_at")
 
 _SESSION_ROOT_FIELDS = ("session_id", "workspace_id", "worktree_id", "display_root", "created_at")
 _SESSION_ROOT_COLUMNS = (*_SESSION_ROOT_FIELDS, "additional_roots")
+ROOT_LOOKUP_CHUNK = 500  # session ids one session_root_paths statement looks up
 _WORKTREE_FIELDS = (
     "worktree_id",
     "workspace_id",
@@ -3140,6 +3141,23 @@ class SessionStore:
                 (limit + 1,),
             ).fetchall()
         return [self._session_root_row(row) for row in rows[:limit]], len(rows) > limit
+
+    def session_root_paths(self, session_ids: list[str]) -> dict[str, str]:
+        """Each of `session_ids` with a recorded root, to its `display_root`. One short read
+        statement per ROOT_LOOKUP_CHUNK ids, each on its own connection, so a long id list never
+        holds the store's read lock for long."""
+        found: dict[str, str] = {}
+        unique = sorted(set(session_ids))
+        for start in range(0, len(unique), ROOT_LOOKUP_CHUNK):
+            chunk = unique[start : start + ROOT_LOOKUP_CHUNK]
+            with self._connection() as connection:
+                rows = connection.execute(
+                    "SELECT session_id,display_root FROM session_roots "
+                    f"WHERE session_id IN ({','.join('?' * len(chunk))})",
+                    chunk,
+                ).fetchall()
+            found.update((row[0], row[1]) for row in rows)
+        return found
 
     def session_roots_in_worktree(self, worktree_id: str) -> list[str]:
         with self._connection() as connection:

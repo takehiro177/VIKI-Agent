@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
+import sqlite3
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from viki_agent import storage
 from viki_agent.state import AppState, Prefs
 from viki_agent.storage import SessionStore, StateError
 
@@ -376,3 +379,30 @@ def test_two_revives_of_one_row_admit_exactly_one(tmp_path: Path) -> None:
     row = store.get_worktree(_id(1))
     assert row is not None
     assert (row["state"], row["updated_at"]) in {("creating", _stamp(5)), ("creating", _stamp(6))}
+
+
+def test_session_root_paths_reads_recorded_ids_in_chunks_of_root_lookup_chunk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bulk lookup answers only the ids with a row, ignores repeats and unknown ids, and runs
+    one statement per ROOT_LOOKUP_CHUNK distinct ids."""
+    monkeypatch.setattr(storage, "ROOT_LOOKUP_CHUNK", 2)
+    store = _store(tmp_path)
+    for session in (1, 2, 3, 4, 5):
+        store.put_session_root(_root(session, display_root=f"<repo>/{session}"))
+    statements: list[int] = []
+    opened = store._connection
+
+    @contextlib.contextmanager
+    def counted(**kwargs: Any) -> Iterator[sqlite3.Connection]:
+        statements.append(1)
+        with opened(**kwargs) as connection:
+            yield connection
+
+    monkeypatch.setattr(store, "_connection", counted)
+    found = store.session_root_paths([_id(5), _id(1), _id(9), _id(1), _id(3), _id(8)])
+    assert found == {_id(1): "<repo>/1", _id(3): "<repo>/3", _id(5): "<repo>/5"}
+    assert len(statements) == 3  # five distinct ids, two a statement
+    statements.clear()
+    assert store.session_root_paths([]) == {}
+    assert statements == []

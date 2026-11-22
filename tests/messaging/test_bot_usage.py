@@ -103,18 +103,27 @@ def _calls(service: BotService) -> list[tuple[Any, ...]]:
 
 class _Roots:
     """A `catalog.RootLookup`, bound as server.py binds `SessionRoots`, that counts its reads.
-    Its snapshot holds `listed`; `root_of` also knows `unlisted`, as it knows the roots past the
-    snapshot's `session_roots.MAX_ROOT_ROWS`. While `fail` is set, the snapshot raises."""
+    Its snapshot holds `listed`; `root_of` and `roots_for` also know `unlisted`, as they know
+    the roots past the snapshot's `session_roots.MAX_ROOT_ROWS`. While `fail` is set, the
+    snapshot raises, and so does `roots_for` while `fail_bulk` is set."""
 
     def __init__(self, listed: dict[str, Path], unlisted: dict[str, Path] | None = None) -> None:
         self.listed, self.unlisted = listed, unlisted or {}
-        self.fail = False
+        self.fail = self.fail_bulk = False
         self.snapshots = 0
         self.alone: list[str] = []
+        self.bulk: list[list[str]] = []
 
     def root_of(self, session_id: str) -> Path | None:
         self.alone.append(session_id)
         return self.listed.get(session_id, self.unlisted.get(session_id))
+
+    def roots_for(self, session_ids: list[str]) -> dict[str, Path]:
+        self.bulk.append(sorted(session_ids))
+        if self.fail_bulk:
+            raise StateError("unavailable")
+        known = {**self.unlisted, **self.listed}
+        return {sid: known[sid] for sid in session_ids if sid in known}
 
     def transcript_roots(self) -> dict[str, Path]:
         self.snapshots += 1
@@ -692,9 +701,9 @@ def test_a_first_capture_reads_the_roots_once_and_looks_no_session_up_alone(
     _settle(service, bot, [*chats, listed])
 
     assert usage.capture(workspace_id) == Capture(frozenset([*chats, listed]), 0, 0)
-    assert (roots.snapshots, roots.alone) == (1, [])
+    assert (roots.snapshots, roots.alone, roots.bulk) == (1, [], [])
     assert usage.capture(workspace_id).present == frozenset([*chats, listed])
-    assert (roots.snapshots, roots.alone) == (2, [])  # again, for the 1,000 with no file
+    assert (roots.snapshots, roots.alone, roots.bulk) == (2, [], [])  # again, for the 1,000
 
 
 def test_a_found_path_is_remembered_and_a_missing_one_looked_up_at_each_capture(
@@ -723,35 +732,65 @@ def test_a_found_path_is_remembered_and_a_missing_one_looked_up_at_each_capture(
     assert usage.capture(workspace_id).present == {task}
     assert roots.snapshots == 2
     assert usage.capture(workspace_id).present == {task}
-    assert (roots.snapshots, roots.alone) == (3, [])
+    assert (roots.snapshots, roots.alone, roots.bulk) == (3, [], [])
 
 
-def test_a_snapshot_at_the_cap_still_looks_up_alone_a_session_it_lacks(
+def test_a_snapshot_at_the_cap_looks_up_the_sessions_it_lacks_in_one_bulk_lookup(
     service: BotService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """F33: a snapshot of exactly MAX_ROOT_ROWS roots may have stopped short, so a session it
-    lacks whose vault file is absent is looked up alone; one with a vault file is not."""
+    """F33: a snapshot of exactly MAX_ROOT_ROWS roots may have stopped short, so the sessions it
+    lacks whose vault file is absent are looked up together, in one bulk lookup; one with a
+    vault file is not, and none is looked up alone."""
     monkeypatch.setattr(catalog, "MAX_ROOT_ROWS", 2)
     bot = _bot(service)
     _bind_chat(service, bot)
     chat, workspace_id = bot["chat_session_id"], bot["workspace_id"]
-    listed, lacked = _owned_chat(service, bot), _owned_chat(service, bot)
+    listed = _owned_chat(service, bot)
+    lacked = [_owned_chat(service, bot) for _ in range(3)]
+    gone = _owned_chat(service, bot)  # Claude Code deleted its transcript
     code = service.store.path.parent.parent / "code"
-    roots = _Roots({listed: code, _id(): code}, {lacked: code})
+    roots = _Roots({listed: code, _id(): code}, dict.fromkeys(lacked, code))
     usage, projects = _bound(service, roots)
     _write(projects / f"{chat}.jsonl", [_line(0)])
-    for number, session_id in enumerate((listed, lacked), 1):
+    for number, session_id in enumerate((listed, *lacked), 1):
         _write(_elsewhere(service, code) / f"{session_id}.jsonl", [_line(number)])
 
-    assert usage.capture(workspace_id).present == {chat, listed, lacked}
-    assert (roots.snapshots, roots.alone) == (1, [lacked])
+    assert usage.capture(workspace_id).present == {chat, listed, *lacked}
+    assert (roots.snapshots, roots.alone, roots.bulk) == (1, [], [sorted([*lacked, gone])])
+    assert usage.capture(workspace_id).added == 0
+    assert (roots.snapshots, roots.alone, roots.bulk[1:]) == (2, [], [[gone]])
+
+
+def test_a_failed_bulk_lookup_reads_those_sessions_from_the_vault(
+    service: BotService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed bulk lookup leaves the sessions it named on their vault path, as a failed
+    `root_of` does, and fails the capture of no other session."""
+    monkeypatch.setattr(catalog, "MAX_ROOT_ROWS", 1)
+    bot = _bot(service)
+    _bind_chat(service, bot)
+    chat, workspace_id = bot["chat_session_id"], bot["workspace_id"]
+    lacked = _owned_chat(service, bot)
+    code = service.store.path.parent.parent / "code"
+    roots = _Roots({_id(): code}, {lacked: code})
+    roots.fail_bulk = True
+    usage, projects = _bound(service, roots)
+    _write(projects / f"{chat}.jsonl", [_line(0)])
+    _write(_elsewhere(service, code) / f"{lacked}.jsonl", [_line(1)])
+
+    assert usage.capture(workspace_id) == Capture(frozenset({chat}), 0, 1)
+    assert (roots.alone, roots.bulk) == ([], [[lacked]])
+    roots.fail_bulk = False
+    assert usage.capture(workspace_id) == Capture(frozenset({chat, lacked}), 0, 1)
 
 
 def test_the_catalogs_root_cap_mirrors_session_roots() -> None:
     assert catalog.MAX_ROOT_ROWS == session_roots.MAX_ROOT_ROWS
 
 
-def test_a_failed_roots_snapshot_looks_each_session_up_alone(service: BotService) -> None:
+def test_a_failed_roots_snapshot_looks_every_session_up_in_one_bulk_lookup(
+    service: BotService,
+) -> None:
     bot = _bot(service)
     _bind_chat(service, bot)
     chat, workspace_id = bot["chat_session_id"], bot["workspace_id"]
@@ -764,7 +803,7 @@ def test_a_failed_roots_snapshot_looks_each_session_up_alone(service: BotService
     _write(_elsewhere(service, code) / f"{task}.jsonl", [_line(1)])
 
     assert usage.capture(workspace_id).present == {chat, task}
-    assert (roots.snapshots, sorted(roots.alone)) == (1, sorted([chat, task]))
+    assert (roots.snapshots, roots.alone, roots.bulk) == (1, [], [sorted([chat, task])])
 
 
 def test_a_removed_bots_saved_conversation_keeps_its_transcript_in_summary_and_trace(

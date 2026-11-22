@@ -111,6 +111,9 @@ class Roots:
     def root_of(self, session_id: str) -> Path | None:
         return self.roots.get(session_id)
 
+    def roots_for(self, session_ids: list[str]) -> Mapping[str, Path]:
+        return {sid: self.roots[sid] for sid in session_ids if sid in self.roots}
+
     def transcript_roots(self) -> Mapping[str, Path]:
         self.snapshots += 1
         return dict(self.roots)
