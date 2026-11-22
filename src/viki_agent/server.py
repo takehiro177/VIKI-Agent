@@ -174,6 +174,9 @@ from viki_agent.media.avatars_api import avatar_routes
 from viki_agent.messaging.bot_memory_api import BotMemoryArea, bot_memory_routes
 from viki_agent.messaging.bot_runtime import BotRuntime
 from viki_agent.messaging.bot_threads import BotThreadService
+from viki_agent.messaging.bot_usage import BotUsage
+from viki_agent.messaging.bot_usage_api import UsageViews, bot_usage_routes, turn_end_capture
+from viki_agent.messaging.bot_usage_report import Names
 from viki_agent.messaging.bots import BotError, BotService
 from viki_agent.messaging.bots_api import bot_routes
 from viki_agent.messaging.discord_channel import DiscordChannel
@@ -861,6 +864,39 @@ def create_app(
         if workspaces is not None
         else None
     )
+    # Bot token usage: the dashboard's views over the active vault's Bot chats, and the hook that
+    # schedules a capture at each chat turn's end (`observe`, below); a capture logs Bot chats only.
+    usage: BotUsage | None = None
+    usage_views: UsageViews | None = None
+    schedule_capture: Callable[[str], None] | None = None
+    if bots is not None and workspaces is not None:
+
+        def usage_names() -> Names:
+            """The names the usage views show: every profile's, the current Bots' ids and the
+            model connections'. A connection list that cannot be read names no connection."""
+            connections: dict[str, str] = {}
+            if model_connections is not None:
+                with contextlib.suppress(Exception):
+                    connections = {row.id: row.name for row in model_connections.read()[1]}
+            return Names(
+                profiles={
+                    profile["profile_id"]: profile["identity"]["name"]
+                    for archived in (False, True)
+                    for profile in profiles.list(archived)
+                },
+                bots=frozenset(bot["bot_id"] for bot in bots.list()),
+                connections=connections,
+            )
+
+        usage = BotUsage(manager.app_state.store, catalog, now=clock.wall)
+        usage_views = UsageViews(
+            usage,
+            manager.app_state.store,
+            active=lambda: workspaces.resolve_active().workspace.workspace_id,
+            names=usage_names,
+            now=clock.wall,
+        )
+        schedule_capture = turn_end_capture(usage_views, bot_workers)
 
     def mattermost_bridge() -> MattermostBot | None:
         current = messaging_runtime.bridge("mattermost")
@@ -2211,8 +2247,12 @@ def create_app(
             reconnect_saved()
             yield
         finally:
-            # First: on macOS and Linux a stop that is killed part-way leaves Magpie running,
-            # and from here no closing chat may start it again.
+            # First, the Bot usage capture: a running one stops before its next write
+            # transaction, and one started from here returns at once.
+            if usage is not None:
+                usage.stop()
+            # Next, before any await: on macOS and Linux a stop that is killed part-way leaves
+            # Magpie running, and from here no closing chat may start it again.
             magpie.stop()
             close_bots()
             messaging_runtime.disarm_all()
@@ -2479,6 +2519,12 @@ def create_app(
                 copies_released=copies_released,
             )
         )
+    if usage_views is not None:
+        routes.extend(
+            bot_usage_routes(
+                usage_views, authorized=authorized, origins=origins, workers=bot_workers
+            )
+        )
     if settings is not None:
         assert model_connections is not None
         model_gateway = Gateway(before_request=magpie.ensure_connection)
@@ -2516,6 +2562,7 @@ def create_app(
                     admission_lock=admission_lock,
                     app_version=app_version,
                     workers=agent_workers,
+                    usage=usage_views,
                 )
             )
             routes.extend(
@@ -3198,8 +3245,18 @@ def create_app(
     )
     if not root_available:
         invalidate_messaging_root()
+
+    def observe(actor: SessionActor, envelope: Envelope) -> None:
+        """The manager's one observer: every envelope goes to the messaging runtime first, then
+        a turn's end schedules a Bot usage capture of its chat, even when the runtime raised."""
+        try:
+            messaging_runtime.observe(actor, envelope)
+        finally:
+            if schedule_capture is not None and envelope["type"] == "turn.done":
+                schedule_capture(actor.session_id)
+
     manager.bind_settle(messaging_runtime.disarm_all)
-    manager.bind_observer(messaging_runtime.observe)
+    manager.bind_observer(observe)
     routes.extend(
         messaging_routes(
             runtime=messaging_runtime,

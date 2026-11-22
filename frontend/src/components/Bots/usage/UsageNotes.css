@@ -1,0 +1,32 @@
+/* UsageNotes: the "Measured facts" and "About these numbers" lists under the Bot usage
+   dashboard. Chrome stays on the monochrome --hair/--line/--t0/--t1/--t2 tokens, the same ones
+   UsageTables.css and UsageColumns.css use; no data colour of its own. */
+
+.bot-usage-notes {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.bot-usage-notes-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bot-usage-notes-section h2 {
+  margin: 0;
+  color: var(--t0);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bot-usage-notes-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--t1);
+  font-size: 12px;
+}

@@ -1087,9 +1087,9 @@ Backups and portable settings:
 - **Portable settings:** portable settings export and import exclude Bots, profiles, routines,
   and saved messaging settings.
 - **App database backups:** an app database backup includes Bot links, delivery metadata, sealed
-  messaging settings and Decision data as it was when the backup was made. Deleting Decision data
-  later in **Data** does not change the backup; Claude Code owns its conversation history
-  separately.
+  messaging settings, Bot usage counts and Decision data as it was when the backup was made.
+  Deleting Decision data later in **Data** does not change the backup; Claude Code owns its
+  conversation history separately.
 
 See [Sessions and data](sessions-and-data.md) for retention and Reset consequences.
 
@@ -1097,7 +1097,9 @@ See [Sessions and data](sessions-and-data.md) for retention and Reset consequenc
 
 Each upgrade step of `app.sqlite3` first makes a verified copy of the database as it was,
 `app.sqlite3.v<N>-backup-<id>.sqlite3` beside it, where `<N>` is the version before that step. A
-build from before the step refuses the upgraded database.
+build from before the step refuses the upgraded database. The step that added the Bot usage log,
+for example, is version 41, so it leaves `app.sqlite3.v40-backup-<id>.sqlite3`; restoring that
+copy drops any usage rows logged since.
 
 For rollback:
 

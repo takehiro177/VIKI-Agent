@@ -219,6 +219,10 @@ SEARCH_RESPONSE_BYTES = 256 * 1024
 # Code points of the raw query. Enforced by server.py before any read (a 400), not here: this
 # module's floor and NFKC rules still decide what a short query means.
 QUERY_MAX_CHARS = 256
+# The most roots one RootLookup snapshot lists, so a snapshot with fewer is complete. Mirrors
+# session_roots.MAX_ROOT_ROWS, which a test pins equal: importing it would be an import cycle,
+# since session_roots loads this module.
+MAX_ROOT_ROWS = 4096
 
 # A canonical, lowercase UUID (the shape of a transcript filename's stem). Anything else is
 # treated as missing, defense in depth: session ids become file paths.
@@ -776,9 +780,7 @@ class Catalog:
         try:
             return self._roots.transcript_roots()
         except Exception as exc:
-            log.warning(
-                "session roots unreadable; the listing answers error: %s", type(exc).__name__
-            )
+            log.warning("session roots unreadable: %s", type(exc).__name__)
             return None
 
     def history_mapper(self, root: Path | None = None) -> Mapper:
@@ -815,6 +817,27 @@ class Catalog:
         this from the client, so the UUID guard in exists() — not the caller — is what keeps an
         id from naming a path outside the project folder."""
         return self._path_for(session_id) if self.exists(session_id) else None
+
+    def paths_for(self, session_ids: list[str]) -> dict[str, Path]:
+        """Each canonical-UUID id's transcript path, the file there or not: in its recorded
+        root's project, from one snapshot of the recorded roots, else in the vault's. A snapshot
+        of fewer than MAX_ROOT_ROWS roots is complete. One that long may have stopped short, so
+        an id it lacks whose vault file is absent is looked up alone (_path_for), as every id is
+        when the snapshot fails. An id that is not a canonical UUID gets no path, as exists()
+        refuses it."""
+        roots = self._recorded_roots()
+        paths: dict[str, Path] = {}
+        for session_id in session_ids:
+            if not _UUID_RE.match(session_id):
+                continue
+            if roots is not None and session_id in roots:
+                paths[session_id] = self._transcript(session_id, roots[session_id])
+                continue
+            path = self._transcript(session_id, None)
+            if roots is None or (len(roots) >= MAX_ROOT_ROWS and not path.is_file()):
+                path = self._path_for(session_id)
+            paths[session_id] = path
+        return paths
 
     def _cached_chain(
         self, session_id: str, stat: os.stat_result

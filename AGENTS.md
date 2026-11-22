@@ -31,7 +31,10 @@ Local-vault storage is in scope. Describe only what the code does: a planned cap
 implemented one.
 
 - Stdlib SQLite is allowed for transactional session, command and draft state kept by VIKI Agent.
-  Add a table only with the behavior that uses it. No ORM, transcript database or vector store.
+  Add a table only with the behavior that uses it. The Bot usage log (`bot_usage_sessions`,
+  `bot_usage_calls`) keeps token counts and ids per model call of Bot-owned sessions, copied from
+  their transcripts without their text; it is not a transcript index (ADR-087). No ORM, transcript
+  database or vector store.
 - Vault bootstrap and writes, and any optional private Git synchronization, require the validated
   per-vault services and policy gates. On Windows, macOS and Linux the app bootstraps a new or
   empty vault folder, and in an admitted ordinary vault it saves single notes and renames, moves,

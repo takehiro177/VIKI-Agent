@@ -43,9 +43,9 @@ def test_upgrade_from_36_keeps_all_rows_and_a_verified_backup(tmp_path: Path) ->
     with contextlib.closing(sqlite3.connect(path)) as sql:
         before = _every_row(sql)
     migrated = AppState(tmp_path / "state.json", Prefs())
-    assert storage.SCHEMA_VERSION == 41
+    assert storage.SCHEMA_VERSION == 42
     with migrated.store._connection() as sql:
-        assert sql.execute("PRAGMA user_version").fetchone() == (41,)
+        assert sql.execute("PRAGMA user_version").fetchone() == (42,)
         assert _every_row(sql) == before
     (memory_backup,) = tmp_path.glob("app.sqlite3.v37-backup-*.sqlite3")
     with contextlib.closing(sqlite3.connect(memory_backup)) as sql:
@@ -79,7 +79,7 @@ def test_upgrade_from_37_keeps_bot_memory_binding_and_verified_backup(rig) -> No
         sql.commit()
     migrated = AppState(state.database_path.parent / "state.json", Prefs())
     with migrated.store._connection() as sql:
-        assert sql.execute("PRAGMA user_version").fetchone() == (41,)
+        assert sql.execute("PRAGMA user_version").fetchone() == (42,)
         assert _every_row(sql) == before
         assert sql.execute("SELECT * FROM session_bot_memory").fetchall() == [(session_id, owner)]
     (backup,) = state.database_path.parent.glob("app.sqlite3.v37-backup-*.sqlite3")

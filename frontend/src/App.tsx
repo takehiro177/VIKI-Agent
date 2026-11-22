@@ -66,6 +66,7 @@ import {
 import type { AssetsApi } from "./clients/media/assetsApi";
 import type { AvatarsApi } from "./clients/media/avatarsApi";
 import type { BotRow, BotsApi } from "./clients/messaging/botsApi";
+import type { BotUsageApi } from "./clients/messaging/botUsageApi";
 import type { MessagingApi } from "./clients/messaging/messagingApi";
 import type { NativeAssetsApi } from "./clients/profiles/nativeAssetsApi";
 import type { ProfileApi } from "./clients/profiles/profileApi";
@@ -100,6 +101,7 @@ import type { TeamLive } from "./components/Bots/botStatus";
 import { fillStarterTeam } from "./components/Bots/seatBots";
 import { type SeatId, teamRoster } from "./components/Bots/team";
 import { useTeamReadiness } from "./components/Bots/teamReadiness";
+import { BotUsage } from "./components/Bots/usage/BotUsage";
 import { CapabilitiesView } from "./components/Capabilities/CapabilitiesView";
 import { CaptureInboxRow } from "./components/Captures/CaptureInboxRow";
 import { CaptureTriage } from "./components/Captures/CaptureTriage";
@@ -613,6 +615,9 @@ export interface AppProps {
   messagingApi?: MessagingApi;
   /** Named Bots and their existing profile conversations and routines. */
   botsApi?: BotsApi;
+  /** The Bot usage dashboard (AC-13/AC-14): token/cost summaries and per-session traces. Without
+   * it the Bots page's "Usage" section and nav button are absent. */
+  botUsageApi?: BotUsageApi;
   /** The read-only client for what recent chats received from other Claude Code sessions. Without
    * it the right rail's Between chats fold is absent. */
   betweenChatsApi?: BetweenChatsApi;
@@ -1396,6 +1401,7 @@ export function App({
   decisionApi,
   messagingApi,
   botsApi: botsClient,
+  botUsageApi,
   betweenChatsApi,
   sessionHandoff,
   sessionWindowsApi,
@@ -1807,7 +1813,7 @@ export function App({
     botsApi ? storedBot() : null,
   );
   const selectedBotRef = useRef(selectedBot);
-  const [botsSection, setBotsSection] = useState<"team" | "profiles">("team");
+  const [botsSection, setBotsSection] = useState<"team" | "profiles" | "usage">("team");
   // Refresh Bots re-reads Kanban; a strip seat and Edit profile hand one selection to the
   // view they open, never stored.
   const [teamCheck, setTeamCheck] = useState(0);
@@ -6380,9 +6386,28 @@ export function App({
             >
               {t("bots.config")}
             </button>
+            {botUsageApi ? (
+              <button
+                type="button"
+                className="btn alt"
+                aria-current={botsSection === "usage" ? "page" : undefined}
+                onClick={() => {
+                  if (botsSection === "usage" || confirmLeaveUnsaved()) setBotsSection("usage");
+                }}
+              >
+                {t("botUsage.nav.usage")}
+              </button>
+            ) : null}
           </nav>
           {botsSection === "profiles" ? (
             renderBotProfiles()
+          ) : botsSection === "usage" && botUsageApi ? (
+            <BotUsage
+              api={botUsageApi}
+              onOpenSession={(id) => {
+                if (navigate({ view: "chat" })) openSession(id, true);
+              }}
+            />
           ) : (
             <BotsView
               api={botsApi}

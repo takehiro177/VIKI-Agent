@@ -219,6 +219,19 @@ regains focus.
 - **All Bots** opens the roster on **Team**. The roster shows each Bot's status; opening it does
   not broadcast a request to the team.
 
+### Token usage
+
+Open **Bots → Usage** to see token usage for the active vault's Bots. It counts every call from
+a Bot's main chat, task threads, Bot thread turns and routine runs, and the subagents each one
+calls, on whichever model connection carried it. A model connection that uses Chat Completions
+or Responses reports input and output tokens only, so its calls show no cache reads or writes.
+Choose **Last 7 days**, **Last 30 days** or **Last 90 days**, then **Trace** a conversation's
+own call log or **Open** it to return to that Bot's chat.
+
+VIKI Agent's own log, separate from the Claude Code transcripts it reads to build this view, keeps
+up to 90 days or the newest 100,000 calls, whichever limit is reached first. It holds token
+counts, not a dollar estimate.
+
 ## Create and open a Bot
 
 A Bot pairs a profile with a registered, persistent vault workspace.
@@ -1166,9 +1179,10 @@ conversation link and delivery receipts. **Reset Bots in this workspace** does t
 Bots in that workspace. Both ask you to confirm first, with **Cancel** focused, and nothing changes
 until you do.
 
-- **What stays:** profiles, conversations, routine definitions and local run history stay
-  available. The Bot's chats are listed in the ordinary chat list again; a window that is already
-  open shows them after it reloads.
+- **What stays:** profiles, conversations, routine definitions, local run history and the Bot's
+  token usage history stay available: in the usage dashboard, a removed Bot's calls keep showing
+  with `(removed)` after its name. The Bot's chats are listed in the ordinary chat list again; a
+  window that is already open shows them after it reloads.
 - **The seat:** a removed Bot's seat stays in your team as **Not started**; opening it again
   starts a new conversation with the same profile.
 - **Running attempts:** already running attempts can finish locally.

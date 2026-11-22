@@ -33,6 +33,9 @@ from viki_agent.persistence.bot_schemas import (
     BOT_SCHEMAS,
     BOT_THREAD_SCHEMA_STEP,
     BOT_THREAD_SCHEMAS,
+    BOT_USAGE_INDEXES,
+    BOT_USAGE_SCHEMA_STEP,
+    BOT_USAGE_SCHEMAS,
 )
 from viki_agent.persistence.decision_loop_schemas import (
     DECISION_LOOP_SCHEMA_STEP,
@@ -619,6 +622,7 @@ _RECOGNISED_VERSIONS = (
     38,
     39,
     40,
+    41,
     SCHEMA_VERSION,
 )
 _APPROVAL_FIELDS = (
@@ -1106,6 +1110,12 @@ class SessionStore:
                 ("index", name, "bot_code_copies", sql) for name, sql in BOT_CODE_INDEXES.items()
             )
             expected.sort(key=lambda value: value[1])
+        if version >= BOT_USAGE_SCHEMA_STEP:
+            expected.extend(("table", name, name, sql) for name, sql in BOT_USAGE_SCHEMAS.items())
+            expected.extend(
+                ("index", name, "bot_usage_calls", sql) for name, sql in BOT_USAGE_INDEXES.items()
+            )
+            expected.sort(key=lambda value: value[1])
         if version >= INBOX_SUGGESTION_SCHEMA_STEP:
             expected.extend(
                 ("table", name, name, sql) for name, sql in INBOX_SUGGESTION_SCHEMAS.items()
@@ -1255,6 +1265,8 @@ class SessionStore:
             for sql in BOT_THREAD_SCHEMAS.values():
                 connection.execute(sql)
             for sql in (*BOT_CODE_SCHEMAS.values(), *BOT_CODE_INDEXES.values()):
+                connection.execute(sql)
+            for sql in (*BOT_USAGE_SCHEMAS.values(), *BOT_USAGE_INDEXES.values()):
                 connection.execute(sql)
             for sql in INBOX_SUGGESTION_SCHEMAS.values():
                 connection.execute(sql)
@@ -1686,6 +1698,10 @@ class SessionStore:
                 connection.execute(sql)
             target, added = BOT_THREAD_SCHEMA_STEP, tuple(BOT_THREAD_SCHEMAS)
         elif version == 40:
+            for sql in (*BOT_USAGE_SCHEMAS.values(), *BOT_USAGE_INDEXES.values()):
+                connection.execute(sql)
+            target, added = BOT_USAGE_SCHEMA_STEP, tuple(BOT_USAGE_SCHEMAS)
+        elif version == 41:
             for sql in INBOX_SUGGESTION_SCHEMAS.values():
                 connection.execute(sql)
             target, added = INBOX_SUGGESTION_SCHEMA_STEP, tuple(INBOX_SUGGESTION_SCHEMAS)

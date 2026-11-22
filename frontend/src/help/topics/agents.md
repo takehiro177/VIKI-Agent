@@ -3,7 +3,7 @@
 See your agent profiles, what they're running, the Skills and tools available, and how much context a chat has left.
 
 ## Bots and capabilities
-Open **Bots → Bot settings** to create or edit a Bot's profile. **Team** shows the Bots in your vault.
+Open **Bots → Bot settings** to create or edit a Bot's profile. **Team** shows the Bots in your vault. **Usage** shows how many tokens your Bots used: choose **Last 7 days**, **Last 30 days** or **Last 90 days**, then **Trace** or **Open** a conversation.
 Open **Capabilities**, then choose **Subagents** or **Skills** to browse the native helpers available to your chats.
 The right panel shows running subagents for the loaded chat.
 Under **Subagents**, **Running work** lists chats open in VIKI, including idle ones. Use **Open**, **Stop** or **Close** on a chat; work shown as **Running elsewhere** is read-only.

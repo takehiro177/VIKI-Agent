@@ -399,9 +399,9 @@ PROFILE_SCHEMAS_V40 = {
     ),
 }
 
-INBOX_SUGGESTION_SCHEMA_STEP = 41
+INBOX_SUGGESTION_SCHEMA_STEP = 42
 
-# Step 41: what the inbox suggestion run keeps for each vault, so it outlives a restart. One sealed
+# Step 42: what the inbox suggestion run keeps for each vault, so it outlives a restart. One sealed
 # JSON body per vault and part: "suggestions" (the suggester's latest run and its suggestions)
 # and "started" (the item keys Decision's inbox host started).
 INBOX_SUGGESTION_SCHEMAS = {

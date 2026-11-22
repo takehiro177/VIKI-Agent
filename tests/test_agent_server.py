@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from starlette.applications import Starlette
@@ -41,6 +41,8 @@ from tests.test_server import (
 )
 from viki_agent import __main__ as launcher
 from viki_agent import agent_cli, compiled, server
+from viki_agent.app.agent_api import agent_routes
+from viki_agent.app.agent_grants import AgentGrant, AgentGrants
 from viki_agent.app.diagnostics import Readiness
 from viki_agent.app.settings import SettingsService
 from viki_agent.config import Config
@@ -121,6 +123,31 @@ def _agent_app(tmp_path: Path, *, make_driver: Callable[..., Any] | None = None)
     return AgentApp(
         app, TestClient(app, base_url=BASE), manager, settings, spaces, profiles, workspace_id
     )
+
+
+def _usageless_agent_app(tmp_path: Path) -> tuple[AgentGrant, TestClient]:
+    """A minimal agent surface built straight from `agent_routes`, with no Bot usage wired in.
+    `create_app` only ever builds `usage_views` together with `workspaces` (both follow `bots is
+    not None`), and the agent surface itself needs `workspaces` too, so `_agent_app` can never
+    reach a `usage is None` surface; this is the one way to exercise that branch (F17)."""
+    grants = AgentGrants(tmp_path / "viki-agent")
+    grant = grants.issue(str(uuid.uuid4()))
+    assert grant is not None
+    routes = agent_routes(
+        grants,
+        cast(Any, None),  # changes: unused outside the settings/routines/bots handlers
+        settings=cast(Any, None),
+        routines=cast(Any, None),
+        runner=cast(Any, None),
+        scheduler=cast(Any, None),
+        bots=None,
+        profiles=cast(Any, None),
+        workspaces=cast(Any, None),
+        admission_lock=cast(Any, None),
+        app_version="0",
+        workers=set(),
+    )
+    return grant, TestClient(Starlette(routes=routes), base_url=BASE)
 
 
 # --- create_app's gate: agent_cli and settings together ---------------------------------------
@@ -269,6 +296,48 @@ def test_a_grant_from_the_bound_manager_is_honored(tmp_path: Path) -> None:
         )
     assert response.status_code == 200
     assert response.json()["chat"] == {"session_id": grant.session_id}
+
+
+# --- the usage operations' own target checks, and their 503 without usage (F17) ---------------
+
+
+def test_usage_operations_refuse_an_invalid_target_with_400(tmp_path: Path) -> None:
+    """Pins P18's target checks at the agent trust boundary. Mutant A dropped `target not in
+    bot_usage_api._DAYS`: `usage/10` would reach `bot_usage_api._DAYS[target]` and answer 503
+    `unavailable` with a WARNING logged, instead of 400 `invalid_input`. Mutant B dropped `not
+    _UUID_RE.match(target)`: `usage/sessions/x` would reach `usage.trace` and answer 404 instead
+    of 400; the same check also refuses a session id of the right shape but the wrong case."""
+    agent = _agent_app(tmp_path)
+    with agent.client:
+        grant = agent.manager._agent_grants.issue(str(uuid.uuid4()))  # type: ignore[union-attr]
+        assert grant is not None
+        headers = {"authorization": f"Bearer {grant.token}"}
+        wrong_case = str(uuid.uuid4()).upper()
+        for operation in ("usage/10", "usage/sessions/not-a-uuid", f"usage/sessions/{wrong_case}"):
+            response = agent.client.get(f"/api/agent/{grant.id}/{operation}", headers=headers)
+            assert response.status_code == 400
+            assert response.json()["error"]["code"] == "invalid_input"
+
+
+def test_usage_operations_answer_503_without_usage_configured(tmp_path: Path) -> None:
+    """The `usage is None` 503 branch (F17): `_agent_app`'s real `create_app` wiring always pairs
+    the agent surface with a configured `usage`, so only `_usageless_agent_app` reaches it, for
+    both usage operations. The message is pinned too: drop the branch and `usage.summary`/
+    `usage.trace` would raise `AttributeError` on the `None`, which `_answer`'s generic fallback
+    also maps to 503 `unavailable` — same status and code, but its message is the generic
+    "VIKI Agent couldn't do that just now.", not this branch's own, so a status/code check alone
+    would pass by accident on that mutant."""
+    grant, client = _usageless_agent_app(tmp_path)
+    headers = {"authorization": f"Bearer {grant.token}"}
+    valid_session_id = str(uuid.uuid4())
+    with client:
+        for operation in ("usage/7", f"usage/sessions/{valid_session_id}"):
+            response = client.get(f"/api/agent/{grant.id}/{operation}", headers=headers)
+            assert response.status_code == 503
+            assert response.json()["error"] == {
+                "code": "unavailable",
+                "message": "Bot usage isn't available.",
+            }
 
 
 # --- a hold cannot outlive its chat's revoked grant ---------------------------------------------
