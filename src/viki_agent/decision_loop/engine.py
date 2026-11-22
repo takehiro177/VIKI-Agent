@@ -260,11 +260,12 @@ latest run is not the one the cycle read (the user's own Ask VIKI to suggest has
 and saw every capture). It then starts the run through the inbox host alone (`InboxHost.start` with
 the scope and the item's key); a refused start is skipped, a halt stops the start in progress (a
 start the host already began runs on, shielded) and starts no more, and a start wakes the clock
-once. The host keeps each started key, so a state is not started again while VIKI Agent stays
-open; the engine starts only an item created since it was built (its clock's wall time then), so a
-state still waiting from an earlier launch is not started again on a relaunch. Under Allowed such
-an item offers Suggest destinations, as under Ask first (`CycleContext.inbox_since`), so the
-user's own start reaches it.
+once. The host keeps each started key, so a state is not started again. When the host's keys
+outlive a restart (`InboxHost.persistent`) a state still waiting from an earlier launch starts as
+any other; otherwise the engine starts only an item created since it was built (its clock's wall
+time then), so a state from an earlier launch is not started again on a relaunch, and under
+Allowed such an item offers Suggest destinations, as under Ask first (`CycleContext.inbox_since`),
+so the user's own start reaches it.
 
 The model. The cycle's `ask` answers None, leaving that item to the rules, while: no key is
 saved; a request was refused with 401 and the key has not been saved since; the day's measured
@@ -553,9 +554,9 @@ class DecisionLoopEngine:
         self._code = code
         self._checks = checks
         self._inbox = inbox
-        # the inbox host forgets its started keys on a relaunch: only a state raised since this
-        # instant is pre-run, so a stored one is not sent again on every launch
-        self._since = clock.wall()
+        # an inbox host that forgets its started keys on a relaunch pre-runs only a state raised
+        # since this instant, so a stored one is not sent again on every launch
+        self._since = None if inbox is not None and inbox.persistent else clock.wall()
         self._lock = asyncio.Lock()
         self._event = asyncio.Event()  # wakes the clock
         self._freed = asyncio.Event()  # set, and replaced, when an in-flight slot frees
@@ -1828,7 +1829,7 @@ class DecisionLoopEngine:
             and done.outcome.work == "prepare"
             and done.item.state == "open"
             and done.item.timing == "now"
-            and parse_stamp(done.item.created_at) >= self._since
+            and (self._since is None or parse_stamp(done.item.created_at) >= self._since)
         ]
         if not waiting:
             return

@@ -1063,7 +1063,10 @@ class InboxLook:
 class InboxHost(Protocol):
     """What Decision reaches of the inbox suggestion run. `read` answers from memory on the event
     loop and never raises. `start` starts the run for `item_key` and answers its run id; it raises
-    `DecisionLoopError` (busy, not_applicable, unavailable) when it cannot."""
+    `DecisionLoopError` (busy, not_applicable, unavailable) when it cannot. `persistent` is True
+    when the item keys it started outlive a restart."""
+
+    persistent: bool
 
     def read(self, workspace_id: str) -> InboxLook: ...
 

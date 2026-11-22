@@ -10,12 +10,17 @@ from typing import Any
 
 import pytest
 
-from tests.persistence.test_storage import _STAMP, _workspace
+from tests.persistence.test_storage import _STAMP, _downgrade_bot_code, _workspace
 from viki_agent import storage
 from viki_agent.profiles.profile_launch import MAX_BINDINGS
 from viki_agent.state import AppState, Prefs
 
-_TABLES = ("bot_code_folders", "bot_code_copies", "bot_code_baselines")
+_TABLES = (
+    "bot_code_folders",
+    "bot_code_copies",
+    "bot_code_baselines",
+    *storage.INBOX_SUGGESTION_SCHEMAS,
+)
 _BINDING_COLUMNS = (
     "session_id,command_id,request_hash,profile_id,profile_revision,workspace_id,"
     "workspace_revision,policy,policy_revision,settings_revision,runtime,capability_key,"
@@ -76,21 +81,7 @@ def version_39(tmp_path: Path, *, populated: bool = True) -> Path:
     """Reproduce actual v39 DDL, including its unchanged memory and binding columns."""
     state = AppState(tmp_path / "state.json", Prefs())
     with contextlib.closing(sqlite3.connect(state.database_path)) as connection:
-        for name in reversed(_TABLES):
-            connection.execute(f"DROP TABLE IF EXISTS {name}")
-        columns = [
-            row[1] for row in connection.execute("PRAGMA table_info(session_profile_bindings)")
-        ]
-        if "launch_origin" in columns:
-            # Rebuild without renaming the original: a rename would retarget memory's FK.
-            rows = connection.execute(
-                f"SELECT {_BINDING_COLUMNS} FROM session_profile_bindings"
-            ).fetchall()
-            connection.execute("DROP TABLE session_profile_bindings")
-            connection.execute(storage.PROFILE_SCHEMAS["session_profile_bindings"])
-            connection.executemany(
-                f"INSERT INTO session_profile_bindings VALUES ({','.join('?' * 15)})", rows
-            )
+        _downgrade_bot_code(connection)
         connection.execute("PRAGMA user_version=39")
         if populated:
             _populate_legacy(connection)
@@ -177,7 +168,7 @@ def _schema(connection: sqlite3.Connection) -> list[Any]:
 
 
 def test_fresh_and_migrated_v40_have_identical_sql_and_keep_old_rows(tmp_path: Path) -> None:
-    assert storage.SCHEMA_VERSION == 40
+    assert storage.SCHEMA_VERSION == 41
     assert MAX_BINDINGS == 4096
     path = version_39(tmp_path)
     with contextlib.closing(sqlite3.connect(path)) as connection:
@@ -186,7 +177,7 @@ def test_fresh_and_migrated_v40_have_identical_sql_and_keep_old_rows(tmp_path: P
     state = AppState(tmp_path / "state.json", Prefs())
     fresh = AppState(tmp_path / "fresh" / "state.json", Prefs())
     with state.store._connection() as connection, fresh.store._connection() as created:
-        assert connection.execute("PRAGMA user_version").fetchone() == (40,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
         assert _schema(connection) == _schema(created)
         assert _legacy_rows(connection) == before
         assert (

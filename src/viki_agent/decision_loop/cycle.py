@@ -287,10 +287,11 @@ class CycleContext:
     and each call. `trial` is the proposed wording being tried, if any, and `trial_ask` takes
     its requests as `ask` takes the live ones; None asks no trial. `keep` names the open items
     the cycle leaves as they are though no candidate names them (`detectors.kanban_keep`).
-    `inbox_since` is when the engine began (None: no bound): VIKI starts no inbox suggestion run
-    for an item stored before it, so under Allowed such an item offers Suggest destinations, as
-    under Ask first. `holds` is what holds VIKI's own starts this cycle (`held_start`); the
-    default `Holds()` predicts no hold at all.
+    `inbox_since` is when the engine began (None: no bound, as when the inbox host keeps its started
+    keys across restarts): VIKI starts no inbox suggestion run for an item stored before it, so
+    under Allowed such an item offers Suggest destinations, as under Ask first. `holds` is what
+    holds VIKI's own starts this cycle (`held_start`); the default `Holds()` predicts no hold at
+    all.
     """
 
     scope: str

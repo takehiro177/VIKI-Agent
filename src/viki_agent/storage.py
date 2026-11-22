@@ -43,6 +43,8 @@ from viki_agent.persistence.decision_loop_schemas import (
 from viki_agent.persistence.feature_schemas import (
     BOOKMARK_SCHEMAS,
     DECISION_SCHEMAS,
+    INBOX_SUGGESTION_SCHEMA_STEP,
+    INBOX_SUGGESTION_SCHEMAS,
     LAUNCH_ORIGIN_COLUMN,
     MEMORY_SCHEMAS,
     OPERATION_SCHEMAS,
@@ -550,7 +552,7 @@ _PREFERENCES_FROM_STEP_19 = (
     "SELECT scope, name, value, revision, updated_at FROM jev_preferences WHERE name <> 'study'"
 )
 # Qualified model refs must be fenced from subscription-only readers through version 37.
-SCHEMA_VERSION = 40
+SCHEMA_VERSION = INBOX_SUGGESTION_SCHEMA_STEP
 _SETTING_COMMAND_LIMIT = 1024
 _SETTINGS_FIELDS = ("version", "revision", "document", "updated_at")
 _SETTING_COMMAND_FIELDS = ("command_id", "revision", "patch_hash", "applied_at")
@@ -616,6 +618,7 @@ _RECOGNISED_VERSIONS = (
     37,
     38,
     39,
+    40,
     SCHEMA_VERSION,
 )
 _APPROVAL_FIELDS = (
@@ -1103,6 +1106,11 @@ class SessionStore:
                 ("index", name, "bot_code_copies", sql) for name, sql in BOT_CODE_INDEXES.items()
             )
             expected.sort(key=lambda value: value[1])
+        if version >= INBOX_SUGGESTION_SCHEMA_STEP:
+            expected.extend(
+                ("table", name, name, sql) for name, sql in INBOX_SUGGESTION_SCHEMAS.items()
+            )
+            expected.sort(key=lambda value: value[1])
         if version >= MESSAGING_SCHEMA_STEP:
             expected.extend(("table", name, name, sql) for name, sql in MESSAGING_SCHEMAS.items())
             expected.sort(key=lambda value: value[1])
@@ -1247,6 +1255,8 @@ class SessionStore:
             for sql in BOT_THREAD_SCHEMAS.values():
                 connection.execute(sql)
             for sql in (*BOT_CODE_SCHEMAS.values(), *BOT_CODE_INDEXES.values()):
+                connection.execute(sql)
+            for sql in INBOX_SUGGESTION_SCHEMAS.values():
                 connection.execute(sql)
             for sql in MESSAGING_SCHEMAS.values():
                 connection.execute(sql)
@@ -1675,6 +1685,10 @@ class SessionStore:
             for sql in BOT_THREAD_SCHEMAS.values():
                 connection.execute(sql)
             target, added = BOT_THREAD_SCHEMA_STEP, tuple(BOT_THREAD_SCHEMAS)
+        elif version == 40:
+            for sql in INBOX_SUGGESTION_SCHEMAS.values():
+                connection.execute(sql)
+            target, added = INBOX_SUGGESTION_SCHEMA_STEP, tuple(INBOX_SUGGESTION_SCHEMAS)
         else:
             connection.execute(
                 "ALTER TABLE session_profile_bindings ADD COLUMN " + LAUNCH_ORIGIN_COLUMN
@@ -2790,6 +2804,9 @@ class SessionStore:
                 )
                 connection.execute(
                     "DELETE FROM bot_code_baselines WHERE workspace_id=?", (workspace_id,)
+                )
+                connection.execute(
+                    "DELETE FROM inbox_suggestions WHERE workspace_id=?", (workspace_id,)
                 )
                 connection.execute(
                     "DELETE FROM bot_thread_sessions WHERE thread_id IN "

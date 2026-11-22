@@ -109,9 +109,9 @@ def _insert(connection: sqlite3.Connection, table: str, row: dict[str, Any]) -> 
 
 def test_fresh_store_has_exact_metadata_only_bot_schema(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    assert storage.SCHEMA_VERSION == 40 and storage.BOT_SCHEMA_STEP == 22
+    assert storage.SCHEMA_VERSION == 41 and storage.BOT_SCHEMA_STEP == 22
     with store._connection() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (40,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
         for name, ddl in storage.BOT_SCHEMAS.items():
             assert connection.execute(
                 "SELECT sql FROM sqlite_schema WHERE name=?", (name,)
@@ -138,7 +138,7 @@ def test_upgrade_v21_keeps_state_and_backup(tmp_path: Path) -> None:
     store = _store(tmp_path)
     assert store.get(_SID) == {"mode": "plan", "effort": "max", "model": "preserved-v21-model"}
     with store._connection() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (40,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
         # Step 24 also moves v21's jev_* rows (none here) into its six decision_* tables, and
         # step 25 adds the proposal table.
         assert _rows(connection) == {
@@ -147,6 +147,7 @@ def test_upgrade_v21_keeps_state_and_backup(tmp_path: Path) -> None:
             "bot_threads": [],
             "bot_thread_sessions": [],
             **dict.fromkeys(storage.BOT_CODE_SCHEMAS, []),
+            **dict.fromkeys(storage.INBOX_SUGGESTION_SCHEMAS, []),
             "bots": [],
             "bot_deliveries": [],
             "messaging_config": [],
@@ -161,7 +162,7 @@ def test_upgrade_v21_keeps_state_and_backup(tmp_path: Path) -> None:
         assert _rows(saved) == before
     _store(tmp_path)
     # Each step from 21 through the current schema backs up its source version.
-    assert len(list(tmp_path.glob("*backup*"))) == 19
+    assert len(list(tmp_path.glob("*backup*"))) == 20
 
 
 @pytest.mark.parametrize("phase", ["backup", "ddl", "row_loss", "commit"])

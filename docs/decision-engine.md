@@ -898,7 +898,11 @@ The run is the one **Ask VIKI to suggest** starts:
 - it is ended after five minutes;
 - it denies any permission it asks for;
 - it changes nothing;
-- its suggestions are kept until VIKI Agent closes.
+- its suggestions are kept after VIKI Agent restarts.
+
+VIKI remembers each inbox state it started a run for after a restart too, so it does not run the
+same state again. Under **Allowed**, a state it raised before a restart and never started starts
+at its next check.
 
 **Daily limit: inbox suggestion items**, 3 by default and from 0 to 10, counts each inbox state VIKI
 raises in a day, across workspaces. It includes one VIKI decides not to show you and the ones you
