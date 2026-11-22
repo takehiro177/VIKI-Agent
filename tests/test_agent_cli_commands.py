@@ -717,3 +717,72 @@ def test_other_commands_conflict_fix_is_unchanged() -> None:
     code, _out, err = _run(["routines", "test", "r1"], send)
     assert code == 1
     assert "fix: Run the command again.\n" in err
+
+
+# --- bots usage / trace: the op path and default days -----------------------------------------
+
+
+def test_bots_usage_defaults_to_30_days() -> None:
+    sent: dict[str, Any] = {}
+
+    def send(method: str, path: str, body: dict[str, Any] | None) -> tuple[int, dict[str, Any]]:
+        sent["method"], sent["path"] = method, path
+        return 200, {"days": 30}
+
+    code, out, _err = _run(["bots", "usage", "--json"], send)
+    assert code == 0
+    assert sent["method"] == "GET"
+    assert sent["path"].endswith("/usage/30")
+    assert json.loads(out) == {"days": 30}
+
+
+def test_bots_usage_days_sends_the_chosen_value() -> None:
+    sent: dict[str, Any] = {}
+
+    def send(method: str, path: str, body: dict[str, Any] | None) -> tuple[int, dict[str, Any]]:
+        sent["path"] = path
+        return 200, {"days": 7}
+
+    code, _out, _err = _run(["bots", "usage", "--days", "7", "--json"], send)
+    assert code == 0
+    assert sent["path"].endswith("/usage/7")
+
+
+def test_bots_usage_rejects_a_day_count_outside_the_choices() -> None:
+    calls: list[Any] = []
+    code, _out, _err = _run(["bots", "usage", "--days", "10"], _unused_send(calls))
+    assert code == 2
+    assert calls == []
+
+
+def test_bots_usage_without_the_usage_feature_exits_1() -> None:
+    def send(method: str, path: str, body: dict[str, Any] | None) -> tuple[int, dict[str, Any]]:
+        return 503, {"error": {"code": "unavailable", "message": "Bot usage isn't available."}}
+
+    code, _out, err = _run(["bots", "usage"], send)
+    assert code == 1
+    assert "fix: Try again, or use the VIKI Agent window.\n" in err
+
+
+def test_bots_trace_sends_the_session_id_in_the_op_path() -> None:
+    sent: dict[str, Any] = {}
+    session_id = "11111111-1111-4111-8111-111111111111"
+
+    def send(method: str, path: str, body: dict[str, Any] | None) -> tuple[int, dict[str, Any]]:
+        sent["method"], sent["path"] = method, path
+        return 200, {"session_id": session_id}
+
+    code, out, _err = _run(["bots", "trace", session_id, "--json"], send)
+    assert code == 0
+    assert sent["method"] == "GET"
+    assert sent["path"].endswith(f"/usage/sessions/{session_id}")
+    assert json.loads(out) == {"session_id": session_id}
+
+
+def test_bots_trace_not_found_exits_1() -> None:
+    def send(method: str, path: str, body: dict[str, Any] | None) -> tuple[int, dict[str, Any]]:
+        return 404, {"error": {"code": "not_found", "message": "not found"}}
+
+    code, _out, err = _run(["bots", "trace", "11111111-1111-4111-8111-111111111111"], send)
+    assert code == 1
+    assert "fix: Try again, or use the VIKI Agent window.\n" in err

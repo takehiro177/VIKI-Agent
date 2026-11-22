@@ -1,0 +1,75 @@
+/* UsageTrace: the conversation trace panel for one Bot session, opened from the Largest
+   conversations table (UsageTables.tsx). Chrome stays on the monochrome --hair/--t0/--t1/--t2
+   tokens, the same ones UsageTables.css and UsageNotes.css use; no data colour of its own. */
+
+.bot-usage-trace {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.bot-usage-trace h2 {
+  margin: 0;
+  color: var(--t0);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bot-usage-trace-line {
+  margin: 0;
+  color: var(--t1);
+  font-size: 12px;
+}
+
+.bot-usage-trace-omitted {
+  margin: 0;
+  color: var(--t2);
+  font-size: 12px;
+}
+
+.bot-usage-trace-groups {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bot-usage-trace-group {
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.bot-usage-trace-group summary {
+  color: var(--t1);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.bot-usage-trace-group[open] summary {
+  margin-bottom: 8px;
+}
+
+.bot-usage-trace-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.bot-usage-trace-table th,
+.bot-usage-trace-table td {
+  padding: 6px 8px 6px 0;
+  border-bottom: 1px solid var(--hair);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.bot-usage-trace-table th {
+  color: var(--t2);
+  font-weight: 500;
+}
+
+.bot-usage-trace-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

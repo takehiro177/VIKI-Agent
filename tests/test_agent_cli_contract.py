@@ -17,6 +17,7 @@ from typing import Any
 from tests.automation.test_routines import _document_raw
 from tests.profiles.test_profile_document import document
 from tests.test_agent_server import AgentApp, _agent_app
+from tests.test_server import TOKEN
 from viki_agent import agent_cli
 from viki_agent.automation.routines import RoutineService, record_tested, stamp
 from viki_agent.automation.tasks import TaskStore
@@ -194,3 +195,36 @@ def test_routines_test_of_a_draft_exits_0_not_3(tmp_path: Path) -> None:
         code, out = _run(agent, _ident(), ["routines", "test", routine_id])
     assert code == 0, f"routines test exited {code}, expected 0 (body: {out})"
     assert "run" in json.loads(out)
+
+
+# --- P18: bots usage / trace against the window's own bot-usage routes ------------------------
+
+
+def test_bots_usage_matches_the_summary_window_route(tmp_path: Path) -> None:
+    agent = _agent_app(tmp_path)
+    with agent.client:
+        code, out = _run(agent, _ident(), ["bots", "usage", "--days", "30"])
+        window = agent.client.get(
+            "/api/v2/bot-usage/summary/30", headers={"authorization": f"Bearer {TOKEN}"}
+        )
+    assert code == 0
+    assert window.status_code == 200
+    assert json.loads(out) == window.json()
+
+
+def test_bots_trace_matches_the_sessions_window_route(tmp_path: Path) -> None:
+    """Neither route has ever captured this session, so both answer the same `not_found` --
+    proving the agent surface maps `BotUsageError` the way the window route does."""
+    agent = _agent_app(tmp_path)
+    session_id = _ident()
+    with agent.client:
+        code, out = _run(agent, _ident(), ["bots", "trace", session_id])
+        window = agent.client.get(
+            f"/api/v2/bot-usage/sessions/{session_id}",
+            headers={"authorization": f"Bearer {TOKEN}"},
+        )
+    assert code == 1
+    assert window.status_code == 404
+    cli_error, window_error = json.loads(out)["error"], window.json()["error"]
+    assert cli_error["code"] == window_error["code"] == "not_found"
+    assert cli_error["message"] == window_error["message"]

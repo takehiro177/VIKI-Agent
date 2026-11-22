@@ -224,6 +224,11 @@
   --dloop-stopped: var(--label-purple);
 }
 
+/* Bot usage charts: one data colour from the session label hues; chrome stays monochrome. */
+.bot-usage {
+  --usage-series: var(--label-blue);
+}
+
 /* Syntax colors are local to code content; shared app accents remain neutral. Selection keeps
    these neutral fills even when more contrast raises the global border token --b2. */
 .code-syntax,

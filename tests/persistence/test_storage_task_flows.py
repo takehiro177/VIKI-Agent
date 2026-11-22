@@ -111,7 +111,7 @@ def _version_older(tmp_path: Path) -> Path:
 
 
 def test_fresh_store_has_the_task_flows_table(tmp_path: Path) -> None:
-    assert storage.SCHEMA_VERSION == 40
+    assert storage.SCHEMA_VERSION == 41
     database = AppState(tmp_path / "state.json", Prefs()).database_path
     with contextlib.closing(sqlite3.connect(database)) as connection:
         assert connection.execute("PRAGMA user_version").fetchone() == (storage.SCHEMA_VERSION,)

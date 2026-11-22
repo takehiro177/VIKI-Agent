@@ -36,6 +36,7 @@ import { createDecisionLoopApi } from "./clients/decisionLoop/decisionLoopApi";
 import { createAssetsApi } from "./clients/media/assetsApi";
 import { createAvatarsApi } from "./clients/media/avatarsApi";
 import { createBotsApi } from "./clients/messaging/botsApi";
+import { createBotUsageApi } from "./clients/messaging/botUsageApi";
 import { createMessagingApi } from "./clients/messaging/messagingApi";
 import { createNativeAssetsApi } from "./clients/profiles/nativeAssetsApi";
 import { createProfileApi } from "./clients/profiles/profileApi";
@@ -110,6 +111,7 @@ const modelConnectionsApi = createModelConnectionsApi(token);
 const decisionApi = createDecisionLoopApi(token);
 const messagingApi = createMessagingApi(token);
 const botsApi = createBotsApi(token);
+const botUsageApi = createBotUsageApi(token);
 const betweenChatsApi = createBetweenChatsApi(token);
 const dictationApi = createDictationApi(token, {
   workletUrl: captureWorkletUrl,
@@ -182,6 +184,7 @@ createRoot(root).render(
                   decisionApi={decisionApi}
                   messagingApi={messagingApi}
                   botsApi={botsApi}
+                  botUsageApi={botUsageApi}
                   betweenChatsApi={betweenChatsApi}
                 />
               </VoicePackContext.Provider>
