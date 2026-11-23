@@ -2,11 +2,11 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { narrowBlock, readCss, ruleIn } from "../../testing/css";
 import { ActivityOrb } from "./ActivityOrb";
-import { paintSolvingOrb } from "./solvingOrb";
+import { paintTileOrb, stillSeconds } from "./tileOrb";
 
-vi.mock("./solvingOrb", async (importOriginal) => {
-  const original = await importOriginal<typeof import("./solvingOrb")>();
-  return { ...original, paintSolvingOrb: vi.fn(original.paintSolvingOrb) };
+vi.mock("./tileOrb", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./tileOrb")>();
+  return { ...original, paintTileOrb: vi.fn(original.paintTileOrb) };
 });
 
 const frames = new Map<number, FrameRequestCallback>();
@@ -20,15 +20,30 @@ beforeEach(() => {
   media.clear();
   nextId = 0;
   now = 0;
-  vi.mocked(paintSolvingOrb).mockClear();
+  vi.mocked(paintTileOrb).mockClear();
   ctx = {
     setTransform: vi.fn(),
     clearRect: vi.fn(),
     beginPath: vi.fn(),
-    arc: vi.fn(),
+    rect: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    closePath: vi.fn(),
     fill: vi.fn(),
   } as unknown as CanvasRenderingContext2D;
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctx);
+  // jsdom applies no stylesheet: stand in for tokens.css's `--or` per theme.
+  vi.spyOn(window, "getComputedStyle").mockImplementation(
+    () =>
+      ({
+        getPropertyValue: (name: string) =>
+          name === "--or"
+            ? document.documentElement.dataset.theme === "light"
+              ? "#000000"
+              : "#f8f8ff"
+            : "",
+      }) as unknown as CSSStyleDeclaration,
+  );
   vi.spyOn(document, "hidden", "get").mockReturnValue(false);
   vi.spyOn(performance, "now").mockImplementation(() => now);
   vi.stubGlobal("IntersectionObserver", undefined);
@@ -70,16 +85,19 @@ function step(timestamp: number) {
   });
 }
 
-test("the solving painter receives the orb clock and the dark theme on a 2x backing canvas", () => {
+/** The clock the last paint drew. */
+const lastSeconds = () => vi.mocked(paintTileOrb).mock.calls.at(-1)?.[1];
+
+test("the tile painter receives the still clock, the theme's ink and the 2x pixel ratio", () => {
   vi.stubGlobal("devicePixelRatio", 3);
   const { container, queryByRole } = render(<ActivityOrb state="idle" />);
-  expect(paintSolvingOrb).toHaveBeenCalledWith(ctx, 0.6, true);
-  expect(ctx.arc).toHaveBeenCalled();
+  expect(paintTileOrb).toHaveBeenCalledWith(ctx, stillSeconds("idle"), "#f8f8ff", 2, "idle");
+  expect(ctx.rect).toHaveBeenCalled();
   const canvas = container.querySelector("canvas");
   expect(canvas?.width).toBe(128);
   expect(canvas?.height).toBe(128);
-  expect(canvas?.dataset.renderer).toBe("thinking-orbs");
-  expect(canvas?.dataset.preset).toBe("solving");
+  expect(canvas?.dataset.renderer).toBe("viki-tiles");
+  expect(canvas?.dataset.preset).toBeUndefined();
   expect(canvas?.parentElement?.getAttribute("aria-hidden")).toBe("true");
   expect(queryByRole("img")).toBeNull();
   expect(container.querySelector(".activity-orb-state")?.getAttribute("focusable")).toBe("false");
@@ -90,12 +108,34 @@ test("the solving painter receives the orb clock and the dark theme on a 2x back
 });
 
 test.each(["idle", "waiting", "offline", "error"] as const)(
-  "%s paints one static frame without starting work",
+  "%s paints one still frame of its own look without starting work",
   (state) => {
     const { container } = render(<ActivityOrb state={state} />);
     expect(ctx.clearRect).toHaveBeenCalledTimes(1);
+    expect(paintTileOrb).toHaveBeenCalledWith(ctx, stillSeconds(state), "#f8f8ff", 1, state);
     expect(frames.size).toBe(0);
     expect(container.querySelector(".activity-orb")?.getAttribute("data-paused")).toBe("true");
+  },
+);
+
+test.each(["idle", "offline", "error"] as const)(
+  "a turn from %s opens with the film's start; an approval pause resumes where it stopped",
+  (rest) => {
+    const { rerender } = render(<ActivityOrb state={rest} />);
+    rerender(<ActivityOrb state="active" />);
+    expect(lastSeconds()).toBe(0);
+    step(17);
+    step(34);
+    step(51);
+    const played = lastSeconds() ?? 0;
+    expect(played).toBeGreaterThan(0.04);
+    rerender(<ActivityOrb state="waiting" />);
+    expect(lastSeconds()).toBe(stillSeconds("waiting"));
+    rerender(<ActivityOrb state="active" />);
+    expect(lastSeconds()).toBe(played);
+    rerender(<ActivityOrb state={rest} />);
+    rerender(<ActivityOrb state="active" />);
+    expect(lastSeconds()).toBe(0);
   },
 );
 
@@ -181,7 +221,7 @@ test("app motion and document visibility gate work, while theme changes keep the
   await act(async () => {
     document.documentElement.dataset.theme = "light";
   });
-  expect(vi.mocked(paintSolvingOrb).mock.calls.at(-1)?.[2]).toBe(false);
+  expect(vi.mocked(paintTileOrb).mock.calls.at(-1)?.[2]).toBe("#000000");
   expect(container.querySelector("canvas")).toBe(canvas);
 });
 

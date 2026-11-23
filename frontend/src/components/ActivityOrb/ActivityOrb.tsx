@@ -1,22 +1,30 @@
 import { useEffect, useRef } from "react";
-import { paintSolvingOrb } from "./solvingOrb";
+import { paintTileOrb, stillSeconds } from "./tileOrb";
 import { useActivityPresentation } from "./useActivityPresentation";
 import "./ActivityOrb.css";
 
 export type ActivityState = "idle" | "active" | "waiting" | "offline" | "error";
 
-/** The solving orb is decorative; adjacent observed text supplies its meaning. */
+/** The tile orb is decorative; adjacent observed text supplies its meaning. */
 export function ActivityOrb({ state }: { state: ActivityState }) {
   const ref = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const time = useRef(0.6);
+  const time = useRef(0);
+  const previous = useRef(state);
   const presentation = useActivityPresentation(ref);
   const paused = state !== "active" || !presentation.motion;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a theme change moves `--or`, which draw() reads from the stylesheet, so the still frame must repaint.
   useEffect(() => {
+    // A turn that starts from rest opens with the genesis; a pause for an approval or a question
+    // resumes where the film stopped.
+    if (state !== previous.current) {
+      if (state === "active" && previous.current !== "waiting") time.current = 0;
+      previous.current = state;
+    }
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
-    // paintSolvingOrb draws one frame; this component owns the frame loop and its lifecycle.
+    // paintTileOrb draws one frame; this component owns the frame loop and its lifecycle.
     const draw = () => {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const backingSize = Math.round(64 * dpr);
@@ -26,7 +34,10 @@ export function ActivityOrb({ state }: { state: ActivityState }) {
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, 64, 64);
-      paintSolvingOrb(ctx, time.current, presentation.theme === "dark");
+      const seconds = paused ? stillSeconds(state) : time.current;
+      // The tiles take the theme's accent ink, read live so a theme change repaints in the other.
+      const ink = getComputedStyle(canvas).getPropertyValue("--or").trim();
+      paintTileOrb(ctx, seconds, ink, dpr, state);
     };
     let disposed = false;
     let frame = 0;
@@ -53,7 +64,7 @@ export function ActivityOrb({ state }: { state: ActivityState }) {
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
     };
-  }, [paused, presentation.theme]);
+  }, [paused, state, presentation.theme]);
   return (
     <div
       ref={ref}
@@ -66,8 +77,7 @@ export function ActivityOrb({ state }: { state: ActivityState }) {
       <canvas
         ref={canvasRef}
         className="activity-orb-canvas"
-        data-renderer="thinking-orbs"
-        data-preset="solving"
+        data-renderer="viki-tiles"
         width="64"
         height="64"
       />

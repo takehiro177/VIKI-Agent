@@ -148,7 +148,7 @@ any other version, newer ones included, its message stays in the box with a note
 
 ### Activity and colors
 
-The dotted orb above the message box shows the chat's observed activity, with a status caption.
+The tile orb above the message box shows the chat's observed activity, with a status caption.
 
 - **During a reply:** a monochrome glow pulses inside the box's border.
 - **A waiting approval, plan or question:** keeps the orb and border still.
