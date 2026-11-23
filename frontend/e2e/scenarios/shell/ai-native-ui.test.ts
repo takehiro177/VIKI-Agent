@@ -277,7 +277,7 @@ async function applyAppearance(page: Page, choices: Record<string, string>) {
 /** Reads actual library paint, without replacing or instrumenting either renderer. */
 function motionSnapshot(baseline: { hash: number; pulse: string } | null) {
   const orb = document.querySelector(".composer-wrap .activity-orb");
-  const canvas = orb?.querySelector<HTMLCanvasElement>("canvas[data-renderer='thinking-orbs']");
+  const canvas = orb?.querySelector<HTMLCanvasElement>("canvas[data-renderer='viki-tiles']");
   const host = document.querySelector(".composer-beam-host");
   const beam = document.querySelector<HTMLElement>(".composer-beam");
   const ctx = canvas?.getContext("2d");
@@ -545,9 +545,7 @@ test("composer activity persists with the actual libraries and respects motion p
       focusable: null,
       role: null,
     });
-    expect(
-      await orb.locator('canvas[data-renderer="thinking-orbs"][data-preset="solving"]').count(),
-    ).toBe(1);
+    expect(await orb.locator('canvas[data-renderer="viki-tiles"]').count()).toBe(1);
     expect(await orb.locator(".activity-orb-state").getAttribute("focusable")).toBe("false");
     expect(await orb.locator(".activity-orb-state").getAttribute("aria-hidden")).toBe("true");
     expect(await page.getByRole("status", { name: "Chat activity" }).count()).toBe(1);

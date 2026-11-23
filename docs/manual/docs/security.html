@@ -478,8 +478,9 @@ from the triage.</div></li>
 <li><strong class="label-term">What it sends to Claude</strong><div class="label-body">the name, the <code>captured</code> value and the first 600 characters of
 each capture in <code>00-inbox/</code>, up to 100, and your project names.</div></li>
 <li><strong class="label-term">Vault reads</strong><div class="label-body">it can read files in your vault with those tools.</div></li>
-<li><strong class="label-term">Suggestions</strong><div class="label-body">it keeps them in memory until VIKI Agent closes. Nothing in your vault changes
-until you send the filing draft.</div></li>
+<li><strong class="label-term">Suggestions</strong><div class="label-body">it keeps each vault&#x27;s latest run and its suggestions sealed in the app&#x27;s own
+storage, so they stay after a restart, until you unregister the vault. Nothing in your vault
+changes until you send the filing draft.</div></li>
 <li><strong class="label-term">When none starts</strong><div class="label-body">VIKI starts none while <strong>Never send</strong> holds a tag, a folder over a capture
 or a folder in <code>10-projects/</code>.</div></li>
 </ul>
@@ -892,7 +893,8 @@ folders (<code>~/.claude</code>). Changes made by Claude Code tools follow Claud
 <li><strong class="label-term">Backup restore</strong><div class="label-body">a backup restore makes a new read-only vault folder.</div></li>
 </ul>
 <h3 id="sealed-app-storage">Sealed app storage</h3>
-<p>Drafts, sent text and card answers kept by VIKI Agent are sealed in local storage:</p>
+<p>Drafts, sent text, card answers and inbox suggestions kept by VIKI Agent are sealed in local
+storage:</p>
 <ul class="label-list">
 <li><strong class="label-term">Windows</strong><div class="label-body">uses current-user DPAPI.</div></li>
 <li><strong class="label-term">macOS and Linux</strong><div class="label-body">use a key from the platform keychain for AES-256-GCM.</div></li>
