@@ -1,19 +1,19 @@
-// VIKI Agent's thinking orb: a 64 px globe of small white tiles that plays the showcase film's
-// genesis (docs/assets/motion/viki-showcase) on a loop. One tile blinks and divides into a
-// lattice on eighth notes, the lattice bursts, the storm is drawn into tilted orbit lanes, snaps
-// into a grid, implodes into a spinning cloud and lands on the globe left to right in quantized
-// steps; a scan line locks the globe, it holds and turns, then dissolves to begin again. Every
-// value depends only on `seconds` and the tile's index, so two frames drawn for one moment match,
-// and a paused state draws one still. Tiles are axis-aligned rectangles snapped to device pixels
-// (only the storm spins them), so the picture stays crisp at 1x and 2x.
+// VIKI Agent's thinking orb: a 64 px globe of small white tiles that folds and unfolds in the
+// showcase film's motion language (docs/assets/motion/viki-showcase). Every 5 s, at the film's
+// 96 BPM, the globe unfolds ring by ring into a flat lattice over its disk, computes there (a wave
+// runs through the cells and a few glitch out of line on sixteenth notes), then folds back onto
+// shuffled slots, left to right, settling in quantized steps; a scan line seals the globe, which
+// turns on. Every value depends only on `seconds` and the tile's index, so two frames drawn for
+// one moment match, and a paused state draws one still. Tiles are axis-aligned rectangles snapped
+// to device pixels, so the picture stays crisp at 1x and 2x, and the globe or its lattice is on
+// the canvas in every frame.
 
 export const SIZE = 64;
 const CENTER = SIZE / 2;
-/** Globe radius in px; the orbit lanes need room out to the canvas edge. */
+/** Globe radius in px; the lattice spreads a little past it. */
 const R = 18.5;
 /** The showcase soundtrack's grid, 96 BPM. */
 export const BEAT = 0.625;
-const EIGHTH = BEAT / 2;
 const SIXTEENTH = BEAT / 4;
 
 export type OrbLook = "idle" | "active" | "waiting" | "offline" | "error";
@@ -22,11 +22,6 @@ export type OrbLook = "idle" | "active" | "waiting" | "offline" | "error";
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const smoothstep = (t: number) => {
-  const x = clamp01(t);
-  return x * x * (3 - 2 * x);
-};
-const easeOutCubic = (t: number) => 1 - (1 - clamp01(t)) ** 3;
 const easeInOutCubic = (t: number) => {
   const x = clamp01(t);
   return x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2;
@@ -38,14 +33,6 @@ const easeOutExpo = (t: number) => {
 const easeOutBack = (t: number, overshoot = 1.6) => {
   const x = clamp01(t) - 1;
   return 1 + (overshoot + 1) * x * x * x + overshoot * x * x;
-};
-/** Progress in `steps` ticks, each an eased jump: a clock, not a glide. */
-const stepped = (t: number, steps: number, sharpness = 0.35) => {
-  const x = clamp01(t) * steps;
-  const whole = Math.floor(x);
-  const part = x - whole;
-  const jump = part < 1 - sharpness ? 0 : easeOutCubic((part - (1 - sharpness)) / sharpness);
-  return Math.min(1, (whole + jump) / steps);
 };
 /** A spike that rises at `at` and decays over `length` seconds. */
 const pulse = (time: number, at: number, length: number) => {
@@ -117,71 +104,13 @@ const RAND = (() => {
 })();
 const rnd = (i: number, k: number) => at(RAND, i * RANDOMS + k);
 
-/** Fibonacci-sphere unit vectors, one per tile, for the cloud. */
-const FIB = (() => {
-  const fx = new Float32Array(N);
-  const fy = new Float32Array(N);
-  const fz = new Float32Array(N);
-  const golden = Math.PI * (3 - Math.sqrt(5));
-  shuffled(N, mulberry32(0x5eed)).forEach((tile, k) => {
-    const y = 1 - (2 * (k + 0.5)) / N;
-    const radius = Math.sqrt(1 - y * y);
-    fx[tile] = Math.cos(golden * k) * radius;
-    fy[tile] = y;
-    fz[tile] = Math.sin(golden * k) * radius;
-  });
-  return { fx, fy, fz };
-})();
-
-/** Quadtree birth: every tile's generation and finest cell. Generations 0 to 4 are complete; the
- * last generation's 768 cells take the tiles left over, so the final division is a sprinkle. */
-const GENERATIONS = 5;
-const QUAD = (() => {
-  const rand = mulberry32(0x9e37);
-  const slotX: number[] = [0];
-  const slotY: number[] = [0];
-  const slotGen: number[] = [0];
-  for (let g = 1; g <= GENERATIONS; g++) {
-    const existing = slotX.length;
-    for (let s = 0; s < existing; s++) {
-      const keep = Math.floor(rand() * 4);
-      const px = slotX[s] ?? 0;
-      const py = slotY[s] ?? 0;
-      for (let c = 0; c < 4; c++) {
-        const cx = px * 2 + (c & 1);
-        const cy = py * 2 + (c >> 1);
-        if (c === keep) {
-          slotX[s] = cx;
-          slotY[s] = cy;
-        } else {
-          slotX.push(cx);
-          slotY.push(cy);
-          slotGen.push(g);
-        }
-      }
-    }
-  }
-  const complete = 4 ** (GENERATIONS - 1);
-  const last = shuffled(slotX.length - complete, rand).map((s) => s + complete);
-  const slots = [...Array.from({ length: complete }, (_, s) => s), ...last].slice(0, N);
-  const tiles = shuffled(N, rand);
-  const gen = new Uint8Array(N);
-  const cellX = new Uint8Array(N);
-  const cellY = new Uint8Array(N);
-  slots.forEach((slot, k) => {
-    const tile = tiles[k] ?? 0;
-    gen[tile] = slotGen[slot] ?? 0;
-    cellX[tile] = slotX[slot] ?? 0;
-    cellY[tile] = slotY[slot] ?? 0;
-  });
-  return { gen, cellX, cellY };
-})();
-
 // Scratch outputs of the formation helpers, so the hot loop allocates nothing.
 let ox = 0;
 let oy = 0;
 let oz = 0;
 let os = 1;
+let ocx = 0;
+let ocy = 0;
 
 /** Where slot `s` sits on the turning globe: screen position, depth (-1 far, 1 near), size. */
 const globePoint = (s: number, yaw: number, nod: number) => {
@@ -202,106 +131,36 @@ const globePoint = (s: number, yaw: number, nod: number) => {
 const yawAt = (t: number) => 0.33 * t;
 const nodAt = (t: number) => 0.06 * Math.sin(t * 0.7);
 
-/** Orbit: three lanes on a ring tilted out of the screen, with perspective. */
-const orbitPoint = (i: number, elapsed: number) => {
-  const lane = Math.floor(rnd(i, 0) * 3);
-  const radius = R * (1.36 + 0.09 * lane + 0.05 * (rnd(i, 1) - 0.5));
-  const psi = Math.PI * 2 * rnd(i, 2) + 1.3 * (1 - 0.1 * lane) * elapsed;
-  const incline = 1.2;
-  const x = radius * Math.cos(psi);
-  const y = radius * Math.sin(psi) * Math.cos(incline) + (rnd(i, 3) - 0.5) * R * 0.07;
-  const z = radius * Math.sin(psi) * Math.sin(incline);
-  const tilt = -0.24;
-  const f = 6 * R;
-  const scale = f / (f - z);
-  ox = CENTER + (x * Math.cos(tilt) - y * Math.sin(tilt)) * scale;
-  oy = CENTER + (x * Math.sin(tilt) + y * Math.cos(tilt)) * scale;
-  os = scale;
-  oz = z / radius;
-};
-
-/** Cloud: the Fibonacci sphere spinning about a tilted axis, speeding up as it forms. */
-const cloudPoint = (i: number, elapsed: number) => {
-  const spin = 2.3 * (1 - Math.exp(-elapsed / 0.8)) * elapsed * 0.9;
-  const c = Math.cos(spin);
-  const s = Math.sin(spin);
-  const fx = at(FIB.fx, i);
-  const fy = at(FIB.fy, i);
-  const fz = at(FIB.fz, i);
-  const x1 = fx * c + fz * s;
-  const z1 = -fx * s + fz * c;
-  const k = 0.42;
-  const y2 = fy * Math.cos(k) - z1 * Math.sin(k);
-  const z2 = fy * Math.sin(k) + z1 * Math.cos(k);
-  const radius = R * 1.06;
-  const f = 4 * R;
-  const scale = f / (f - z2 * radius);
-  ox = CENTER + x1 * radius * scale;
-  oy = CENTER + y2 * radius * scale;
-  os = scale;
-  oz = z2;
-};
-
-const LATTICE_RADIUS = [0, 0.34, 0.52, 0.67, 0.8, 0.91, 1];
-const LATTICE_R = R * 1.12;
-/** A cell of generation `g` (a 2^g square), mapped from the square onto a disk. */
-const latticeCell = (cx: number, cy: number, g: number, breathe: number) => {
-  const side = 2 ** g;
-  const u = ((cx + 0.5) / side) * 2 - 1;
-  const v = ((cy + 0.5) / side) * 2 - 1;
-  const du = g === 0 ? 0 : u * Math.sqrt(1 - (v * v) / 2);
-  const dv = g === 0 ? 0 : v * Math.sqrt(1 - (u * u) / 2);
-  const radius = (LATTICE_RADIUS[g] ?? 1) * LATTICE_R * breathe;
-  ox = CENTER + du * radius;
-  oy = CENTER + dv * radius;
-};
-const latticeSize = (g: number) =>
-  g === 0 ? LATTICE_R * 0.24 : ((2 * (LATTICE_RADIUS[g] ?? 1) * LATTICE_R) / 2 ** g) * 0.74;
-
-/** The film's clock, in seconds from the start of a cycle. */
-const T = {
-  blink: 0,
-  divide: 0.5 * BEAT,
-  drop: 3 * BEAT,
-  orbit: 4.5 * BEAT,
-  grid: 6.25 * BEAT,
-  cloud: 7.25 * BEAT,
-  assemble: 8 * BEAT,
-  lock: 10 * BEAT,
-  dissolve: 12.25 * BEAT,
-};
-export const PERIOD = 13 * BEAT;
-const genAt = (g: number) => (g === 0 ? T.blink : T.divide + (g - 1) * EIGHTH);
-const latticeBreathe = (t: number) => {
-  let breathe = 1;
-  for (let g = 1; g <= GENERATIONS; g++) breathe += 0.035 * pulse(t, genAt(g), 0.3);
-  return breathe;
-};
-
-/** The grid: columns and rows over the canvas, one cell per tile, taken in orbit order so the
- * snap reads as a zip rather than a shuffle. */
-const GRID = (() => {
-  const cols = Math.ceil(Math.sqrt(N));
-  const rows = Math.ceil(N / cols);
-  const xs = new Float32Array(N);
-  const ys = new Float32Array(N);
-  for (let i = 0; i < N; i++) {
-    orbitPoint(i, T.grid - T.orbit);
-    xs[i] = ox;
-    ys[i] = oy;
-  }
-  const byX = Array.from({ length: N }, (_, i) => i).sort((a, b) => at(xs, a) - at(xs, b));
-  const col = new Uint8Array(N);
-  const row = new Uint8Array(N);
-  for (let c = 0; c < cols; c++) {
-    const column = byX.slice(c * rows, (c + 1) * rows).sort((a, b) => at(ys, a) - at(ys, b));
-    column.forEach((tile, r) => {
-      col[tile] = c;
-      row[tile] = r;
-    });
-  }
-  return { cols, rows, col, row };
+/** The lattice: a square grid of cells mapped onto the globe's disk, one cell per tile, in a
+ * fixed shuffled order so the unfold scatters each ring across the disk. */
+const LATTICE_SIDE = Math.ceil(Math.sqrt(N));
+const LATTICE_R = R * 1.15;
+const CELL = (2 * LATTICE_R) / LATTICE_SIDE;
+const CELL_OF = (() => {
+  const cells = shuffled(LATTICE_SIDE * LATTICE_SIDE, mulberry32(0xf01d));
+  const own = new Uint16Array(N);
+  for (let i = 0; i < N; i++) own[i] = cells[i] ?? 0;
+  return own;
 })();
+const latticeCell = (i: number) => {
+  const c = at(CELL_OF, i);
+  const cx = c % LATTICE_SIDE;
+  const cy = Math.floor(c / LATTICE_SIDE);
+  const u = ((cx + 0.5) / LATTICE_SIDE) * 2 - 1;
+  const v = ((cy + 0.5) / LATTICE_SIDE) * 2 - 1;
+  ox = CENTER + u * Math.sqrt(1 - (v * v) / 2) * LATTICE_R;
+  oy = CENTER + v * Math.sqrt(1 - (u * u) / 2) * LATTICE_R;
+  ocx = cx;
+  ocy = cy;
+};
+
+/** The cycle's clock, in seconds. */
+const T = {
+  unfold: 0,
+  fold: 4.1 * BEAT,
+  scan: 6.1 * BEAT,
+};
+export const PERIOD = 8 * BEAT;
 
 // ---- the frame --------------------------------------------------------------------------------
 
@@ -310,7 +169,6 @@ type Tile = {
   y: number;
   w: number;
   h: number;
-  a: number;
   alpha: number;
   glow: number;
   z: number;
@@ -320,256 +178,96 @@ const FRAME: Tile[] = Array.from({ length: N }, () => ({
   y: 0,
   w: 0,
   h: 0,
-  a: 0,
   alpha: 0,
   glow: 0,
   z: 0,
 }));
 const ORDER = new Uint16Array(N);
-const REST: Tile = { x: 0, y: 0, w: 0, h: 0, a: 0, alpha: 0, glow: 0, z: 0 };
+const REST: Tile = { x: 0, y: 0, w: 0, h: 0, alpha: 0, glow: 0, z: 0 };
 const tileAt = (i: number): Tile => FRAME[i] ?? REST;
+
+/** The resting globe tile for slot `s`, with depth shading. */
+const restTile = (out: Tile, s: number, time: number) => {
+  globePoint(s, yawAt(time), nodAt(time));
+  const near = (oz + 1) / 2;
+  out.x = ox;
+  out.y = oy;
+  out.w = TILE_W * os;
+  out.h = TILE_H * os;
+  out.alpha = 0.28 + 0.72 * near;
+  out.glow = 0.1 + 0.15 * near;
+  out.z = oz;
+};
+
+/** The slot each tile folds back onto in cycle `k`: a half turn through the slot list, so every
+ * tile crosses the disk and lands among other neighbours. Tiles are alike, so the next cycle can
+ * start from the identity again without a visible jump. */
+const targetOf = (i: number, k: number) =>
+  (i + Math.floor(N / 2) + Math.floor(hash01(k, 3) * 40)) % N;
 
 const simulate = (time: number) => {
   const k = Math.floor(time / PERIOD);
   const t = time - k * PERIOD;
-  const half = 28;
-  const scanStart = T.lock + 0.07;
-  const scanY = CENTER - 1.15 * R + 2.3 * R * easeInOutCubic((t - scanStart) / 0.6);
+  const sixteenth = Math.floor(t / SIXTEENTH);
   for (let i = 0; i < N; i++) {
-    const out = tileAt(i);
-    const g0 = at(QUAD.gen, i);
-    const r0 = rnd(i, 0);
-    const r1 = rnd(i, 1);
-    const r2 = rnd(i, 2);
-    const r3 = rnd(i, 3);
-    const r4 = rnd(i, 4);
-    const r5 = rnd(i, 5);
-    const r6 = rnd(i, 6);
-    const r7 = rnd(i, 7);
-    let x = 0;
-    let y = 0;
-    let w = 0;
-    let h = 0;
-    let a = 0;
-    let alpha = 1;
-    let glow = 0;
-    let z = 0;
-    if (t < T.drop) {
-      // 1. The lattice: one tile, dividing on every eighth note.
-      const born = genAt(g0) + (g0 === GENERATIONS ? r0 * 0.1 : 0);
-      if (t < born) {
-        out.alpha = 0;
-        continue;
+    const out = FRAME[i] ?? REST;
+    restTile(out, i, time);
+    // 1. The unfold: rings peel into the lattice from the top down.
+    const unfoldStart =
+      T.unfold + (slotAt(i).ring / (RINGS - 1)) * 0.9 * BEAT + rnd(i, 0) * 0.15 * BEAT;
+    if (t <= unfoldStart) continue;
+    latticeCell(i);
+    const cx = ocx;
+    const cy = ocy;
+    const p = easeInOutCubic((t - unfoldStart) / (0.7 * BEAT));
+    // 2. The lattice at work: a wave of brightness, and a few cells that jump a step on
+    // sixteenth notes.
+    const wave = 0.5 + 0.5 * Math.sin(cx * 0.55 + cy * 0.35 - t * 9);
+    const glitch = rnd(i, 5) < 0.07 && hash01(i, sixteenth) < 0.5;
+    const tx = ox + (glitch ? (hash01(i, sixteenth + 7) < 0.5 ? -1 : 1) * CELL : 0);
+    const ty = oy + (glitch ? Math.round((hash01(i, sixteenth + 3) - 0.5) * 2) * CELL : 0);
+    const size = CELL * (0.45 + 0.3 * wave);
+    let x = lerp(out.x, tx, p);
+    let y = lerp(out.y, ty, p);
+    let w = lerp(out.w, size, p);
+    let h = lerp(out.h, size, p);
+    let alpha = lerp(out.alpha, 0.4 + 0.6 * wave, p);
+    let glow =
+      lerp(out.glow, 0.15 + 0.35 * wave, p) + 0.5 * pulse(t, unfoldStart + 0.7 * BEAT, 0.2);
+    let z = lerp(out.z, 2, p);
+    // 3. The fold: tiles zip back onto other slots, left to right, settling in steps.
+    const target = targetOf(i, k);
+    globePoint(target, yawAt(k * PERIOD + T.fold), 0);
+    const order = clamp01((ox - CENTER) / R / 2 + 0.5);
+    const foldStart = T.fold + order * 1.1 * BEAT + rnd(i, 1) * 0.1 * BEAT;
+    if (t > foldStart) {
+      const span = (0.4 + 0.25 * rnd(i, 7)) * BEAT;
+      const q0 = clamp01((t - foldStart) / span);
+      const q = rnd(i, 4) < 0.3 ? easeOutBack(q0, 1.3) : easeOutExpo(q0);
+      restTile(out, target, time);
+      // 4. The scan: a line runs down the sealed globe and lights each ring as it passes.
+      if (t > T.scan) {
+        const scanAt = T.scan + ((out.y - CENTER + 1.15 * R) / (2.3 * R)) * 0.6 * BEAT;
+        out.glow += 0.9 * pulse(t, scanAt, 0.22);
+        out.alpha = Math.min(1, out.alpha + 0.3 * pulse(t, scanAt, 0.18));
       }
-      let g = g0;
-      while (g < GENERATIONS && t >= genAt(g + 1)) g++;
-      const breathe = latticeBreathe(t);
-      const fromGen = g === 0 ? 0 : g - 1;
-      const shiftFrom = GENERATIONS - fromGen;
-      const cellX = at(QUAD.cellX, i);
-      const cellY = at(QUAD.cellY, i);
-      latticeCell(cellX >> shiftFrom, cellY >> shiftFrom, fromGen, breathe);
-      const fx = ox;
-      const fy = oy;
-      const shift = GENERATIONS - g;
-      latticeCell(cellX >> shift, cellY >> shift, g, breathe);
-      const start = g === g0 ? born : genAt(g);
-      const hop = r0 < 0.12 && g >= 2;
-      const p = clamp01((t - start - (g === g0 ? 0 : r0 * 0.08)) / 0.2);
-      const q = hop ? easeOutBack(p, 3) : easeOutCubic(p);
-      x = lerp(fx, ox, q);
-      y = lerp(fy, oy, q);
-      const size = lerp(latticeSize(fromGen) * (g === g0 && g > 0 ? 0.6 : 1), latticeSize(g), q);
-      w = size;
-      h = size;
-      alpha = g0 === 0 ? 1 : clamp01((t - born) / 0.08);
-      if (g0 === 0 && t < T.divide) alpha *= 0.55 + 0.45 * Math.round(0.5 + 0.5 * Math.sin(t * 40));
-      if (hash01(i, Math.floor(t / SIXTEENTH)) < 0.06) alpha *= 0.3;
-      glow = 0.25 + 0.75 * pulse(t, start, 0.23);
-      z = 2;
-    } else {
-      // 2. The drop: the lattice bursts outward in a vortex; some tiles tick, some glide.
-      const tau = t - T.drop;
-      latticeCell(at(QUAD.cellX, i), at(QUAD.cellY, i), GENERATIONS, 1);
-      const dx = ox - CENTER;
-      const dy = oy - CENTER;
-      const r0Dist = Math.hypot(dx, dy);
-      let phi = Math.atan2(dy, dx);
-      // A quarter of the tiles fire along eight rays; the rest scatter freely, near and far.
-      if (r2 < 0.26) phi = Math.round(phi / (Math.PI / 4)) * (Math.PI / 4);
-      const reach = r0Dist * 1.05 + (0.03 + 1.2 * r1 ** 1.45) * half;
-      const span = 0.53 + 0.87 * r2;
-      const pr = r4 < 0.38 ? stepped(tau / span, 4) : easeOutExpo(tau / span);
-      const radius = lerp(r0Dist, reach, pr);
-      const swirl = (0.35 + 1.25 * r3) * (r3 < 0.14 ? -1 : 1);
-      const angle = phi + swirl * easeOutCubic(tau / 2.3) + 0.12 * tau;
-      x = CENTER + Math.cos(angle) * radius;
-      y = CENTER + Math.sin(angle) * radius;
-      let size = (1.1 + 0.8 * r7) * (r5 > 0.93 ? 2.2 : 1);
-      size = lerp(latticeSize(GENERATIONS), size, clamp01(tau / 0.33));
-      w = size;
-      h = r5 > 0.96 ? size * 2.6 : size;
-      a = r7 < 0.35 ? (r6 - 0.5) * 4.8 * tau : 0;
-      alpha = 1;
-      glow = 1 - clamp01(tau / 0.6);
-      z = 2;
-
-      // 3. The orbit: tiles are drawn into three tilted lanes, near tiles larger and brighter.
-      const orbitStart = T.orbit + r6 * 0.47;
-      if (t > orbitStart) {
-        orbitPoint(i, t - orbitStart);
-        const p = easeInOutCubic((t - orbitStart) / 0.67);
-        x = lerp(x, ox, p);
-        y = lerp(y, oy, p);
-        const orbitSize = 1.5 * os * (r5 > 0.93 ? 1.6 : 1);
-        w = lerp(w, orbitSize * (r5 > 0.96 ? 2 : 1), p);
-        h = lerp(h, orbitSize, p);
-        a = lerp(a, 0, p);
-        alpha = lerp(alpha, 0.3 + 0.7 * (oz * 0.5 + 0.5), p);
-        glow = lerp(glow, 0.15 + 0.35 * clamp01(oz), p);
-        z = lerp(z, 1 + oz, p);
+      if (q0 >= 1) continue;
+      x = lerp(x, out.x, q);
+      y = lerp(y, out.y, q);
+      if (q0 > 0.6) {
+        x = quantize(x, out.x, 0.75);
+        y = quantize(y, out.y, 0.75);
       }
-
-      // 4. The grid: every tile zips into one canvas-wide lattice on the beat; a wave runs
-      // through it and a few cells glitch out of line.
-      const col = at(GRID.col, i);
-      const row = at(GRID.row, i);
-      const gridStart = T.grid + (col / GRID.cols) * 0.23 + r0 * 0.05;
-      if (t > gridStart) {
-        const gx = SIZE / GRID.cols;
-        const gy = SIZE / GRID.rows;
-        let tx = (col + 0.5) * gx;
-        let ty = (row + 0.5) * gy;
-        const beatIndex = Math.floor((t - T.grid) / SIXTEENTH);
-        if (r5 < 0.07 && hash01(i, beatIndex) < 0.5) {
-          tx += (hash01(i, beatIndex + 7) < 0.5 ? -1 : 1) * gx;
-          ty += Math.round((hash01(i, beatIndex + 3) - 0.5) * 2) * gy;
-        }
-        const p = easeOutExpo((t - gridStart) / 0.23);
-        x = lerp(x, tx, p);
-        y = lerp(y, ty, p);
-        const wave = 0.5 + 0.5 * Math.sin(col * 0.5 + row * 0.3 - (t - T.grid) * 18);
-        const cellSize = Math.min(gx, gy) * (0.35 + 0.4 * wave);
-        w = lerp(w, cellSize, p);
-        h = lerp(h, cellSize, p);
-        a = lerp(a, 0, p);
-        alpha = lerp(alpha, 0.3 + 0.7 * wave, p);
-        glow = lerp(glow, 0.5 * pulse(t, T.grid + 0.03, 0.33) + 0.25 * wave, p);
-        z = lerp(z, 2, p);
-      }
-
-      // 5. The cloud: the grid implodes into a spinning sphere of tiles.
-      const cloudStart = T.cloud + (1 - Math.hypot(x - CENTER, y - CENTER) / 45) * 0.17 + r1 * 0.1;
-      if (t > cloudStart) {
-        cloudPoint(i, t - cloudStart);
-        const p = easeInOutCubic((t - cloudStart) / 0.4);
-        x = lerp(x, ox, p);
-        y = lerp(y, oy, p);
-        const cloudSize = 1.4 * os;
-        w = lerp(w, cloudSize, p);
-        h = lerp(h, cloudSize, p);
-        alpha = lerp(alpha, 0.35 + 0.65 * (oz * 0.5 + 0.5), p);
-        glow = lerp(glow, 0.2, p);
-        z = lerp(z, oz, p);
-      }
-
-      // 6. Assembly: tiles land on the globe, left to right, and step into place.
-      const spinAt = k * PERIOD + T.assemble;
-      globePoint(i, yawAt(spinAt) + 0.33 * Math.max(0, t - T.assemble), nodAt(spinAt));
-      const goalX = ox;
-      const goalY = oy;
-      const goalW = TILE_W * os;
-      const goalH = TILE_H * os;
-      const goalZ = oz;
-      const goalAlpha = 0.28 + 0.72 * ((oz + 1) / 2);
-      const order = clamp01(((goalX - CENTER) / R + 1) * 0.4 + r6 * 0.2);
-      const landStart = T.assemble + order * 0.9;
-      const landSpan = 0.33 + 0.3 * r7;
-      if (t > landStart) {
-        const p = clamp01((t - landStart) / landSpan);
-        const q = r4 < 0.3 ? easeOutBack(p, 1.3) : easeOutExpo(p);
-        x = lerp(x, goalX, q);
-        y = lerp(y, goalY, q);
-        if (p > 0.6) {
-          x = quantize(x, goalX, 0.75);
-          y = quantize(y, goalY, 0.75);
-        }
-        w = lerp(w, goalW, q);
-        h = lerp(h, goalH, q);
-        a = lerp(a, 0, q);
-        alpha = lerp(alpha, goalAlpha, q);
-        glow = 0.1 + 0.9 * pulse(t, landStart + landSpan, 0.27) + 0.6 * pulse(t, T.lock, 0.33);
-        z = lerp(z, goalZ, q);
-      }
-      // 7. The lock: a scan line runs down the globe and seals it.
-      if (t > scanStart) {
-        const at = scanStart + ((y - CENTER + 1.15 * R) / (2.3 * R)) * 0.6;
-        glow += 0.8 * pulse(t, at, 0.2);
-        alpha = Math.min(1, alpha + 0.3 * pulse(t, at, 0.18));
-        if (y < scanY) glow += 0.05;
-      }
-      // 8. Hold: a few tiles leave the globe to orbit it or drift off its face.
-      const role = r5 >= 0.3 && r5 < 0.33 ? 1 : r5 >= 0.33 && r5 < 0.4 && goalZ > 0.4 ? 2 : 0;
-      if (role && t > T.lock + 0.45) {
-        const enter = easeInOutCubic((t - (T.lock + 0.45) - r1 * 0.6) / 0.9);
-        const loop = (t - T.lock) / (2.5 * BEAT);
-        if (role === 1) {
-          const lane = Math.floor(r0 * 3);
-          const radius = R * (1.42 + 0.12 * lane);
-          const psi = Math.PI * 2 * (r3 + (r2 < 0.5 ? 1 : 2) * loop);
-          const ex = radius * Math.cos(psi);
-          const ey = radius * Math.sin(psi) * Math.cos(1.25);
-          const ez = Math.sin(psi);
-          const tilt = -0.24;
-          x = lerp(x, CENTER + ex * Math.cos(tilt) - ey * Math.sin(tilt), enter);
-          y = lerp(y, CENTER + ex * Math.sin(tilt) + ey * Math.cos(tilt), enter);
-          const size = 1.5 * (1 + 0.25 * ez);
-          w = lerp(w, size, enter);
-          h = lerp(h, size, enter);
-          alpha = lerp(alpha, 0.35 + 0.5 * (ez * 0.5 + 0.5), enter);
-          glow = lerp(glow, 0.3, enter);
-          z = lerp(z, 1 + ez, enter);
-        } else {
-          const c = (((loop * 2 + r3) % 1) + 1) % 1;
-          const away = smoothstep((c - 0.12) / 0.88);
-          const dirX = (goalX - CENTER) / R + 0.35;
-          const dirY = ((goalY - CENTER) / R) * 0.6;
-          const len = Math.hypot(dirX, dirY) || 1;
-          const dist = R * (0.08 + 0.32 * r4) * away;
-          x = lerp(x, goalX + (dirX / len) * dist, enter);
-          y = lerp(y, goalY + (dirY / len) * dist, enter);
-          alpha = lerp(alpha, clamp01(c / 0.12) * (1 - away), enter);
-          w = lerp(w, goalW * (1 - 0.4 * away), enter);
-          h = lerp(h, goalH * (1 - 0.4 * away), enter);
-          glow = lerp(glow, 0.2 * (1 - away), enter);
-        }
-      }
-      // 9. Dissolve: the globe flickers out in random order, while the seed tile glides back to
-      // the centre and becomes the one that blinks and divides in the next cycle, so the loop
-      // closes without an empty frame.
-      if (t > T.dissolve) {
-        if (g0 === 0) {
-          const p = easeInOutCubic((t - T.dissolve) / (PERIOD - T.dissolve));
-          x = lerp(x, CENTER, p);
-          y = lerp(y, CENTER, p);
-          w = lerp(w, latticeSize(0), p);
-          h = lerp(h, latticeSize(0), p);
-          a = 0;
-          alpha = Math.max(alpha, p);
-          glow = Math.max(glow, 0.5 * p);
-          z = 2;
-        } else {
-          const gone = T.dissolve + r2 * 0.4;
-          if (t > gone) alpha = 0;
-          glow += 0.6 * pulse(t, gone - 0.08, 0.1);
-        }
-      }
+      w = lerp(w, out.w, q);
+      h = lerp(h, out.h, q);
+      alpha = lerp(alpha, out.alpha, q);
+      glow = lerp(glow, out.glow, q) + 0.9 * pulse(t, foldStart + span, 0.3);
+      z = lerp(z, out.z, q);
     }
     out.x = x;
     out.y = y;
     out.w = w;
     out.h = h;
-    out.a = a;
     out.alpha = alpha;
     out.glow = glow;
     out.z = z;
@@ -586,8 +284,8 @@ const haloWeight = (tile: Tile) => tile.alpha * 0.45 * Math.max(0, tile.glow - 0
 const crispWeight = (tile: Tile) => tile.alpha;
 
 /** Fills every visible tile in alpha buckets: one path per bucket, so a frame is a dozen fills.
- * Axis-aligned tiles snap to device pixels (`unit` is one device pixel in canvas units) and are
- * at least one device pixel wide and high; a spinning tile is drawn as a quad. */
+ * Tiles snap to device pixels (`unit` is one device pixel in canvas units) and are at least one
+ * device pixel wide and high. */
 const fillTiles = (
   ctx: CanvasRenderingContext2D,
   unit: number,
@@ -607,35 +305,21 @@ const fillTiles = (
       if (at(bucketOf, i) !== b) continue;
       any = true;
       const tile = tileAt(at(ORDER, i));
-      const w = tile.w + grow;
-      const h = tile.h + grow;
-      if (Math.abs(tile.a) < 0.002) {
-        const pw = Math.max(unit, Math.round(w / unit) * unit);
-        const ph = Math.max(unit, Math.round(h / unit) * unit);
-        const px = Math.round((tile.x - pw / 2) / unit) * unit;
-        const py = Math.round((tile.y - ph / 2) / unit) * unit;
-        ctx.rect(px, py, pw, ph);
-      } else {
-        const hw = Math.max(unit, w) / 2;
-        const hh = Math.max(unit, h) / 2;
-        const c = Math.cos(tile.a);
-        const s = Math.sin(tile.a);
-        const { x, y } = tile;
-        ctx.moveTo(x - hw * c + hh * s, y - hw * s - hh * c);
-        ctx.lineTo(x + hw * c + hh * s, y + hw * s - hh * c);
-        ctx.lineTo(x + hw * c - hh * s, y + hw * s + hh * c);
-        ctx.lineTo(x - hw * c - hh * s, y - hw * s + hh * c);
-        ctx.closePath();
-      }
+      const pw = Math.max(unit, Math.round((tile.w + grow) / unit) * unit);
+      const ph = Math.max(unit, Math.round((tile.h + grow) / unit) * unit);
+      const px = Math.round((tile.x - pw / 2) / unit) * unit;
+      const py = Math.round((tile.y - ph / 2) / unit) * unit;
+      ctx.rect(px, py, pw, ph);
     }
     if (any) ctx.fill();
   }
   ctx.globalAlpha = 1;
 };
 
-/** A representative moment of the cycle for the states that draw one still: the held globe,
- * with its orbiters out for "waiting". */
-export const stillSeconds = (look: OrbLook): number => T.lock + (look === "waiting" ? 1.0 : 1.4);
+/** A representative moment of the cycle for the states that draw one still: the sealed globe at
+ * rest, or the lattice at work for "waiting". */
+export const stillSeconds = (look: OrbLook): number =>
+  look === "waiting" ? 2.6 * BEAT : PERIOD - 0.4;
 
 /** Paints one frame of the orb, `seconds` into its animation, onto a 64-unit canvas space whose
  * transform already carries `pixelRatio`. `ink` is the tile colour: the app's `--or` token as the
