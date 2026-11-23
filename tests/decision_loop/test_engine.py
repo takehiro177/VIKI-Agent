@@ -5479,8 +5479,8 @@ class RememberingInboxHost(FakeInboxHost):
     does: a started run reads running under its run id, a refusal other than busy reads "". It
     notes the thread of each read."""
 
-    def __init__(self, *, refuse: str | None = None) -> None:
-        super().__init__(refuse=refuse)
+    def __init__(self, *, refuse: str | None = None, persistent: bool = False) -> None:
+        super().__init__(refuse=refuse, persistent=persistent)
         self.threads: list[int] = []
 
     def read(self, workspace_id: str) -> InboxLook:
@@ -5892,6 +5892,45 @@ async def test_a_relaunch_does_not_start_the_stored_waiting_inbox_again(rig: Rig
     assert state_of(rig, TRIAGE) == "open"
     assert inbox_starts(second) == []
     assert triage_today(rig) == 1
+
+
+async def test_a_relaunch_starts_a_stored_waiting_inbox_a_persistent_host_never_started(
+    rig: Rig,
+) -> None:
+    """Quiet hours hold the run of a pressing inbox until VIKI Agent closes. The next launch's
+    host keeps its started keys across restarts and never started this state, so the new engine
+    starts it though its item was stored before the engine began."""
+    rig.values["notifications.quiet_start"] = "17:00"  # WALL is 18:00 in JST
+    rig.values["notifications.quiet_end"] = "19:00"
+    first = inboxing(rig)
+    await rig.engine.recheck()
+    assert state_of(rig, TRIAGE) == "open" and inbox_starts(first) == []
+
+    rig.values["notifications.quiet_start"] = rig.values["notifications.quiet_end"] = None
+    rig.clock.advance(60)
+    second = RememberingInboxHost(persistent=True)
+    rig.inbox = second
+    rig.engine = rig.build(rig.keys)
+    await rig.engine.recheck()
+    assert inbox_starts(second) == [("start", SCOPE, TRIAGE)]
+
+
+async def test_a_relaunch_does_not_start_a_state_a_persistent_host_started_before(
+    rig: Rig,
+) -> None:
+    """The next launch's host loaded the key it started and that run's end, so the stored open
+    item is not started again."""
+    first = inboxing(rig)
+    await rig.engine.recheck()
+    assert inbox_starts(first) == [("start", SCOPE, TRIAGE)]
+
+    rig.clock.advance(3600)
+    second = RememberingInboxHost(persistent=True)
+    second.look = InboxLook(InboxRun("r1", "done", None, stamp(WALL)), {}, {TRIAGE: "r1"})
+    rig.inbox = second
+    rig.engine = rig.build(rig.keys)
+    await rig.engine.recheck()
+    assert inbox_starts(second) == []
 
 
 async def test_a_limit_of_one_starts_the_first_inbox_run(rig: Rig) -> None:

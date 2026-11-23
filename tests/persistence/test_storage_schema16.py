@@ -109,10 +109,10 @@ def _version_fifteen(tmp_path: Path) -> Path:
 
 
 def test_fresh_store_is_v16_with_both_tables(tmp_path: Path) -> None:
-    assert storage.SCHEMA_VERSION == 41
+    assert storage.SCHEMA_VERSION == 42
     database = AppState(tmp_path / "state.json", Prefs()).database_path
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _ddl(connection) == storage.CHECK_SCHEMAS
 
 
@@ -132,7 +132,7 @@ def test_v15_store_upgrades_to_v16_with_rows_intact(tmp_path: Path) -> None:
         assert _ddl(saved) == {}
         state._store._validate(saved, (15,))  # the store's own check, at the version it names
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _ddl(connection) == storage.CHECK_SCHEMAS
         assert _rows(connection, (*_KEPT, *storage.CHECK_SCHEMAS)) == {
             **rows,

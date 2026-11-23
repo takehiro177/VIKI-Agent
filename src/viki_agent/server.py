@@ -225,6 +225,7 @@ from viki_agent.vaults.proposal_api import proposal_routes
 from viki_agent.vaults.proposals import ProposalService
 from viki_agent.vaults.skill_proposal_api import skill_proposal_routes
 from viki_agent.vaults.skill_proposals import SkillProposalService
+from viki_agent.vaults.suggestion_memory import SuggestionMemory
 from viki_agent.vaults.vault import VaultService
 from viki_agent.vaults.vault_api import vault_routes
 from viki_agent.vaults.vault_attachments import VaultAttachmentService
@@ -2601,10 +2602,12 @@ def create_app(
 
         decisions = DecisionService(workspaces, proposal_items=proposal_items)
         captures = CaptureService(workspaces, reader)
-        suggester = CaptureSuggester(manager, captures, tasks=background)
+        # Both keep their part of each vault's suggestion state in the store across restarts.
+        suggestion_memory = SuggestionMemory(manager.app_state.store)
+        suggester = CaptureSuggester(manager, captures, tasks=background, memory=suggestion_memory)
         # Decision's cycle and its Suggest destinations route start the user's own suggestion run
         # through this one suggester, so the run lock and the kept suggestions are shared.
-        inbox_host = SuggestionHost(suggester)
+        inbox_host = SuggestionHost(suggester, memory=suggestion_memory)
         routes.extend(
             vault_routes(
                 reader,

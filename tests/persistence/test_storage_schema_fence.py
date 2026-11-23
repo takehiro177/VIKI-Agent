@@ -338,7 +338,7 @@ def test_upgrade_from_25_keeps_rows_behind_backup(tmp_path: Path) -> None:
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v25-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _every_row(connection) == before
     (backup,) = tmp_path.glob("app.sqlite3.v25-backup-*.sqlite3")
     with contextlib.closing(sqlite3.connect(f"{backup.as_uri()}?mode=ro", uri=True)) as saved:
@@ -389,7 +389,7 @@ def test_upgrade_from_26_keeps_rows_behind_backup(tmp_path: Path) -> None:
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v26-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _every_row(connection) == before
     (backup,) = tmp_path.glob("app.sqlite3.v26-backup-*.sqlite3")
     with contextlib.closing(sqlite3.connect(f"{backup.as_uri()}?mode=ro", uri=True)) as saved:
@@ -438,7 +438,7 @@ def test_upgrade_from_27_keeps_rows_behind_backup(tmp_path: Path) -> None:
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v27-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _every_row(connection) == before
     (backup,) = tmp_path.glob("app.sqlite3.v27-backup-*.sqlite3")
     with contextlib.closing(sqlite3.connect(f"{backup.as_uri()}?mode=ro", uri=True)) as saved:
@@ -489,10 +489,10 @@ def test_upgrade_from_29_keeps_rows_behind_backup(tmp_path: Path) -> None:
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v29-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _every_row(connection) == before
     (backup,) = tmp_path.glob("app.sqlite3.v29-backup-*.sqlite3")
-    assert len(list(tmp_path.glob("*backup*"))) == 12  # Backups at v29 through v40.
+    assert len(list(tmp_path.glob("*backup*"))) == 13  # Backups at v29 through v41.
     with contextlib.closing(sqlite3.connect(f"{backup.as_uri()}?mode=ro", uri=True)) as saved:
         state.store._validate(saved, (29,))  # the store's own check, at the version it names
         assert saved.execute("PRAGMA user_version").fetchone() == (29,)
@@ -541,10 +541,10 @@ def test_upgrade_from_30_keeps_rows_behind_backup(tmp_path: Path) -> None:
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v30-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _every_row(connection) == before
     (backup,) = tmp_path.glob("app.sqlite3.v30-backup-*.sqlite3")
-    assert len(list(tmp_path.glob("*backup*"))) == 11  # Backups at v30 through v40.
+    assert len(list(tmp_path.glob("*backup*"))) == 12  # Backups at v30 through v41.
     with contextlib.closing(sqlite3.connect(f"{backup.as_uri()}?mode=ro", uri=True)) as saved:
         state.store._validate(saved, (30,))  # the store's own check, at the version it names
         assert saved.execute("PRAGMA user_version").fetchone() == (30,)
@@ -593,10 +593,10 @@ def test_upgrade_from_31_keeps_rows_behind_backup(tmp_path: Path) -> None:
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v31-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _every_row(connection) == before
     (backup,) = tmp_path.glob("app.sqlite3.v31-backup-*.sqlite3")
-    assert len(list(tmp_path.glob("*backup*"))) == 10  # Backups at v31 through v40.
+    assert len(list(tmp_path.glob("*backup*"))) == 11  # Backups at v31 through v41.
     with contextlib.closing(sqlite3.connect(f"{backup.as_uri()}?mode=ro", uri=True)) as saved:
         state.store._validate(saved, (31,))  # the store's own check, at the version it names
         assert saved.execute("PRAGMA user_version").fetchone() == (31,)
@@ -645,10 +645,10 @@ def test_upgrade_from_32_keeps_rows_behind_backup(tmp_path: Path) -> None:
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v32-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _every_row(connection) == before
     (backup,) = tmp_path.glob("app.sqlite3.v32-backup-*.sqlite3")
-    assert len(list(tmp_path.glob("*backup*"))) == 9  # Backups at v32 through v40.
+    assert len(list(tmp_path.glob("*backup*"))) == 10  # Backups at v32 through v41.
     with contextlib.closing(sqlite3.connect(f"{backup.as_uri()}?mode=ro", uri=True)) as saved:
         state.store._validate(saved, (32,))  # the store's own check, at the version it names
         assert saved.execute("PRAGMA user_version").fetchone() == (32,)
@@ -697,10 +697,10 @@ def test_upgrade_from_33_keeps_rows_behind_backup(tmp_path: Path) -> None:
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v33-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _every_row(connection) == before
     (backup,) = tmp_path.glob("app.sqlite3.v33-backup-*.sqlite3")
-    assert len(list(tmp_path.glob("*backup*"))) == 8  # Backups at v33 through v40.
+    assert len(list(tmp_path.glob("*backup*"))) == 9  # Backups at v33 through v41.
     with contextlib.closing(sqlite3.connect(f"{backup.as_uri()}?mode=ro", uri=True)) as saved:
         state.store._validate(saved, (33,))  # the store's own check, at the version it names
         assert saved.execute("PRAGMA user_version").fetchone() == (33,)
@@ -749,10 +749,10 @@ def test_upgrade_from_34_keeps_rows_behind_backup(tmp_path: Path) -> None:
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v34-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _every_row(connection) == before
     (backup,) = tmp_path.glob("app.sqlite3.v34-backup-*.sqlite3")
-    assert len(list(tmp_path.glob("*backup*"))) == 7  # Backups at v34 through v40.
+    assert len(list(tmp_path.glob("*backup*"))) == 8  # Backups at v34 through v41.
     with contextlib.closing(sqlite3.connect(f"{backup.as_uri()}?mode=ro", uri=True)) as saved:
         state.store._validate(saved, (34,))  # the store's own check, at the version it names
         assert saved.execute("PRAGMA user_version").fetchone() == (34,)
@@ -801,7 +801,7 @@ def test_upgrade_from_35_keeps_rows_behind_backup(tmp_path: Path) -> None:
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v35-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _every_row(connection) == before
     (backup,) = tmp_path.glob("app.sqlite3.v35-backup-*.sqlite3")
     assert backup.name.startswith("app.sqlite3.v35-backup-") and backup.suffix == ".sqlite3"

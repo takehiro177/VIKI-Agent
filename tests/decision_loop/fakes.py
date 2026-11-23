@@ -444,11 +444,18 @@ class FakeCheckHost:
 class FakeInboxHost:
     """`InboxHost` without a suggester. `calls` holds every method call in order as a tuple of its
     name and arguments; `read` answers `look`, or an empty look; `start` raises
-    `DecisionLoopError(refuse)` when `refuse` is set, else answers `run_id`."""
+    `DecisionLoopError(refuse)` when `refuse` is set, else answers `run_id`. `persistent` is what
+    `InboxHost.persistent` answers."""
 
     def __init__(
-        self, look: InboxLook | None = None, *, run_id: str = "r1", refuse: str | None = None
+        self,
+        look: InboxLook | None = None,
+        *,
+        run_id: str = "r1",
+        refuse: str | None = None,
+        persistent: bool = False,
     ) -> None:
+        self.persistent = persistent
         self.calls: list[tuple[Any, ...]] = []
         self.look = look if look is not None else InboxLook(None, {}, {})
         self.run_id = run_id

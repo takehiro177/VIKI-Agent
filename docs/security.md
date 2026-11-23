@@ -526,8 +526,9 @@ This is the run **Ask VIKI to suggest** starts:
 - **What it sends to Claude:** the name, the `captured` value and the first 600 characters of
   each capture in `00-inbox/`, up to 100, and your project names.
 - **Vault reads:** it can read files in your vault with those tools.
-- **Suggestions:** it keeps them in memory until VIKI Agent closes. Nothing in your vault changes
-  until you send the filing draft.
+- **Suggestions:** it keeps each vault's latest run and its suggestions sealed in the app's own
+  storage, so they stay after a restart, until you unregister the vault. Nothing in your vault
+  changes until you send the filing draft.
 - **When none starts:** VIKI starts none while **Never send** holds a tag, a folder over a capture
   or a folder in `10-projects/`.
 
@@ -978,7 +979,8 @@ chat image in the vault.
 
 ### Sealed app storage
 
-Drafts, sent text and card answers kept by VIKI Agent are sealed in local storage:
+Drafts, sent text, card answers and inbox suggestions kept by VIKI Agent are sealed in local
+storage:
 
 - **Windows:** uses current-user DPAPI.
 - **macOS and Linux:** use a key from the platform keychain for AES-256-GCM.

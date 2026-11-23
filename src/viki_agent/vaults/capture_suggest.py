@@ -7,8 +7,11 @@ session with read-only tools (`Launch.read_only_tools`) itself, under its lock, 
 run as a task in the caller's `tasks` set and handing out the run's id: the read-only actor exists
 under that id before anyone outside can learn it. The task sends `build_prompt`'s text,
 denies every card from the task itself and interrupts the turn at its deadline. Only `parse_reply`
-turns the reply into suggestions: a successful run replaces that vault's in-memory map, and a failed
-run keeps it.
+turns the reply into suggestions: a successful run replaces that vault's map, and a failed run
+keeps it.
+With a `SuggestionMemory`, each vault's latest run and map outlive a restart: they are loaded as the
+suggester is built, saved before a run's session is created and again once its session is closed.
+A run still running when VIKI Agent closed loads as failed with `app_closed`.
 Every ending closes the session, and the log lines here name an exception type at most, never
 capture, prompt or reply text.
 """
@@ -21,15 +24,22 @@ import logging
 import uuid
 from collections.abc import Callable, Mapping
 from contextvars import ContextVar
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
 from anyio.to_thread import run_sync
 
-from viki_agent.automation.routines import stamp
-from viki_agent.vaults.capture_reply import Suggestion, build_prompt, parse_reply
+from viki_agent.automation.routines import parse_stamp, stamp
+from viki_agent.vaults.capture_reply import (
+    DESTINATIONS,
+    MAX_WHY_CHARS,
+    Suggestion,
+    build_prompt,
+    parse_reply,
+)
 from viki_agent.vaults.captures import CaptureError, CaptureListing
+from viki_agent.vaults.suggestion_memory import SuggestionMemory
 
 log = logging.getLogger(__name__)
 
@@ -182,29 +192,40 @@ class CaptureSuggester:
         captures: _Captures,
         *,
         tasks: set[asyncio.Task[None]],
+        memory: SuggestionMemory | None = None,
         deadline_s: float = DEADLINE_S,
         wall: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._host = host
         self._captures = captures
         self._tasks = tasks
+        self._memory = memory
         self._deadline_s = deadline_s
         self._wall = wall
         self._lock = asyncio.Lock()
-        self._run: SuggestionRun | None = None
+        self._runs: dict[str, SuggestionRun] = {}  # each vault's latest run
         self._suggestions: dict[str, dict[str, Suggestion]] = {}
+        loaded = None if memory is None else memory.load("suggestions")
+        for workspace_id, value in (loaded or {}).items():
+            kept = _decode(workspace_id, value, stamp(wall()))
+            if kept is not None:
+                run, suggestions = kept
+                if run is not None:
+                    self._runs[workspace_id] = run
+                if suggestions:
+                    self._suggestions[workspace_id] = suggestions
 
     def run_for(self, workspace_id: str) -> SuggestionRun | None:
-        run = self._run
-        return run if run is not None and run.workspace_id == workspace_id else None
+        return self._runs.get(workspace_id)
 
     def suggestions(self, workspace_id: str) -> Mapping[str, Suggestion]:
         return self._suggestions.get(workspace_id, {})
 
     async def start(self, workspace_id: str) -> SuggestionRun:
         async with self._lock:
-            if self._run is not None and self._run.state == "running":
-                raise CaptureError("suggestion_running", run_id=self._run.run_id)
+            running = next((run for run in self._runs.values() if run.state == "running"), None)
+            if running is not None:
+                raise CaptureError("suggestion_running", run_id=running.run_id)
             listing = await run_sync(self._captures.list, workspace_id)
             if not listing.captures:
                 raise CaptureError("no_captures")
@@ -218,6 +239,16 @@ class CaptureSuggester:
                     session_id, model=self._host.native_model(), mode=MODE, effort=EFFORT
                 )
             )
+            run = SuggestionRun(
+                run_id=str(uuid.uuid4()),
+                workspace_id=workspace_id,
+                session_id=session_id,
+                state="running",
+                started_at=stamp(self._wall()),
+            )
+            # Saved before the session exists: a cancel while saving leaves no session behind,
+            # and a run saved as running that never ends loads as failed after a restart.
+            await self._save(workspace_id, run)
             # Capture text is untrusted and nobody answers this turn's cards: the session starts
             # with only Read, Glob and Grep and no MCP server (hard rule 4's
             # third exception). Created here, under the lock, before the id is handed out in the 202
@@ -225,13 +256,7 @@ class CaptureSuggester:
             # would otherwise make its own normal-tools actor, later orphaned when this run's own
             # create replaced it.
             session = self._host.create(session_id, read_only_tools=True)
-            run = self._run = SuggestionRun(
-                run_id=str(uuid.uuid4()),
-                workspace_id=workspace_id,
-                session_id=session_id,
-                state="running",
-                started_at=stamp(self._wall()),
-            )
+            self._runs[workspace_id] = run
             task = asyncio.create_task(self._drive(run, session, listing))
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
@@ -258,6 +283,7 @@ class CaptureSuggester:
                 await self._host.close(session_id)
             except Exception as exc:
                 log.warning("capture suggestion session close failed: %s", type(exc).__name__)
+            await self._save(run.workspace_id)
 
     async def _outcome(
         self,
@@ -295,10 +321,26 @@ class CaptureSuggester:
         self._suggestions[run.workspace_id] = {item.ref: item for item in suggestions}
         return None, len(suggestions), rejected
 
+    async def _save(self, workspace_id: str, starting: SuggestionRun | None = None) -> None:
+        """Save the vault's run (`starting`, else its latest as the save writes) and its current
+        suggestions, when there is a memory."""
+        if self._memory is None:
+            return
+
+        def value() -> object:
+            run = starting or self._runs.get(workspace_id)
+            kept = self._suggestions.get(workspace_id, {})
+            return {
+                "run": None if run is None else asdict(run),
+                "suggestions": [asdict(item) for item in kept.values()],
+            }
+
+        await self._memory.save(workspace_id, "suggestions", value)
+
     def _end(
         self, run: SuggestionRun, reason: str | None, suggested: int = 0, rejected: int = 0
     ) -> None:
-        self._run = replace(
+        self._runs[run.workspace_id] = replace(
             run,
             state="done" if reason is None else "failed",
             finished_at=stamp(self._wall()),
@@ -306,3 +348,66 @@ class CaptureSuggester:
             suggested=suggested,
             rejected=rejected,
         )
+
+
+def _decode(
+    workspace_id: str, value: object, now: str
+) -> tuple[SuggestionRun | None, dict[str, Suggestion]] | None:
+    """A saved vault's run and suggestions, or None when the value is not the shape `_save`
+    writes. A run saved as running ended when VIKI Agent closed: it reads as failed."""
+    if not isinstance(value, dict) or set(value) != {"run", "suggestions"}:
+        return None
+    raw_run, raw_items = value["run"], value["suggestions"]
+    run = None if raw_run is None else _run(raw_run, workspace_id)
+    if (raw_run is not None and run is None) or not isinstance(raw_items, list):
+        return None
+    if run is not None and run.state == "running":
+        run = replace(run, state="failed", finished_at=now, reason="app_closed")
+    suggestions: dict[str, Suggestion] = {}
+    for raw in raw_items:
+        item = _suggestion(raw)
+        if item is None:
+            return None
+        suggestions[item.ref] = item
+    return run, suggestions
+
+
+def _run(raw: object, workspace_id: str) -> SuggestionRun | None:
+    names = {field.name for field in fields(SuggestionRun)}
+    if not isinstance(raw, dict) or set(raw) != names:
+        return None
+    try:
+        run = SuggestionRun(**raw)
+        for value in (run.run_id, run.session_id):
+            if not isinstance(value, str) or str(uuid.UUID(value)) != value:
+                return None
+        parse_stamp(run.started_at)
+        if run.finished_at is not None:
+            parse_stamp(run.finished_at)
+    except TypeError, ValueError:
+        return None
+    if (
+        run.workspace_id != workspace_id
+        or run.state not in ("running", "done", "failed")
+        or (run.reason is not None and run.reason not in _RUN_REASONS)
+        or not all(isinstance(n, int) and n >= 0 for n in (run.suggested, run.rejected))
+    ):
+        return None
+    return run
+
+
+def _suggestion(raw: object) -> Suggestion | None:
+    names = {field.name for field in fields(Suggestion)}
+    if not isinstance(raw, dict) or set(raw) != names:
+        return None
+    item = Suggestion(**raw)
+    optional = (item.revision, item.project, item.why)
+    if (
+        not all(isinstance(text, str) for text in (item.ref, item.modified, item.to, item.at))
+        or not all(text is None or isinstance(text, str) for text in optional)
+        or item.to not in DESTINATIONS
+        or (item.project is None) == (item.to == "task")
+        or (item.why is not None and len(item.why) > MAX_WHY_CHARS)
+    ):
+        return None
+    return item

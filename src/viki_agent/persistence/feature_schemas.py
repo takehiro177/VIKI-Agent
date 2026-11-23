@@ -398,3 +398,19 @@ PROFILE_SCHEMAS_V40 = {
         + ",",
     ),
 }
+
+INBOX_SUGGESTION_SCHEMA_STEP = 42
+
+# Step 42: what the inbox suggestion run keeps for each vault, so it outlives a restart. One sealed
+# JSON body per vault and part: "suggestions" (the suggester's latest run and its suggestions)
+# and "started" (the item keys Decision's inbox host started).
+INBOX_SUGGESTION_SCHEMAS = {
+    "inbox_suggestions": """CREATE TABLE inbox_suggestions (
+    workspace_id TEXT NOT NULL CHECK(length(workspace_id) = 36),
+    part TEXT NOT NULL CHECK(part IN ('suggestions','started')),
+    body BLOB NOT NULL CHECK(length(body) BETWEEN 2 AND 1048576),
+    updated_at TEXT NOT NULL CHECK(length(updated_at) = 24),
+    PRIMARY KEY (workspace_id, part),
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(workspace_id)
+) STRICT""",
+}

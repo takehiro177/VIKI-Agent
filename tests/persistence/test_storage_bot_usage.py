@@ -14,7 +14,8 @@ from tests.persistence.test_storage import _STAMP, _workspace
 from viki_agent import storage
 from viki_agent.state import AppState, Prefs
 
-_TABLES = ("bot_usage_calls", "bot_usage_sessions")
+# Inbox suggestions (step 42) are newer than v40 too.
+_TABLES = ("bot_usage_calls", "bot_usage_sessions", *storage.INBOX_SUGGESTION_SCHEMAS)
 _INDEX = "bot_usage_calls_at"
 _MAX_TOKENS = 9007199254740991
 
@@ -80,7 +81,7 @@ def test_fresh_and_upgraded_schemas_match(tmp_path: Path) -> None:
     upgraded = AppState(tmp_path / "state.json", Prefs()).store
     fresh = AppState(tmp_path / "fresh" / "state.json", Prefs()).store
     with upgraded._connection() as connection, fresh._connection() as created:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _schema(connection) == _schema(created)
         assert _rows(connection) == before
         usage = storage.BOT_USAGE_SCHEMAS
@@ -98,8 +99,7 @@ def test_upgrade_writes_a_v40_backup_that_opens_with_identical_rows(tmp_path: Pa
     with contextlib.closing(sqlite3.connect(path)) as connection:
         before, old_schema = _rows(connection), _schema(connection)
     store = AppState(tmp_path / "state.json", Prefs()).store
-    (backup,) = tmp_path.glob("*-backup-*")
-    assert backup.name.startswith("app.sqlite3.v40-backup-")
+    (backup,) = tmp_path.glob("app.sqlite3.v40-backup-*")
     with contextlib.closing(sqlite3.connect(f"{backup.as_uri()}?mode=ro", uri=True)) as saved:
         store._validate(saved, (40,))
         assert _schema(saved) == old_schema
@@ -142,7 +142,7 @@ def test_v40_build_refuses_v41_like_any_newer_version_and_opens_the_backup(
     # upgrades it to 41 with its rows kept, and writes a second v40 backup alongside the first.
     second_build = AppState(tmp_path / "state.json", Prefs()).store
     with second_build._connection() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (41,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
         assert _rows(connection) == before
     all_backups = set(tmp_path.glob("app.sqlite3.v40-backup-*.sqlite3"))
     assert len(all_backups) == 2
