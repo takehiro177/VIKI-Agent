@@ -119,7 +119,7 @@ test.each(["idle", "waiting", "offline", "error"] as const)(
 );
 
 test.each(["idle", "offline", "error"] as const)(
-  "a turn from %s opens with the film's start; an approval pause resumes where it stopped",
+  "a turn from %s opens with the cycle's start; an approval pause resumes where it stopped",
   (rest) => {
     const { rerender } = render(<ActivityOrb state={rest} />);
     rerender(<ActivityOrb state="active" />);

@@ -15,8 +15,8 @@ export function ActivityOrb({ state }: { state: ActivityState }) {
   const paused = state !== "active" || !presentation.motion;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a theme change moves `--or`, which draw() reads from the stylesheet, so the still frame must repaint.
   useEffect(() => {
-    // A turn that starts from rest opens with the genesis; a pause for an approval or a question
-    // resumes where the film stopped.
+    // A turn that starts from rest opens with the first unfold; a pause for an approval or a
+    // question resumes where the cycle stopped.
     if (state !== previous.current) {
       if (state === "active" && previous.current !== "waiting") time.current = 0;
       previous.current = state;
