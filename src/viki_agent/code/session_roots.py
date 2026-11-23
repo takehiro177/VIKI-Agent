@@ -211,6 +211,13 @@ class SessionRoots:
             return None
         return Path(row["display_root"]) if row is not None else None
 
+    def roots_for(self, session_ids: list[str]) -> dict[str, Path]:
+        """Those of `session_ids` with a recorded root, to its cwd, read in chunked bulk
+        statements rather than one read per id. Raises StateError on an unreadable store, as
+        `transcript_roots` does."""
+        rows = self._store.session_root_paths(session_ids)
+        return {session_id: Path(root) for session_id, root in rows.items()}
+
     def transcript_roots(self) -> dict[str, Path]:
         """Every recorded session's id to its cwd, for the catalog's listing and search.
         Raises StateError on an unreadable store: the catalog is what decides what that means

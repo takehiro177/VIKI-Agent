@@ -271,6 +271,8 @@ class RootLookup(Protocol):
 
     def root_of(self, session_id: str) -> Path | None: ...
 
+    def roots_for(self, session_ids: list[str]) -> Mapping[str, Path]: ...
+
     def transcript_roots(self) -> Mapping[str, Path]: ...
 
 
@@ -822,11 +824,12 @@ class Catalog:
         """Each canonical-UUID id's transcript path, the file there or not: in its recorded
         root's project, from one snapshot of the recorded roots, else in the vault's. A snapshot
         of fewer than MAX_ROOT_ROWS roots is complete. One that long may have stopped short, so
-        an id it lacks whose vault file is absent is looked up alone (_path_for), as every id is
-        when the snapshot fails. An id that is not a canonical UUID gets no path, as exists()
-        refuses it."""
+        the ids it lacks whose vault file is absent are looked up together in one bulk lookup
+        (_bulk_roots), as every id is when the snapshot fails. An id that is not a canonical
+        UUID gets no path, as exists() refuses it."""
         roots = self._recorded_roots()
         paths: dict[str, Path] = {}
+        unlisted: list[str] = []
         for session_id in session_ids:
             if not _UUID_RE.match(session_id):
                 continue
@@ -835,9 +838,23 @@ class Catalog:
                 continue
             path = self._transcript(session_id, None)
             if roots is None or (len(roots) >= MAX_ROOT_ROWS and not path.is_file()):
-                path = self._path_for(session_id)
+                unlisted.append(session_id)
             paths[session_id] = path
+        for session_id, root in self._bulk_roots(unlisted).items():
+            paths[session_id] = self._transcript(session_id, root)
         return paths
+
+    def _bulk_roots(self, session_ids: list[str]) -> Mapping[str, Path]:
+        """The recorded roots of `session_ids`, from one RootLookup.roots_for call; none when
+        there are no ids or the lookup fails, so those sessions read from the vault, as
+        root_of's failure leaves them."""
+        if not session_ids or self._roots is None:
+            return {}
+        try:
+            return self._roots.roots_for(session_ids)
+        except Exception as exc:
+            log.warning("session roots unreadable: %s", type(exc).__name__)
+            return {}
 
     def _cached_chain(
         self, session_id: str, stat: os.stat_result
