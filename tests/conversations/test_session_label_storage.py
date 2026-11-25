@@ -64,11 +64,11 @@ def _row(session_id: str = SID, **changes: Any) -> dict[str, Any]:
 
 
 def test_fresh_store_has_exact_version_twenty_one_session_labels(tmp_path: Path) -> None:
-    assert storage.SCHEMA_VERSION == 42
+    assert storage.SCHEMA_VERSION == 43
     assert storage._SESSION_METADATA_SCHEMA_V20 == LEGACY_SCHEMA
     state = AppState(tmp_path / "state.json", Prefs())
     with state.store._connection() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (43,)
         assert connection.execute(
             "SELECT sql FROM sqlite_schema WHERE name='session_metadata'"
         ).fetchone() == (storage._SESSION_METADATA_SCHEMA,)
@@ -118,6 +118,8 @@ def test_schema_twenty_labels_migrate_at_cap_with_valid_source_backup(tmp_path: 
                 "'bot_code_baselines','bot_code_bound_session','bot_code_bound_thread_folder',"
                 "'bot_usage_sessions','bot_usage_calls','bot_usage_calls_at',"
                 "'inbox_suggestions',"
+                "'bot_episodes','bot_episodes_bot','bot_session_taint','bot_runs',"
+                "'bot_proposals','bot_lesson_stats',"
                 "'session_bot_memory',"
                 "'bot_threads','bot_thread_sessions',"
                 f"'messaging_config',{reshaped}) "

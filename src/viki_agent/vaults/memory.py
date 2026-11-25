@@ -276,10 +276,14 @@ class MemoryService:
         claim: str,
         policy_revision: int,
         root_physical_id: str,
+        *,
+        sources: Sequence[Source] | None = None,
     ) -> Corrected:
         """Save an approved replacement naming the old record, then retire the old one: the order
         whose interruption loses nothing. A refusal of the second save carries the new
-        record's id as `replacement_id`; `list` then offers to finish."""
+        record's id as `replacement_id`; `list` then offers to finish. The replacement keeps the
+        old record's kind (an inference becomes `assistant`), scope and creator, and its sources
+        unless `sources` names new ones."""
         policy, record = await run_sync(lambda: self._load(workspace_id, memory_id, sha256))
         _require_writable(policy)
         old = record.fields
@@ -293,7 +297,8 @@ class MemoryService:
             "approved",
             now,
             reviewed=now,
-            sources=old.sources,
+            creator=old.creator,
+            sources=old.sources if sources is None else tuple(sources),
             supersedes=old.id,
         )
         retired = dataclasses.replace(
@@ -316,6 +321,53 @@ class MemoryService:
         except MemoryServiceError as exc:
             raise MemoryServiceError(exc.code, **exc.extra, replacement_id=new.memory_id) from None
         return Corrected(new, gone)
+
+    async def write_approved(
+        self,
+        workspace_id: str,
+        policy_revision: int,
+        root_physical_id: str,
+        *,
+        memory_id: str,
+        kind: str,
+        claim: str,
+        sources: Sequence[Source],
+        creator: str | None,
+    ) -> Written:
+        """A new record written `approved` in one journalled save, and its hash recorded: the
+        owner approved this exact text already, in a Bot learning proposal (ADR-088). Only an
+        ordinary vault takes it. A retry with the same `memory_id` meets the record its own first
+        try wrote and answers it, as `promote` does."""
+        if memory_id != str(uuid.UUID(memory_id)):
+            raise MemoryServiceError("invalid_request")
+        policy = await run_sync(lambda: self._policy(workspace_id))
+        _require_writable(policy)
+        if policy != "ordinary":
+            raise MemoryServiceError("read_only")
+        now = self._stamp()
+        fields = Fields(
+            memory_id,
+            kind,
+            "vault",
+            "approved",
+            now,
+            reviewed=now,
+            creator=creator,
+            sources=tuple(sources),
+        )
+        try:
+            return await self._save(
+                workspace_id, policy_revision, root_physical_id, fields, claim, None, True
+            )
+        except MemoryServiceError as exc:
+            if exc.code != "conflict":
+                raise
+            replay = await run_sync(lambda: self._written_replay(workspace_id, memory_id))
+            if replay is None:
+                raise
+            # Only this command's first try writes a fresh id: approve what it saved.
+            await run_sync(lambda: self._review(workspace_id, memory_id, replay.sha256))
+            return replay
 
     async def narrow_scope(
         self,

@@ -52,14 +52,14 @@ def _workspace_ddl(connection: sqlite3.Connection) -> list[tuple[Any, ...]]:
 
 
 def test_fresh_store_keeps_the_widened_kind_check(tmp_path: Path) -> None:
-    assert storage.SCHEMA_VERSION == 42
+    assert storage.SCHEMA_VERSION == 43
     # Only the kind CHECK widens: every other column, CHECK and the index keep their text.
     narrow, wide = "CHECK(kind = 'vault')", "CHECK(kind IN ('vault','code'))"
     assert storage._WORKSPACE_SCHEMA.count(narrow) == 1
     assert storage._WORKSPACE_SCHEMA.replace(narrow, wide) == storage._WORKSPACE_SCHEMA_V14
     database = AppState(tmp_path / "state.json", Prefs()).database_path
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (43,)
         assert _workspace_ddl(connection) == [
             ("index", "workspaces_active", storage._WORKSPACE_ACTIVE_INDEX),
             ("table", "workspaces", storage._WORKSPACE_SCHEMA_V14),
@@ -101,7 +101,7 @@ def test_v13_store_upgrades_to_v14_with_rows_intact(tmp_path: Path) -> None:
         ]
         assert _rows(saved) == rows
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (43,)
         assert _workspace_ddl(connection) == [
             ("index", "workspaces_active", storage._WORKSPACE_ACTIVE_INDEX),
             ("table", "workspaces", storage._WORKSPACE_SCHEMA_V14),

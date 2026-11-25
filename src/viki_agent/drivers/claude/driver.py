@@ -549,7 +549,10 @@ class ClaudeDriver:
             append_system_prompt=launch.append_system_prompt,
         )
         self._control = ClaudeControl(
-            self._transport, self._can_use_tool, control_timeout_s=config.control_timeout_s
+            self._transport,
+            self._can_use_tool,
+            control_timeout_s=config.control_timeout_s,
+            hooks=launch.hooks,
         )
         self._mcp_lock = asyncio.Lock()  # one MCP switch or reconnect at a time
         self._pump_task: asyncio.Task[None] | None = None

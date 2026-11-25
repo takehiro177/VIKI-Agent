@@ -18,6 +18,12 @@ from tests.test_driver_limits import make_driver
 from viki_agent.drivers.claude.control import ClaudeControl, Launch, build_argv
 from viki_agent.drivers.claude.driver import ClaudeDriver, DriverConfig
 from viki_agent.drivers.claude.transport import ClaudeTransport
+from viki_agent.messaging.bot_fence import (
+    TAINT_MATCHER,
+    WRITE_MATCHER,
+    FenceRoots,
+    WriteFence,
+)
 from viki_agent.turn_input import Attachment, TurnInput
 
 from replay import SID, FakeSpawner, init_frame, out, result_frame, user_in
@@ -117,6 +123,44 @@ async def test_a_bot_driver_sends_its_system_prompt_in_initialize_and_no_flag() 
         }
         argv = spawner.children[0].argv
         assert not [arg for arg in argv if "system-prompt" in arg or "Be brief" in arg]
+    finally:
+        await driver.close()
+
+
+async def test_a_bot_driver_names_its_write_fence_hooks_in_initialize() -> None:
+    # ADR-089: the fence's two PreToolUse hooks ride the SDK's own initialize request as
+    # callback ids; nothing reaches argv, and the transport's own amendments stay as they were.
+    settings = Path.cwd() / "bot-memory-settings" / f"{'a' * 64}.json"
+    fence = WriteFence(
+        FenceRoots(Path.cwd(), Path.cwd(), Path.cwd() / "data" / "bot-memory"),
+        tainted=lambda: False,
+        mark=lambda _source: None,
+    )
+    spawner = FakeSpawner([])
+    driver = ClaudeDriver(
+        Launch(SID, bot_memory_settings=str(settings), hooks=fence.hooks()),
+        mode="auto",
+        effort="low",
+        model=None,
+        config=DriverConfig(
+            cli=("claude.exe",),
+            vault=Path.cwd(),
+            env={},
+            spawner=spawner,
+            grace_s=0.01,
+            poll_s=0.01,
+            control_timeout_s=0.05,
+        ),
+        emit=lambda event: None,
+    )
+    try:
+        await driver.open()
+        request = spawner.children[0].process.replayer.seen[0]["request"]
+        assert request["perTaskStopAffordance"] is True
+        matchers = request["hooks"]["PreToolUse"]
+        assert [m["matcher"] for m in matchers] == [TAINT_MATCHER, WRITE_MATCHER]
+        assert all(len(m["hookCallbackIds"]) == 1 for m in matchers)
+        assert set(request) == {"subtype", "hooks", "perTaskStopAffordance"}
     finally:
         await driver.close()
 

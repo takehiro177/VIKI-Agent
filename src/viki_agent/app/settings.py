@@ -394,6 +394,9 @@ KEYS: Mapping[str, SettingSpec] = {
     "bots.hues": _spec("bots.hues", "string", None, "{}", "now", True, max_len=4096),
     # Profile id -> Bot emblem; personal, machine-local ids.
     "bots.icons": _spec("bots.icons", "string", None, "{}", "now", True, max_len=4096),
+    # Bot learning runs VIKI starts on its own (bot_reflect.AutoLearning): off until turned on.
+    "bots.auto_reflect": _spec("bots.auto_reflect", "bool", None, False, "now", False),
+    "bots.auto_dream": _spec("bots.auto_dream", "bool", None, False, "now", False),
 }
 
 # Keys an earlier version stored and this one no longer has: `locale.language` chose the UI

@@ -12,8 +12,7 @@ const folder = `bot-memory/${BOT}`;
 
 afterEach(cleanup);
 
-const EMPTY =
-  "No memory saved yet. The folder appears when Mori first saves a memory, if Claude Code's auto memory is on.";
+const EMPTY = "Mori has no auto memory notes.";
 
 function listing() {
   return {

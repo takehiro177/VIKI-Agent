@@ -89,6 +89,8 @@ def _every_row(connection: sqlite3.Connection) -> dict[str, list[Any]]:
         rows.setdefault(name, [])
     for name in storage.INBOX_SUGGESTION_SCHEMAS:
         rows.setdefault(name, [])
+    for name in storage.BOT_LEARNING_SCHEMAS:
+        rows.setdefault(name, [])
     for name in storage.BOT_USAGE_SCHEMAS:
         rows.setdefault(name, [])
     return rows
@@ -116,12 +118,12 @@ def _v24_store(tmp_path: Path) -> Path:
 
 
 def test_fresh_store_has_the_proposal_table(tmp_path: Path) -> None:
-    assert storage.SCHEMA_VERSION == 42
+    assert storage.SCHEMA_VERSION == 43
     assert storage.DECISION_PROPOSALS_SCHEMA_STEP == 25
     assert storage.DECISION_LOOP_SCHEMA_STEP == 24
     database = AppState(tmp_path / "state.json", Prefs()).database_path
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (43,)
         assert _tables(connection, "decision_proposals") == storage.DECISION_PROPOSAL_SCHEMAS
         assert _indexes(connection, "decision_proposals") == [
             ("pk", ["proposal_id"]),
@@ -142,7 +144,7 @@ def test_v24_store_upgrades_with_backup(tmp_path: Path) -> None:
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v24-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (43,)
         assert _tables(connection, "decision_proposals") == storage.DECISION_PROPOSAL_SCHEMAS
         assert _every_row(connection) == {**before, "decision_proposals": []}
     (backup,) = tmp_path.glob("app.sqlite3.v24-backup-*.sqlite3")
@@ -223,7 +225,7 @@ def test_a_failed_step_25_keeps_v24(
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v24-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (43,)
         assert connection.execute("SELECT count(*) FROM drafts").fetchone() == (1,)
 
 

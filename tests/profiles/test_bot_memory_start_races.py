@@ -97,6 +97,7 @@ class Startup:
             assert launch.bot_memory_settings is not None
             assert json.loads(Path(launch.bot_memory_settings).read_text(encoding="ascii")) == {
                 "autoMemoryDirectory": str(self.vault / "bot-memory" / self.owner),
+                "autoMemoryEnabled": False,
                 "claudeMdExcludes": instruction_excludes(self.vault),
             }
             driver = Driver(launch, emit)

@@ -198,10 +198,8 @@ it.each([
   expect(screen.getByRole("status")).toBeTruthy();
 });
 
-const EMPTY =
-  "No memory saved yet. The folder appears when Research Bot first saves a memory, if Claude Code's auto memory is on.";
-const OWN =
-  "Each Bot has its own memory folder. VIKI Agent asks Claude Code to keep Research Bot's memory here in new chats and routine runs.";
+const EMPTY = "Research Bot has no auto memory notes.";
+const OWN = "Notes Claude Code saved for Research Bot with auto memory. Bot chats don't read them.";
 const SOURCE = `Source bot-memory/${bot.bot_id}/`;
 const props = { workspaceId, bot, disabled: false, onOpenNote: vi.fn(), onOpenUrl: vi.fn() };
 

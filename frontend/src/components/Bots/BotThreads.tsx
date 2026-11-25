@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { BotLearningApi } from "../../clients/messaging/botLearningApi";
 import type { BotRow, BotsApi, BotThreads as Threads } from "../../clients/messaging/botsApi";
 import {
   botMemoryFolder,
@@ -9,6 +10,7 @@ import { t, tf } from "../../i18n/t";
 import type { VaultApi } from "../../state/vaultApi";
 import { Loading } from "../Loading/Loading";
 import { problemText } from "../Profiles/profileCopy";
+import { BotLearningCard, type LearningAuto } from "./BotLearningCard";
 import { BotMemoryCard } from "./BotMemoryCard";
 
 export function BotThreads({
@@ -27,6 +29,8 @@ export function BotThreads({
   onOpenInEditor,
   runMemoryAction,
   memoryPending = false,
+  learningApi,
+  learningAuto,
 }: {
   api: BotsApi;
   launch: ProfileLaunchApi;
@@ -53,6 +57,9 @@ export function BotThreads({
   runMemoryAction?(action: () => Promise<void>): Promise<void>;
   /** A memory request of this page is still running, possibly from a card since unmounted. */
   memoryPending?: boolean;
+  /** Reflect and dream runs and the proposals they leave; only an ordinary vault learns. */
+  learningApi?: BotLearningApi;
+  learningAuto?: LearningAuto;
 }) {
   const [listing, setListing] = useState<Threads | null>(null);
   const [readError, setReadError] = useState(false);
@@ -317,6 +324,14 @@ export function BotThreads({
             }
           : {})}
       />
+      {learningApi && bot.workspace?.policy === "ordinary" ? (
+        <BotLearningCard
+          api={learningApi}
+          bot={bot}
+          disabled={disabled || !bot.profile || bot.profile.archived}
+          {...(learningAuto ? { auto: learningAuto } : {})}
+        />
+      ) : null}
       <div className="bots-actions">
         <h3>{t("bots.threads")}</h3>
         <button

@@ -34,7 +34,7 @@ def test_v36_upgrade_keeps_existing_rows_and_verifies_its_backup(tmp_path: Path)
         before = _every_row(connection)
     state = AppState(tmp_path / "state.json", Prefs())
     with state.store._connection() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (43,)
         assert _every_row(connection) == before
         assert connection.execute(
             "SELECT sql FROM sqlite_schema WHERE name='session_bot_memory'"

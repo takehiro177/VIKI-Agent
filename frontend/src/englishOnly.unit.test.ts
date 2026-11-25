@@ -203,9 +203,9 @@ describe("Bot memory copy", () => {
     expect(botsCatalog.en["bots.memory.how"]).toBe("How Bot memory works");
   });
 
-  it("states conditional native recall, main-chat drafting, and exact review or forget targets", () => {
+  it("states that native recall is off, main-chat drafting, and exact review or forget targets", () => {
     const catalog = botsCatalog.en;
-    expect(catalog["bots.memory.help"]).toContain("autoMemoryEnabled");
+    expect(catalog["bots.memory.help"]).toContain("autoMemoryEnabled off");
     expect(catalog["bots.memory.help"]).toContain("autoMemoryDirectory");
     expect(catalog["bots.memory.askChangeHint"]).toMatch(/unsent/);
     expect(catalog["bots.memory.reviewRequest"]).toContain("{ref}/");
@@ -225,12 +225,13 @@ describe("Bot memory copy", () => {
       "Open this Bot's vault to view its memory.",
     );
     expect(botsCatalog.en["bots.memory.noBinding"]).toContain("started before Bot memory");
-    expect(botsCatalog.en["bots.memory.help"]).toContain("when autoMemoryEnabled is enabled");
-    expect(botsCatalog.en["bots.memory.help"]).toContain("takes precedence");
     expect(botsCatalog.en["bots.memory.help"]).toContain(
-      "Conversations started before Bot memory keep Claude Code's own memory settings.",
+      "Bots don't keep Claude Code's auto memory",
     );
-    expect(botsCatalog.en["bots.memory.help"]).not.toContain("memory is disabled");
+    expect(botsCatalog.en["bots.memory.help"]).toContain(
+      "memory records you approved, under Learning",
+    );
+    expect(botsCatalog.en["bots.memory.help"]).toContain("Import them on the Learning card");
     expect(botsCatalog.en["bots.memory.askChange"]).toBe("Ask {name} to change…");
     expect(botsCatalog.en["bots.memory.askChangeHint"]).toBe(
       "This opens an unsent draft in the Bot’s main chat.",

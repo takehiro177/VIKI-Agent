@@ -133,6 +133,7 @@ class ProfileLaunchService:
         self.connections, self.route_can_start = connections, route_can_start
         self.mcp_directory: Path | None = None
         self.bot_settings_directory: Path | None = None
+        self._recall: Callable[[str, str, str], str] | None = None
 
     def bind_mcp_directory(self, directory: Path) -> None:
         """Name the folder that holds generated `--mcp-config` files (`<data>/mcp`)."""
@@ -824,12 +825,24 @@ class ProfileLaunchService:
         binding, document, _prefs = self._binding(session_id)
         if binding["bot_id"] is None:
             return None
-        return bot_memory_rule.bot_system_prompt(
+        text = bot_memory_rule.bot_system_prompt(
             document["instructions"],
             kanban=bot_memory_rule.kanban_skill_present(
                 Path(self._bot_workspace(binding).root.display)
             ),
         )
+        # The approved memory this Bot recalls (ADR-087), as data after the rules; none until
+        # the server binds recall, and none when the vault's records can't be read now.
+        if self._recall is not None:
+            recalled = self._recall(binding["workspace_id"], binding["bot_id"], session_id)
+            if recalled:
+                text = f"{text}\n\n{recalled}"
+        return text
+
+    def bind_recall(self, recall: Callable[[str, str, str], str]) -> None:
+        """Install the recall `bot_system_prompt` appends: (workspace id, Bot id, session id)
+        to its tagged blocks, or ""."""
+        self._recall = recall
 
     def _bot_workspace(self, binding: dict[str, Any]) -> Workspace:
         workspace = self._workspace(binding["workspace_id"])

@@ -112,11 +112,11 @@ def test_upgrade_from_28_rebuilds_routine_occurrences_behind_one_backup(tmp_path
     state = AppState(tmp_path / "state.json", Prefs())
     assert state.prefs(SID) == Prefs(mode="plan", effort="high", model="preserved-v28-model")
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (43,)
         assert _occurrence_ddl(connection) == storage.ROUTINE_SCHEMAS["routine_occurrences"]
         assert _every_row(connection) == before
     (backup,) = tmp_path.glob("app.sqlite3.v28-backup-*.sqlite3")
-    assert len(list(tmp_path.glob("*backup*"))) == 14  # Backups at v28 through v41.
+    assert len(list(tmp_path.glob("*backup*"))) == 15  # Backups at v28 through v42.
     with contextlib.closing(sqlite3.connect(f"{backup.as_uri()}?mode=ro", uri=True)) as saved:
         state.store._validate(saved, (28,))  # the store's own check, at the version it names
         assert saved.execute("PRAGMA quick_check").fetchall() == [("ok",)]

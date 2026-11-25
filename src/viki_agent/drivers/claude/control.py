@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from claude_agent_sdk import CanUseTool, ClaudeAgentOptions, ClaudeSDKClient
+from claude_agent_sdk import CanUseTool, ClaudeAgentOptions, ClaudeSDKClient, HookMatcher
+from claude_agent_sdk.types import HookEvent
 
 from viki_agent.drivers.claude.transport import ClaudeTransport
 from viki_agent.turn_input import (
@@ -65,6 +66,9 @@ class Launch:
     `append_system_prompt` is that Bot session's instructions, memory rule and Bot rules, resolved
     again before each spawn. It is no flag: the transport sends it in initialize (ADR-084), and it
     needs Bot memory settings. Kept out of repr: it is the user's own text.
+    `hooks` are that Bot session's write-fence hooks (`messaging/bot_fence.py`, ADR-089): no
+    flag either; the SDK names them in initialize and calls them over the control channel. They
+    need Bot memory settings. Kept out of repr and comparison.
     `agent_cli` asks for a VIKI Agent CLI key in this process's environment, which
     `SessionManager._claude_driver` issues; `build_argv` does not read it.
     Bot bindings, grants and filesystem admission are the caller's responsibility.
@@ -80,6 +84,9 @@ class Launch:
     bot_memory_settings: str | None = None
     code_worktree: str | None = None
     append_system_prompt: str | None = field(default=None, repr=False)
+    hooks: dict[HookEvent, list[HookMatcher]] | None = field(
+        default=None, repr=False, compare=False
+    )
     agent_cli: bool = False
 
 
@@ -180,6 +187,8 @@ def build_argv(
         argv.append(f"--settings={path}")
     if launch.append_system_prompt is not None and launch.bot_memory_settings is None:
         raise ValueError("a system prompt is only for a Bot session")
+    if launch.hooks is not None and launch.bot_memory_settings is None:
+        raise ValueError("app hooks are only for a Bot session")
     if launch.mcp_config is not None:
         # A relative path would resolve against the child's cwd (the vault), not the app's file.
         if not Path(launch.mcp_config).is_absolute():
@@ -232,11 +241,13 @@ class ClaudeControl:
         can_use_tool: CanUseTool,
         *,
         control_timeout_s: float = CONTROL_TIMEOUT_S,
+        hooks: dict[HookEvent, list[HookMatcher]] | None = None,
     ) -> None:
         self._transport = transport
         self._timeout = control_timeout_s
+        # `hooks` only for a Bot session (its write fence): the SDK lists them in initialize.
         self._client = ClaudeSDKClient(
-            ClaudeAgentOptions(can_use_tool=can_use_tool), transport=transport
+            ClaudeAgentOptions(can_use_tool=can_use_tool, hooks=hooks), transport=transport
         )
 
     async def start(self) -> dict[str, Any]:

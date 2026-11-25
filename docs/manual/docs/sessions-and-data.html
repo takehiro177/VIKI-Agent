@@ -53,6 +53,20 @@ written is read again next time.</p>
 <li><strong class="label-term">Not a Reset category</strong><div class="label-body"><strong>Reset</strong> does not clear it; see <a href="#reset">Reset</a>.</div></li>
 <li><strong class="label-term">Not exported</strong><div class="label-body"><strong>Export settings</strong> and <strong>Export diagnostics</strong> omit it.</div></li>
 </ul>
+<h3 id="bot-learning">Bot learning</h3>
+<p>For each Bot, the database also keeps what <a href="bots.html#learning">Learning</a> needs, never message text:</p>
+<ul class="label-list">
+<li><strong class="label-term">Episodes</strong><div class="label-body">each finished Bot turn&#x27;s time, outcome, kind of chat and tool names, the newest
+2,000 per Bot.</div></li>
+<li><strong class="label-term">Web and MCP marks</strong><div class="label-body">which chats read web or MCP content, until you clear one.</div></li>
+<li><strong class="label-term">Runs and proposals</strong><div class="label-body">the latest 200 runs per Bot and their proposals, each proposal&#x27;s text
+sealed like drafts; a run with a proposal still waiting is kept. At most 100 proposals wait per
+Bot.</div></li>
+<li><strong class="label-term">Use counts</strong><div class="label-body">how often each memory record was recalled and judged helpful or harmful.</div></li>
+</ul>
+<p>The memory records themselves are notes in the vault&#x27;s <code>memory/</code> folder. Removing a Bot, or
+unregistering its vault, deletes these rows; <strong>Reset</strong> does not, and <strong>Export settings</strong> and
+<strong>Export diagnostics</strong> omit them.</p>
 <h3 id="magpie-data">Magpie data</h3>
 <p>The bundled Magpie process keeps its configuration, provider keys, usage records, history and
 caches under the app-data folder&#x27;s <code>magpie/</code> directory. The installed app also extracts its
