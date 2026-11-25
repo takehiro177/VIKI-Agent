@@ -2355,6 +2355,18 @@ describe("shared Bot threads", () => {
     expect(store.getSnapshot().threads[0]?.phase).toBe("paused");
   });
 
+  it("names each participant's purpose on one line so a handoff can pick the right Bot", async () => {
+    const f = setup();
+    const first = f.members[0]?.identity;
+    if (first) first.purpose = "Finds sources\n  and checks   dates";
+    const second = f.members[1]?.identity;
+    if (second) second.purpose = "x".repeat(300);
+    await f.store.send(f.threadId, "Plan the week");
+    const prompt = [...f.durable.commands.values()][0]?.text ?? "";
+    expect(prompt).toContain(`${f.members[0]?.key}: Bot 1 (Finds sources and checks dates)`);
+    expect(prompt).toContain(`${f.members[1]?.key}: Bot 2 (${"x".repeat(199)}…)`);
+  });
+
   it("correlates a starter prompt containing a native slash command", () => {
     const app = new AppStore();
     const turn: Turn = {

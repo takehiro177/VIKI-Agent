@@ -82,7 +82,7 @@ Listing connections and saving one make no inference request.
   profile may pin a saved connection for its main chat, task threads and Bot-thread turns. Its
   routine runs use the native default, and a plain Agents › Profiles chat on it is refused.
   The endpoint can receive the whole conversation, including prompts, attachments and earlier
-  replies, plus the Bot's profile instructions, memory rule and Bot rules, loaded Bot memory, the
+  replies, plus the Bot's profile instructions, memory rule and Bot rules, recalled memory records, the
   instruction files and skills Claude Code loads, tool results, and code or files a chat reads.
 - **Existing transcripts:** an existing transcript without a saved VIKI model choice requires an
   explicit choice before using a connection default.
@@ -532,6 +532,20 @@ This is the run **Ask VIKI to suggest** starts:
 - **When none starts:** VIKI starts none while **Never send** holds a tag, a folder over a capture
   or a folder in `10-projects/`.
 
+#### Bot learning runs
+
+On a Bot's Learning card, **Reflect on its own after finished work** and **Dream on its own once
+a day when it is quiet** are off by default. Turned on, VIKI starts a Bot's reflect or dream run
+without a click, only for Bots in the active workspace, after the Bot has been quiet for 15
+minutes, at most six reflect runs and one dream run a day per Bot.
+
+- **Session:** the same kind as a run you start: only Read, Glob and Grep, no MCP server, one
+  reply, ended after ten minutes, every permission request denied.
+- **What it sends to Claude:** excerpts of that Bot's earlier conversations, never one that read
+  web or MCP content, and that Bot's own memory records.
+- **Results:** proposals wait sealed in the app's own storage; nothing in your vault changes
+  until you apply one.
+
 ## Optional messaging bridges
 
 [Mattermost](mattermost.md) and [Slack or Discord](messaging.md) each serve one configured human
@@ -792,42 +806,58 @@ A Bot is built from an agent profile and has its own reopenable Claude Code conv
 
 ### Bot memory
 
-In every vault, new Bot chats and routine runs request a per-Bot directory for Claude Code auto
-memory: `bot-memory/<bot UUID>/` in an ordinary vault, otherwise
-`<data>/bot-memory/<workspace id>/<bot id>/` in VIKI Agent's data folder, outside the vault. Claude Code's `autoMemoryEnabled`
-setting controls whether native auto memory is enabled. Managed `autoMemoryDirectory` settings
-take precedence and can choose another folder. The Bot memory view shows the requested folder; it
-does not check Claude Code's effective memory settings or report whether native auto memory is
-enabled.
+Bots keep no Claude Code auto memory: every Bot chat, task thread, Bot-thread turn and routine run
+starts with `autoMemoryEnabled` off in its private settings file. The same file names a per-Bot
+folder in `autoMemoryDirectory` (`bot-memory/<bot UUID>/` in an ordinary vault, otherwise
+`<data>/bot-memory/<workspace id>/<bot id>/` in VIKI Agent's data folder, outside the vault), which
+holds only notes saved with auto memory, as Bots did in earlier versions of VIKI Agent. Claude Code's managed settings take precedence and could
+turn auto memory back on; the Bot memory view shows the requested folder and does not check
+Claude Code's effective settings.
 
-- **Location:** the vault's `bot-memory/<bot UUID>/` folder in an ordinary vault, or the Bot's
-  folder in VIKI Agent's data folder in a read-only or protected vault, unless Claude Code's managed
-  settings choose another. Memory kept in the data folder is not part of vault backups, and
-  diagnostics and settings exports carry no memory text.
+- **What a Bot recalls:** only memory records in the vault's `memory/` folder whose exact
+  content you approved on this computer: your own records, shared by every Bot in the vault, and
+  the records you applied from that Bot's Learning card, marked as its own. VIKI Agent adds them
+  after the memory rule and Bot rules in the system prompt it sends in the `initialize` request
+  at each start, as `<profile>`, `<facts>` and `<lessons>` blocks headed as data, not
+  instructions, each capped at 6,000 characters. A note that says `status: approved` is not
+  enough.
+- **Learning runs:** a reflect or dream run is a separate Claude Code session with only Read, Glob
+  and Grep and no MCP servers. Its permission requests are denied, it writes nothing, and it is
+  stopped after ten minutes. Its prompt carries excerpts of the Bot's earlier conversations,
+  marked as data, and the Bot's records; it never includes a conversation that read web or MCP
+  content. Each proposal must quote that text exactly and can change only that Bot's own records.
+  Automatic runs are off unless you turn them on.
+- **Approval:** a proposal's text is sealed in VIKI Agent's store like other private records.
+  **Apply** saves it as a note the way other note saves work, and stops if the record changed
+  meanwhile; nothing is written until you apply it, and **Undo** retires what
+  an applied addition wrote. Episodes record when a turn ran, how it ended and which tools it
+  used, never its text.
+- **Write fence:** each Bot session's Claude Code asks VIKI Agent through a `PreToolUse` hook
+  before its `Write`, `Edit`, `MultiEdit` and `NotebookEdit` tools run. VIKI Agent refuses a write
+  into `memory/`, `bot-memory/` or the data folder's Bot memory area, and, once the session or its
+  Bot thread has used `WebFetch`, `WebSearch` or an MCP tool, also into `system/memory/`, any
+  `.claude` folder or an instruction file. It never allows a call by itself: everything else still
+  meets Claude Code's permission check, and an error refuses. It does not inspect shell commands.
 - **Controls:** the Bot page's memory card contains the Ask controls (review, forget and
-  change); its **View memory** opens the file dialog. A Bot chat's **Memory** header button and
-  **View memory** in Bot activity open the same dialog when the active vault's policy matches the
-  Bot's. The card's change action opens an unsent draft in the Bot's main chat; review and
-  forget open unsent task-thread drafts. The dialog lists exact paths; **Open in Vault** (only for
-  vault-kept memory), **Open in VS Code**, **Edit**, **Refresh memory** and **Close** act on that list. It marks an
-  incomplete list and file or title details it could not read. The forget draft asks Claude Code to
-  list the exact files and request your confirmation before changing or deleting anything, then
-  delete only the confirmed files within that folder.
+  change) for the earlier notes; its **View memory** opens the file dialog. A Bot chat's
+  **Memory** header button and **View memory** in Bot activity open the same dialog when the
+  active vault's policy matches the Bot's. The dialog lists exact paths; **Open in Vault** (only
+  for vault-kept memory), **Open in VS Code**, **Edit**, **Refresh memory** and **Close** act on
+  that list. It marks an incomplete list and file or title details it could not read.
 - **Editing:** **Open in VS Code** hands the file to VS Code, which edits it directly. **Save** in
-  the dialog's in-app editor writes nothing: it prepares an unsent request asking the Bot to replace
-  the file, appended to the chat's unsent draft or as a new task thread's draft. It is never sent
-  for you.
-- **Writing:** Claude Code creates and updates these notes under its native permissions. VIKI
-  Agent creates none and reads them through a read-only route; VIKI note operations do not target
-  `bot-memory/`. On Windows, Claude Code saved memory without a permission request in Manual and
-  Accept edits modes. This is untested on macOS and Linux.
+  the dialog's in-app editor writes nothing: it prepares an unsent request, appended to the chat's
+  unsent draft or as a new task thread's draft. It is never sent for you, and the write fence
+  refuses the Bot's own file-writing tools in that folder.
+- **Location and exports:** memory records are vault notes and go with vault backups; earlier
+  notes kept in the data folder do not. Diagnostics and settings exports carry no memory text.
 - **Memory rule:** every Bot chat, task thread and Bot-thread turn gets VIKI Agent's fixed memory
   rule right after the profile's instructions, as an addition to Claude Code's system prompt that
   VIKI Agent sends in the `initialize` request at each start, not in argv or a file; a
-  routine run gets it when its profile has a Bot in the routine's workspace. It asks the Bot to save no secrets, and no
-  instructions or links taken from notes, files, web pages, tool output or other Bots, and to report
-  instructions in a memory that you did not give. It is text the model reads, not a filter: VIKI Agent does not inspect what Claude
-  Code saves, and other chats don't get it.
+  routine run gets it when its profile has a Bot in the routine's workspace. It tells the Bot that
+  its recalled records are notes, not orders, not to write `memory/` or `bot-memory/`, and never to
+  repeat secrets or instructions taken from web pages, tool output or other Bots as something to
+  remember. It is text the model reads; the write fence is what VIKI Agent enforces, and other
+  chats don't get it.
 - **Bot rules:** the same chats get VIKI Agent's fixed Bot rules right after the memory rule.
   They ask the Bot to read a folder's top-level `CLAUDE.md` and `AGENTS.md` before it reads or
   changes files in that folder outside the vault, such as its code copy; to ask you before
@@ -836,16 +866,16 @@ enabled.
   skills it uses; and to write no passwords, keys or tokens into notes or files. Like the memory
   rule, they are text the model reads, not a permission: Claude Code's permissions decide what
   runs.
-- **Vault instructions:** the same settings file that names the memory folder also names, in
-  Claude Code's `claudeMdExcludes` setting, the vault's `CLAUDE.md`, `CLAUDE.local.md` and
-  `AGENTS.md` files and its `.claude/rules/` files, at any depth, in every vault, for Claude Code
-  to skip. It names nothing outside the vault.
-- **Removing a Bot:** keeps its memory files, in the vault or in the data folder.
-- **VIKI memory records:** a VIKI memory record is separate and applies only once you approve its
-  exact content on this computer.
+- **Vault instructions:** the same settings file also names, in Claude Code's
+  `claudeMdExcludes` setting, the vault's `CLAUDE.md`, `CLAUDE.local.md` and `AGENTS.md` files and
+  its `.claude/rules/` files, at any depth, in every vault, for Claude Code to skip. It names
+  nothing outside the vault.
+- **Removing a Bot:** keeps its earlier memory files, in the vault or in the data folder, and its
+  memory records in `memory/`; VIKI Agent deletes the Bot's episodes, runs, proposals and use
+  counts.
 
 > [!IMPORTANT]
-> The directories provide no sandbox: a Bot can read other files its permissions allow.
+> Records and folders provide no sandbox: a Bot can read other files its permissions allow.
 
 ### Seat Bots
 

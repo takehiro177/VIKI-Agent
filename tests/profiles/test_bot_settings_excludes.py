@@ -130,11 +130,16 @@ def test_the_settings_name_the_vault_wherever_the_memory_is(tmp_path: Path) -> N
     outside = settings_bytes(vault, OWNER, workspace_id=WORKSPACE, data=data)
     excludes = instruction_excludes(vault)
     assert in_vault == json.dumps(
-        {"autoMemoryDirectory": str(vault / "bot-memory" / OWNER), "claudeMdExcludes": excludes},
+        {
+            "autoMemoryDirectory": str(vault / "bot-memory" / OWNER),
+            "autoMemoryEnabled": False,
+            "claudeMdExcludes": excludes,
+        },
         separators=(",", ":"),
     ).encode("ascii")
     assert json.loads(outside) == {
         "autoMemoryDirectory": str(data / "bot-memory" / WORKSPACE / OWNER),
+        "autoMemoryEnabled": False,
         "claudeMdExcludes": excludes,
     }
     for document in map(json.loads, (in_vault, outside)):

@@ -28,7 +28,7 @@ from viki_agent.messaging.bot_memory import instruction_excludes  # noqa: E402
 CANARY = re.compile(r"VAULT_RULES_[0-9a-f]{32}")
 STEPS = ["control", "excluded", "agents_only_control", "agents_only_excluded"]
 MEMORY_ONLY = ["autoMemoryDirectory"]
-BOTH = ["autoMemoryDirectory", "claudeMdExcludes"]
+BOTH = ["autoMemoryDirectory", "autoMemoryEnabled", "claudeMdExcludes"]
 SETTINGS_KEYS = {
     "control": MEMORY_ONLY,
     "excluded": BOTH,
@@ -223,7 +223,11 @@ async def test_43_starts_in_a_vault_named_with_a_space_before_any_provider(
         if "claudeMdExcludes" in (loaded := json.loads(path.read_text(encoding="ascii")))
         and Path(loaded["autoMemoryDirectory"]).is_relative_to(vault)
     ]
-    assert app == {**document, "claudeMdExcludes": instruction_excludes(vault)}
+    assert app == {
+        **document,
+        "autoMemoryEnabled": False,
+        "claudeMdExcludes": instruction_excludes(vault),
+    }
 
 
 @pytest.mark.parametrize("mode", list(MODES))

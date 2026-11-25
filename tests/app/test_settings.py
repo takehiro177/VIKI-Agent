@@ -2035,11 +2035,15 @@ def test_decision_keys_sit_together_after_voice_speak_while_writing() -> None:
     keys = list(KEYS)
     start = keys.index("voice.speak_while_writing") + 1
     assert keys[start] == "decision.enabled"
-    assert keys[-1] == "bots.icons"
-    assert keys[-2] == "bots.hues"
-    assert keys[-3] == "layout.launcher_panel"
-    assert keys[-4] == "layout.launcher"
-    assert keys[-5] == "decision.launcher_session"
+    assert keys[-7:] == [
+        "decision.launcher_session",
+        "layout.launcher",
+        "layout.launcher_panel",
+        "bots.hues",
+        "bots.icons",
+        "bots.auto_reflect",
+        "bots.auto_dream",
+    ]
 
 
 def test_decision_plan_brake_sits_after_limit_changes() -> None:

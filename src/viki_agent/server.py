@@ -71,12 +71,12 @@ from viki_agent.app.diagnostics_api import diagnostics_routes
 from viki_agent.app.exports import ExportService
 from viki_agent.app.imports import ImportService
 from viki_agent.app.provider_login import provider_login_routes
-from viki_agent.app.settings import SettingsService
+from viki_agent.app.settings import SettingsError, SettingsService
 from viki_agent.app.settings_api import settings_routes
 from viki_agent.app.workspace_api import workspace_routes
 from viki_agent.automation.folder_changes import notes_changed
 from viki_agent.automation.kanban import card_waiting
-from viki_agent.automation.routines import RoutineService
+from viki_agent.automation.routines import RoutineService, stamp
 from viki_agent.automation.routines_api import routine_routes
 from viki_agent.automation.scheduler import Clock, Scheduler, SystemClock
 from viki_agent.automation.seat_host import SeatHost
@@ -171,7 +171,11 @@ from viki_agent.media.assets import AssetService, collect_scopes
 from viki_agent.media.assets_api import asset_routes
 from viki_agent.media.avatars import AvatarService
 from viki_agent.media.avatars_api import avatar_routes
+from viki_agent.messaging.bot_fence import WriteFence
+from viki_agent.messaging.bot_learning import BotLearning, LearningError
+from viki_agent.messaging.bot_learning_api import bot_learning_routes
 from viki_agent.messaging.bot_memory_api import BotMemoryArea, bot_memory_routes
+from viki_agent.messaging.bot_reflect import AutoLearning, LearningRunner
 from viki_agent.messaging.bot_runtime import BotRuntime
 from viki_agent.messaging.bot_threads import BotThreadService
 from viki_agent.messaging.bot_usage import BotUsage
@@ -770,6 +774,10 @@ def create_app(
     magpie = Magpie(config.data_dir, host=window_host, opener=opener)
     hub = _VaultHub(live=lambda: [actor.session_id for actor in manager.live()])
     background: set[asyncio.Task[None]] = set()
+    # Bot learning (ADR-087, ADR-088): built with the vault services below, when there are any.
+    bot_learning: BotLearning | None = None
+    auto_learning: AutoLearning | None = None
+    learning_tasks: set[asyncio.Task[Any]] = set()
     opening: set[asyncio.Task[None]] = set()  # every socket's MAX_SOCKET_OPENS tasks, also here
     socket_slots = anyio.CapacityLimiter(MAX_SOCKET_CONNECTIONS)
     draft_workers: set[asyncio.Task[Any]] = set()
@@ -2202,6 +2210,13 @@ def create_app(
             logger.warning("routine recovery unavailable")
         else:
             scheduler.start()
+        if bot_learning is not None:
+            try:
+                await asyncio.to_thread(bot_learning.proposals.end_running, stamp(clock.wall()))
+            except Exception:
+                logger.warning("Bot learning recovery unavailable")
+        if auto_learning is not None:
+            auto_learning.start()
         try:
             await _poll_vault_once(hub, manager)
         except Exception:  # a bad registry file must not stop the app from starting
@@ -2295,6 +2310,8 @@ def create_app(
                 with contextlib.suppress(asyncio.CancelledError):
                     await asset_collection_task
                 await scheduler.close()
+                if auto_learning is not None:
+                    await auto_learning.close()
                 await commands.close()
                 # Before close_all() denies the cards that are left: a choice already recorded must
                 # reach its own finalization rather than racing an app-generated denial.
@@ -2568,6 +2585,42 @@ def create_app(
             routes.extend(
                 changes.routes(authorized=authorized, origins=origins, workers=agent_workers)
             )
+
+    def bind_bot_learning(learning: BotLearning, runner: LearningRunner) -> None:
+        """Every Bot session's write fence and episodes, its recall, the learning routes, and
+        the automatic runs the two `bots.auto_*` settings turn on."""
+        nonlocal auto_learning
+
+        async def resolve_fence(session_id: str) -> WriteFence | None:
+            try:
+                return await asyncio.to_thread(learning.fence, session_id)
+            except LearningError:
+                raise StartError(
+                    "bad_request", "This Bot's vault is unavailable. Open it and start again."
+                ) from None
+            except StateError, OSError:
+                raise StartError("internal", "Bot memory settings are unavailable.") from None
+
+        manager.bind_bot_fence(resolve_fence)
+        if profile_launch is not None:
+            profile_launch.bind_recall(learning.recall_text)
+        routes.extend(
+            bot_learning_routes(
+                learning, runner, authorized=authorized, origins=origins, workers=bot_workers
+            )
+        )
+
+        def learning_settings() -> Mapping[str, object] | None:
+            if settings is None:
+                return None
+            try:
+                effective = settings.read()
+            except SettingsError:
+                return None
+            return None if effective.document.read_only else effective.effective
+
+        auto_learning = AutoLearning(runner, learning, learning_settings)
+
     if workspaces is not None:
         reader = VaultService(workspaces)
         # Bound once, here: the active workspace is resolved once per launch and a session reads
@@ -2959,6 +3012,30 @@ def create_app(
                 async with coordinator.lease(root, (), wait_s=VAULT_LEASE_WAIT_S) as lease:
                     yield lease
 
+            memories = MemoryService(
+                workspaces,
+                manager.app_state.store,
+                reader,
+                publications,
+                proposals,
+                lease_wait_s=VAULT_LEASE_WAIT_S,
+            )
+            if bots is not None:
+                bot_learning = BotLearning(
+                    manager.app_state.store,
+                    workspaces,
+                    bots,
+                    memories,
+                    reader,
+                    config.data_dir,
+                    tasks=learning_tasks,
+                    now=clock.wall,
+                )
+                bot_learning.skills = skill_proposals
+                learning_runner = LearningRunner(
+                    manager, bot_learning, catalog.paths_for, tasks=learning_tasks
+                )
+                bind_bot_learning(bot_learning, learning_runner)
             routes.extend(
                 vault_knowledge_routes(
                     VaultAttachmentService(
@@ -2969,14 +3046,7 @@ def create_app(
                         coordinator,
                         lease_wait_s=VAULT_LEASE_WAIT_S,
                     ),
-                    MemoryService(
-                        workspaces,
-                        manager.app_state.store,
-                        reader,
-                        publications,
-                        proposals,
-                        lease_wait_s=VAULT_LEASE_WAIT_S,
-                    ),
+                    memories,
                     VaultBackupService(
                         workspaces,
                         lease=backup_lease,
@@ -3252,6 +3322,8 @@ def create_app(
         try:
             messaging_runtime.observe(actor, envelope)
         finally:
+            if bot_learning is not None:
+                bot_learning.observe(actor.session_id, envelope)
             if schedule_capture is not None and envelope["type"] == "turn.done":
                 schedule_capture(actor.session_id)
 

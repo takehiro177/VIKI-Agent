@@ -67,6 +67,22 @@ written is read again next time.
 - **Not a Reset category:** **Reset** does not clear it; see [Reset](#reset).
 - **Not exported:** **Export settings** and **Export diagnostics** omit it.
 
+### Bot learning
+
+For each Bot, the database also keeps what [Learning](bots.md#learning) needs, never message text:
+
+- **Episodes:** each finished Bot turn's time, outcome, kind of chat and tool names, the newest
+  2,000 per Bot.
+- **Web and MCP marks:** which chats read web or MCP content, until you clear one.
+- **Runs and proposals:** the latest 200 runs per Bot and their proposals, each proposal's text
+  sealed like drafts; a run with a proposal still waiting is kept. At most 100 proposals wait per
+  Bot.
+- **Use counts:** how often each memory record was recalled and judged helpful or harmful.
+
+The memory records themselves are notes in the vault's `memory/` folder. Removing a Bot, or
+unregistering its vault, deletes these rows; **Reset** does not, and **Export settings** and
+**Export diagnostics** omit them.
+
 ### Magpie data
 
 The bundled Magpie process keeps its configuration, provider keys, usage records, history and

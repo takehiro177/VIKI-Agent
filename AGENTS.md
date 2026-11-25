@@ -194,7 +194,10 @@ route or control only once it is implemented and tested. The read and wire contr
    and only the editor's Save calls that route; the replace passes no Claude Code permission
    prompt or hook. A new save or operation step never targets a ref whose first segment is
    `bot-memory`, in any letter case: Claude Code alone writes Bot memory (hard rule 4's fifth
-   exception), and recovery still completes or rolls back a step already journalled there. Every other vault change through a
+   exception), and recovery still completes or rolls back a step already journalled there. What a
+   Bot learns reaches the vault only as a memory record under `memory/`, written by
+   `MemoryService`'s journalled save when the owner applies a sealed learning proposal (ADR-088);
+   no Bot, run or hook writes one. Every other vault change through a
    VIKI chat happens inside `claude`, where the user's hooks and log apply.
    Magpie-managed features and exports follow the separate bundled Magpie scope. Vault handles are held
    only for one save, operation step, recovery step or bounded vault read; every other vault or
@@ -217,9 +220,10 @@ route or control only once it is implemented and tested. The read and wire contr
    file on macOS, and `xdg-terminal-exec`, else `x-terminal-emulator -e`, on Linux; never
    `--console`, `--sso` or `--email`. The third:
    `--tools=Read,Glob,Grep` and `--strict-mcp-config`, with no
-   `--mcp-config`, passed only for the inbox suggestion run's session (`Launch.read_only_tools`).
-   Never a JSON-string value, a relative path, a second `--mcp-config`, or `--strict-mcp-config`
-   outside that session. The fourth: one `--add-dir=<absolute path>` element per entry of
+   `--mcp-config`, passed only for the inbox suggestion run's session and a Bot's reflect or dream
+   run (`Launch.read_only_tools`; `messaging/bot_reflect.py`, ADR-090). Neither is a Bot-bound
+   session: it gets no `--settings`, no system prompt and no hooks. Never a JSON-string value, a
+   relative path, a second `--mcp-config`, or `--strict-mcp-config` outside those sessions. The fourth: one `--add-dir=<absolute path>` element per entry of
    `Launch.add_dirs`, in equals form, at most 7, each a trusted (`ordinary`), persistent
    code-folder registration at its registered identity that the user ticked in Settings ›
    Workspaces and Vault (`chat.workspace_ids`), passed only to an ordinary chat that runs in the
@@ -239,7 +243,8 @@ route or control only once it is implemented and tested. The read and wire contr
    than pass another path. `scripts/capture.py` may pass one in its synthetic scratch scenario on
    the requester's recorded go (ADR-081).
    The fifth: one `--settings=<absolute path>` element naming a private, generated hash-named
-   JSON file under `<data>/bot-memory-settings/`, holding only `autoMemoryDirectory` and
+   JSON file under `<data>/bot-memory-settings/`, holding only `autoMemoryDirectory`,
+   `autoMemoryEnabled`, always `false` so Bots keep no auto memory (ADR-087), and
    `claudeMdExcludes`. Every spawn of a Bot-bound session uses it, in an ordinary, read-only or
    protected vault; resume keeps that binding. Resolve the current registered root and Bot
    identity before every spawn. The target is `<vault>/bot-memory/<bot UUID>/` for a session
@@ -254,8 +259,8 @@ route or control only once it is implemented and tested. The read and wire contr
    in its synthetic scratch scenarios on the requester's recorded go: alone (ADR-074), through
    the app's model gateway with an app `--mcp-config` (ADR-080), with a Bot code copy and an
    app `--mcp-config` (ADR-081), with the memory folder outside the session's working
-   folder (ADR-083), and with and without `claudeMdExcludes` in throwaway vault folders
-   (ADR-085).
+   folder (ADR-083), with and without `claudeMdExcludes` in throwaway vault folders
+   (ADR-085), and with auto memory off and the write fence's hooks (ADR-087, ADR-089).
    Explicit model connections add no flags: the existing `--model` carries the native model ID.
    Only the gateway's process-scoped capability and loopback URL enter that Claude process's
    environment; the upstream API key remains in the server. An ordinary chat opened through the
@@ -283,9 +288,14 @@ route or control only once it is implemented and tested. The read and wire contr
    `receive_messages()`; never import `claude_agent_sdk._internal`. Outbound, the transport adds
    to the SDK's `initialize` request only `perTaskStopAffordance` and, for a Bot-bound session,
    `appendSystemPrompt`: that Bot's pinned profile instructions, the memory rule and the Bot
-   rules (`messaging/bot_memory_rule.py`), resolved before every spawn, resume included
+   rules (`messaging/bot_memory_rule.py`), then the approved memory records it recalls
+   (`messaging/bot_recall.py`, ADR-087), resolved before every spawn, resume included
    (`ProfileLaunchService.bot_system_prompt`, ADR-084, ADR-085). No other session gets a system
-   prompt, and no argv element or file carries one.
+   prompt, and no argv element or file carries one. The SDK's own `initialize` names hook
+   callbacks only for a Bot-bound session: the `PreToolUse` matchers of its write fence
+   (`messaging/bot_fence.py`, ADR-089), built from `ClaudeAgentOptions.hooks`. A fence callback
+   answers only nothing or `permissionDecision: "deny"`, never `allow` or `ask`, so every other
+   call still reaches the permission card; an internal error denies.
 6. **Permissions.** Cards offer only Allow once and Deny. The only permission
    update ever sent is `setMode`, in reply to ExitPlanMode. Never send `bypassPermissions` or
    `dontAsk`; never forward `suggestions`. The user's mode pick in a chat header is not a
@@ -336,7 +346,11 @@ route or control only once it is implemented and tested. The read and wire contr
   the store on macOS and Linux (the sealing key's id, never key material) is not a cache
   file, and neither are the Bot memory files Claude Code writes under `<data>/bot-memory/`
   (hard rule 4's fifth exception): VIKI Agent creates and writes none of them and reads them only
-  through the Bot memory view's bounded, read-only route.
+  through the Bot memory view's bounded, read-only route and the Learning card's import, which
+  turns each into a proposal (ADR-088). The Bot learning tables hold no prompt or reply text:
+  an episode indexes a finished turn, and a reflect or dream run reads its excerpts from the
+  transcript only to build that run's prompt; a proposal's body is sealed like other private
+  rows.
 - **Dependencies:** add none and never edit `uv.lock` or `package-lock.json`; to propose one, ask
   a maintainer, who adds and locks each approved dependency. The approved exceptions:
   the stock Magpie CLI pinned by `desktop/build/magpie-release.json`, prepared only by

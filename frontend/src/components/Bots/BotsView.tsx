@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { WorkspaceJson } from "../../clients/app/shellApi";
+import type { BotLearningApi } from "../../clients/messaging/botLearningApi";
 import type { BotDetail, BotRow, BotsApi, BotsList } from "../../clients/messaging/botsApi";
 import type { ProfileApi, ProfileSummary } from "../../clients/profiles/profileApi";
 import type {
@@ -14,6 +15,7 @@ import { Loading } from "../Loading/Loading";
 import { problemText } from "../Profiles/profileCopy";
 import { BotConversationHelp, BotDeliverySummary, botErrorText } from "./BotChatActivity";
 import { BotFace } from "./BotFace";
+import type { LearningAuto } from "./BotLearningCard";
 import { BotRoster } from "./BotRoster";
 import { BotRoutines, type BotRoutinesProps } from "./BotRoutines";
 import { BotThreads } from "./BotThreads";
@@ -70,6 +72,9 @@ export interface BotsViewProps {
   onAskInMainChat?(bot: BotRow): Promise<void>;
   /** Hands one memory file to VS Code; the memory viewer offers it only when given. */
   onOpenInEditor?(ref: string): void;
+  /** Reflect and dream runs, their proposals and the auto-learning settings. */
+  learningApi?: BotLearningApi;
+  learningAuto?: LearningAuto;
   onThreads?(): void;
   routines?: Omit<BotRoutinesProps, "bot">;
   confirm?(message: string): boolean;
@@ -133,6 +138,8 @@ export function BotsView({
   onOpenUrl,
   onAskInMainChat,
   onOpenInEditor,
+  learningApi,
+  learningAuto,
   onThreads,
   routines,
   confirm = (message) => window.confirm(message),
@@ -927,6 +934,8 @@ export function BotsView({
                   {...(selectedMemoryApi ? { runMemoryAction, memoryPending } : {})}
                   {...(selectedMemoryApi && onOpenInEditor ? { onOpenInEditor } : {})}
                   {...(onOpenUrl ? { onOpenUrl } : {})}
+                  {...(learningApi ? { learningApi } : {})}
+                  {...(learningAuto ? { learningAuto } : {})}
                   {...(onAskInMainChat
                     ? {
                         // The main chat replaces this page, so ask before the request starts.

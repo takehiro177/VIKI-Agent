@@ -213,7 +213,11 @@ class _Runner:
                 assert (Path(document["autoMemoryDirectory"]) / "MEMORY.md").is_file()
                 # The app's settings: the folder it runs in is the vault, not the copy.
                 assert document["claudeMdExcludes"] == instruction_excludes(Path(kwargs["cwd"]))
-                assert set(document) == {"autoMemoryDirectory", "claudeMdExcludes"}
+                assert set(document) == {
+                    "autoMemoryDirectory",
+                    "autoMemoryEnabled",
+                    "claudeMdExcludes",
+                }
                 assert Path(flags["--mcp-config"]).is_file()
                 assert (Path(flags["--add-dir"]) / ".git").is_file()  # a ready linked worktree
 

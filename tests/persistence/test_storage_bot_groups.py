@@ -36,7 +36,7 @@ def test_v38_upgrade_has_a_valid_backup_and_keeps_every_existing_row(tmp_path: P
     reopened = AppState(tmp_path / "state.json", Prefs())
     assert reopened.prefs(ordinary).model == qualified
     with reopened.store._connection() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (43,)
         assert _every_row(connection) == before
         for name, ddl in storage.BOT_THREAD_SCHEMAS.items():
             assert connection.execute(

@@ -94,6 +94,7 @@ from viki_agent.events import (
 )
 from viki_agent.llm.connections import PREFIX, ConnectionError, Connections, split_model
 from viki_agent.llm.gateway import Gateway
+from viki_agent.messaging.bot_fence import FenceResolver, WriteFence
 from viki_agent.profiles.profile_capabilities import steer_supported
 from viki_agent.protection import ProtectionError
 from viki_agent.state import MODEL_UNSPECIFIED, AppState, Prefs
@@ -386,6 +387,7 @@ class SessionActor:
         mcp_resolver: McpResolver | None = None,
         bot_memory_resolver: McpResolver | None = None,
         bot_prompt_resolver: McpResolver | None = None,
+        bot_fence_resolver: FenceResolver | None = None,
         bot_code_resolver: BotCodeResolver | None = None,
         excerpt_vault: VaultService | None = None,
         active_vault_id: str = "",
@@ -414,6 +416,7 @@ class SessionActor:
         self._mcp_resolver = mcp_resolver
         self._bot_memory_resolver = bot_memory_resolver
         self._bot_prompt_resolver = bot_prompt_resolver
+        self._bot_fence_resolver = bot_fence_resolver
         self._bot_code_resolver = bot_code_resolver
         self._root_resolver = root_resolver
         self._root_context = root_context
@@ -683,6 +686,7 @@ class SessionActor:
         mcp: str | None = None
         bot_memory: str | None = None
         bot_prompt: str | None = None
+        fence: WriteFence | None = None
         code_copy: CodeCopy | None = None
         configuration = self._configuration_revision
         try:
@@ -740,6 +744,10 @@ class SessionActor:
                         return False
                 if bot_memory is not None and self._bot_prompt_resolver is not None:
                     bot_prompt = await self._bot_prompt_resolver(self.session_id)
+                    if self._interrupt_revision != interrupt_revision:
+                        return False
+                if bot_memory is not None and self._bot_fence_resolver is not None:
+                    fence = await self._bot_fence_resolver(self.session_id)
                     if self._interrupt_revision != interrupt_revision:
                         return False
             except StateError as exc:
@@ -820,6 +828,7 @@ class SessionActor:
                 bot_memory_settings=bot_memory,
                 code_worktree=code_copy.path if code_copy is not None else None,
                 append_system_prompt=bot_prompt,
+                hooks=None if fence is None else fence.hooks(),
                 agent_cli=self._agent_cli,
             )
             driver = self._make_driver(launch, prefs, lambda e: self._emit_from(token, e))
@@ -1817,6 +1826,7 @@ class SessionManager:
         self._mcp_resolver: McpResolver | None = None
         self._bot_memory_resolver: McpResolver | None = None
         self._bot_prompt_resolver: McpResolver | None = None
+        self._bot_fence_resolver: FenceResolver | None = None
         self._bot_code_resolver: BotCodeResolver | None = None
         self._root_resolver: RootResolver | None = None
         self._root_context: RootContextResolver | None = None
@@ -1878,6 +1888,14 @@ class SessionManager:
 
     async def _resolve_bot_memory(self, session_id: str) -> str | None:
         return await self._bot_memory_resolver(session_id) if self._bot_memory_resolver else None
+
+    def bind_bot_fence(self, resolver: FenceResolver) -> None:
+        """Install the resolver a Bot session calls after its prompt, before each spawn: its
+        write-fence hooks (`messaging/bot_fence.py`), which also record its taint."""
+        self._bot_fence_resolver = resolver
+
+    async def _resolve_bot_fence(self, session_id: str) -> WriteFence | None:
+        return await self._bot_fence_resolver(session_id) if self._bot_fence_resolver else None
 
     def bind_bot_prompt(self, resolver: McpResolver) -> None:
         """Install the resolver a Bot session calls after its memory settings, before each
@@ -2308,6 +2326,7 @@ class SessionManager:
             mcp_resolver=self._resolve_mcp,
             bot_memory_resolver=self._resolve_bot_memory,
             bot_prompt_resolver=self._resolve_bot_prompt,
+            bot_fence_resolver=self._resolve_bot_fence,
             bot_code_resolver=self._bot_code_resolver,
             excerpt_vault=self._excerpt_vault,
             active_vault_id=self._active_vault_id,

@@ -65,6 +65,7 @@ import {
 } from "./clients/decisionLoop/types";
 import type { AssetsApi } from "./clients/media/assetsApi";
 import type { AvatarsApi } from "./clients/media/avatarsApi";
+import type { BotLearningApi } from "./clients/messaging/botLearningApi";
 import type { BotRow, BotsApi } from "./clients/messaging/botsApi";
 import type { BotUsageApi } from "./clients/messaging/botUsageApi";
 import type { MessagingApi } from "./clients/messaging/messagingApi";
@@ -618,6 +619,9 @@ export interface AppProps {
   /** The Bot usage dashboard (AC-13/AC-14): token/cost summaries and per-session traces. Without
    * it the Bots page's "Usage" section and nav button are absent. */
   botUsageApi?: BotUsageApi;
+  /** A Bot's reflect and dream runs and the proposals waiting for the owner. Without it the Bot
+   * page shows no Learning card. */
+  botLearningApi?: BotLearningApi;
   /** The read-only client for what recent chats received from other Claude Code sessions. Without
    * it the right rail's Between chats fold is absent. */
   betweenChatsApi?: BetweenChatsApi;
@@ -1402,6 +1406,7 @@ export function App({
   messagingApi,
   botsApi: botsClient,
   botUsageApi,
+  botLearningApi,
   betweenChatsApi,
   sessionHandoff,
   sessionWindowsApi,
@@ -6436,6 +6441,18 @@ export function App({
                 }
               }}
               onRecheckTeam={() => setTeamCheck((check) => check + 1)}
+              {...(botLearningApi
+                ? {
+                    learningApi: botLearningApi,
+                    learningAuto: {
+                      reflect: effectiveSettings?.["bots.auto_reflect"] === true,
+                      dream: effectiveSettings?.["bots.auto_dream"] === true,
+                      set: async (key: "bots.auto_reflect" | "bots.auto_dream", value: boolean) => {
+                        await shellStore.patch({ [key]: value });
+                      },
+                    },
+                  }
+                : {})}
               {...(botMemoryApi
                 ? {
                     memoryApi: botMemoryApi,

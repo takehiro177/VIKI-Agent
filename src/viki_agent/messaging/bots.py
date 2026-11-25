@@ -22,6 +22,7 @@ from viki_agent.code.code_files import CodeError
 from viki_agent.code.code_git import CodeGit
 from viki_agent.conversations.drafts import require_private_store
 from viki_agent.decision_loop.rules import ELIGIBLE, REASONS
+from viki_agent.persistence.bot_schemas import LEARNING_TABLES
 from viki_agent.profiles.service import MAX_INTEGER, ProfileError, ProfileService
 from viki_agent.profiles.service import _id as profile_id
 from viki_agent.profiles.service import _revision as profile_revision
@@ -644,6 +645,9 @@ class BotService:
                 (row["bot_id"],),
             )
             connection.execute("DELETE FROM bot_code_folders WHERE bot_id=?", (row["bot_id"],))
+            # What the Bot learned from and the proposals it left; approved records stay notes.
+            for table in LEARNING_TABLES:
+                connection.execute(f"DELETE FROM {table} WHERE bot_id=?", (row["bot_id"],))
             changed = connection.execute(
                 "DELETE FROM bots WHERE bot_id=? AND state_revision=?",
                 (row["bot_id"], row["state_revision"]),
