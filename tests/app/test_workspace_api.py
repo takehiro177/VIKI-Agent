@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import threading
 import uuid
@@ -76,6 +77,7 @@ def test_every_route_requires_the_token_and_mutations_require_the_origin(tmp_pat
     for method, path in (
         ("get", "/api/v2/workspaces"),
         ("get", "/api/v2/vaults/suggestion"),
+        ("get", "/api/v2/vaults/x/starter"),
         ("post", "/api/v2/workspaces/select"),
         ("post", "/api/v2/vaults/create"),
         ("post", "/api/v2/vaults/open"),
@@ -201,6 +203,66 @@ def test_create_with_the_viki_template_writes_the_starter_set(tmp_path: Path) ->
     assert created.status_code == 201
     assert created.json()["created_files"] == [*vault_storage.FILES, vault_storage.MANIFEST]
     assert created.json()["workspace"]["bootstrap"] == "complete"
+
+
+def test_starter_route_reports_current_none_and_refuses_an_unknown_workspace(
+    tmp_path: Path,
+) -> None:
+    app, _ = app_at(tmp_path)
+    client = TestClient(app, base_url=BASE)
+
+    viki = client.post(
+        "/api/v2/vaults/create",
+        headers=MUTATION,
+        json={"command_id": COMMAND, "name": "Viki Vault", "template": "viki"},
+    )
+    viki_id = viki.json()["workspace"]["workspace_id"]
+    current = client.get(f"/api/v2/vaults/{viki_id}/starter", headers=AUTH)
+    assert current.status_code == 200
+    assert current.json()["state"] == "current"
+    assert current.json()["items"] == [] and current.json()["notify"] is False
+
+    blank = client.post(
+        "/api/v2/vaults/create",
+        headers=MUTATION,
+        json={"command_id": OTHER_COMMAND, "name": "Blank Vault"},
+    )
+    blank_id = blank.json()["workspace"]["workspace_id"]
+    none = client.get(f"/api/v2/vaults/{blank_id}/starter", headers=AUTH)
+    assert none.status_code == 200
+    assert none.json() == {
+        "state": "none",
+        "from_version": None,
+        "to_version": vault_storage.STARTER_VERSION,
+        "notify": False,
+        "items": [],
+        "agents": None,
+    }
+
+    missing = client.get(f"/api/v2/vaults/{uuid.uuid4()}/starter", headers=AUTH)
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "unknown_workspace"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions are Windows-only")
+def test_starter_route_never_reads_a_manifest_through_a_junction(tmp_path: Path) -> None:
+    app, workspaces = app_at(tmp_path)
+    client = TestClient(app, base_url=BASE)
+    created = client.post(
+        "/api/v2/vaults/create",
+        headers=MUTATION,
+        json={"command_id": COMMAND, "name": "Viki Vault", "template": "viki"},
+    )
+    workspace_id = created.json()["workspace"]["workspace_id"]
+    root = Path(workspaces.get(workspace_id).root.display)
+    outside = tmp_path / "outside-viki"
+    shutil.copytree(root / ".viki", outside)
+    shutil.rmtree(root / ".viki")
+    make_junction(root / ".viki", outside)
+
+    plan = client.get(f"/api/v2/vaults/{workspace_id}/starter", headers=AUTH)
+    assert plan.status_code == 200
+    assert plan.json()["state"] == "none"
 
 
 def test_a_pending_bootstrap_row_never_breaks_the_listing(

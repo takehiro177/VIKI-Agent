@@ -22,12 +22,16 @@ from typing import Any, Literal
 
 from viki_agent import osfs
 from viki_agent.domain import CanonicalRoot, Workspace
+from viki_agent.vaults import starter_update
 from viki_agent.vaults.starter import (
     FILES,
+    HISTORY_FILE,
     STARTER_NAME,
     STARTER_VERSION,
+    History,
     fingerprints,
     folders,
+    load_history,
     render,
     starter_fill,
 )
@@ -141,6 +145,8 @@ class VaultBootstrap:
         self._home = home
         # (assistant name, user's display name), read at every starter write.
         self._identity = identity if identity is not None else (lambda: ("VIKI", ""))
+        # The shipped starter history, read once and kept: every call after the first reuses it.
+        self._history: History | None = None
 
     def suggestion(self, name: str) -> tuple[Path, str]:
         return suggested_destination(self._home, name)
@@ -278,6 +284,35 @@ class VaultBootstrap:
                 # The destination folder itself may have existed empty before the bootstrap, so
                 # it stays; only what the app wrote is removed.
             self._workspaces.remove_pending(workspace_id)
+
+    def starter_plan(self, workspace_id: str) -> dict[str, object]:
+        """The starter update plan for `workspace_id`'s vault: `starter_update.plan` against
+        the shipped history, or the empty "none" plan when the workspace isn't yet a usable
+        "viki" starter vault (a bootstrap still pending, a root that no longer re-canonicalises
+        to its registered identity, an unsafe root, no manifest, or a manifest with no starter
+        section). A "complete" bootstrap and the "none" one Open leaves on an existing vault
+        (opened on another machine, restored, or re-added) both plan; only "pending" (a
+        bootstrap reserved but not yet finished) never does."""
+        workspace = self._workspaces.get(workspace_id)
+        if workspace.bootstrap == "pending":
+            return starter_update.empty_plan("none", None)
+        root = self._workspaces.current_root(workspace)
+        if root is None:
+            return starter_update.empty_plan("none", None)
+        destination = Path(root.display)
+        # The manifest is read without following links too: a `.viki` junction or a linked
+        # `vault.json` would point the plan at another folder's manifest.
+        if chain_has_reparse(destination / MANIFEST):
+            return starter_update.empty_plan("none", None)
+        document = self._manifest_document(destination, follow_symlinks=False)
+        if document is None:
+            return starter_update.empty_plan("none", None)
+        section = document.get("starter")
+        if not (isinstance(section, dict) and section.get("name") == STARTER_NAME):
+            return starter_update.empty_plan("none", None)
+        if self._history is None:
+            self._history = load_history(self._resources / HISTORY_FILE)
+        return starter_update.plan(destination, document, self._history, self._resources)
 
     def _destination(self, parent: str | None, leaf: str) -> Path:
         suggested = self._home / "VIKI" / "Vaults"
@@ -544,17 +579,28 @@ class VaultBootstrap:
         return tuple(files)
 
     @staticmethod
-    def _starter_section(destination: Path) -> dict[str, Any] | None:
-        """The manifest's `starter` section, when the manifest is a regular file of at most
-        64 KiB holding a JSON object whose `starter.name` is the starter's; None otherwise."""
+    def _manifest_document(
+        destination: Path, *, follow_symlinks: bool = True
+    ) -> dict[str, Any] | None:
+        """The manifest's JSON object, when the manifest is a regular file of at most 64 KiB
+        holding one; None otherwise (missing, oversized, unreadable, or not a JSON object)."""
         try:
-            data = osfs.read_regular(destination / MANIFEST, _MAX_MANIFEST_BYTES + 1)
+            data = osfs.read_regular(
+                destination / MANIFEST, _MAX_MANIFEST_BYTES + 1, follow_symlinks=follow_symlinks
+            )
             if len(data) > _MAX_MANIFEST_BYTES:
                 return None
             document = json.loads(data.decode("utf-8"))
         except OSError, ValueError, RecursionError:
             return None
-        section = document.get("starter") if isinstance(document, dict) else None
+        return document if isinstance(document, dict) else None
+
+    @staticmethod
+    def _starter_section(destination: Path) -> dict[str, Any] | None:
+        """The manifest's `starter` section, when the manifest is a regular file of at most
+        64 KiB holding a JSON object whose `starter.name` is the starter's; None otherwise."""
+        document = VaultBootstrap._manifest_document(destination)
+        section = document.get("starter") if document is not None else None
         if isinstance(section, dict) and section.get("name") == STARTER_NAME:
             return section
         return None

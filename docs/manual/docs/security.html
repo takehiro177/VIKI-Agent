@@ -102,6 +102,9 @@ that process&#x27;s own environment. Nothing logs the key, even by accident.</di
 an Origin, and accepts no window token.</div></li>
 <li><strong class="label-term">Credentials stay out of reach</strong><div class="label-body">a request to read or change a credential setting is
 refused, and the surface leaves it out of every reply.</div></li>
+<li><strong class="label-term">Starter updates</strong><div class="label-body"><code>status</code> also reports each vault&#x27;s starter update state: its versions,
+whether an update is available and how many files each kind of change touches, never their
+contents.</div></li>
 <li><strong class="label-term">Apply</strong><div class="label-body">changing how the window looks, its layout, the code editor, a Bot&#x27;s color or icon,
 or read-aloud speed and voice takes effect at once. Every other setting, and turning on a
 routine, waits for your <strong>Apply</strong> in the window; that Apply route accepts only the window&#x27;s own
@@ -881,6 +884,10 @@ That start finishes the save, unless something changed in the meantime (for exam
 moved, its policy changed, or another program wrote the file): then the save waits under <strong>Saves
 stopped partway through</strong>, with both texts kept in the vault&#x27;s <code>.viki-</code> files. Discarding that
 record does not bring the file back; if another program wrote it, that version stays.</div></li>
+<li><strong class="label-term">Starter updates</strong><div class="label-body">checking for a starter update only reads the vault&#x27;s <code>.viki/vault.json</code>,
+its starter files under <code>.claude/</code> and <code>_templates/</code>, <code>AGENTS.md</code>, <code>CLAUDE.md</code> and
+<code>system/starter-updates.md</code>, without following links. VIKI Agent writes none of them: the chat you send makes each change
+under your own hooks and permissions, and an AGENTS.md change waits for your Save.</div></li>
 <li><strong class="label-term">Saves at the same moment, off Windows</strong><div class="label-body">off Windows, a file cannot be locked against other
 programs, so the app checks each step before and after it runs. When another program saves the
 note at the same moment, that version is kept and your save stops as a conflict. A new note&#x27;s

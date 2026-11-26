@@ -8,7 +8,7 @@
  * path instead", it hands off to the page's own `workspace.open` command. Details toggles
  * PolicyPanel for the displayed active vault; with no active vault, it shows the selection
  * for the next launch. */
-import { type ReactElement, useState } from "react";
+import { type ReactElement, useEffect, useState } from "react";
 import type { ActiveSummary, ShellApi, WorkspaceJson } from "../../clients/app/shellApi";
 import { ShellApiError } from "../../clients/app/shellApi";
 import type { CommandArg, CommandId } from "../../commands";
@@ -53,6 +53,7 @@ export function VaultCard({ api, store, snapshot, onCommand }: VaultCardProps): 
   const [picking, setPicking] = useState(false);
   const [openError, setOpenError] = useState<ShellApiError | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [starterNotify, setStarterNotify] = useState(false);
 
   const capabilities = snapshot.capabilities;
   const listing = snapshot.workspaces;
@@ -69,6 +70,32 @@ export function VaultCard({ api, store, snapshot, onCommand }: VaultCardProps): 
     activeSummary !== null && activeSummary.kind !== "scratch" ? activeSummary : null;
   const source: VaultSource | null = activeRow ?? realActive;
   const name = source !== null ? source.name : t("workspaces.other.chat_only");
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fetch only on an api or active-id change (mirrors PolicyPanel's own policy(workspaceId) effect); a workspaces refresh that leaves the active id the same must not re-fetch.
+  useEffect(() => {
+    setStarterNotify(false);
+    const starter = api?.starterPlan;
+    if (
+      starter === undefined ||
+      activeRow === undefined ||
+      activeRow.kind !== "vault" ||
+      activeRow.bootstrap === "pending" ||
+      activeRow.policy === "protected"
+    )
+      return;
+    let cancelled = false;
+    starter(activeRow.workspace_id).then(
+      (plan) => {
+        if (!cancelled) setStarterNotify(plan.notify);
+      },
+      () => {
+        // Errors render nothing: the badge just stays hidden.
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [api, activeId]);
 
   const selectedId = listing?.selected_id ?? null;
   const selectedRow =
@@ -125,6 +152,7 @@ export function VaultCard({ api, store, snapshot, onCommand }: VaultCardProps): 
             </span>
           ) : null}
         </div>
+        {starterNotify ? <p className="settings-note">{t("settings.starter.badge")}</p> : null}
         {activeRow !== undefined ? (
           <div className="mono workspace-root">{activeRow.root}</div>
         ) : null}

@@ -383,8 +383,9 @@ Claude Code instead. Profiles inherit those servers too.</p>
 routines, and create Bots, if you ask it to, by running its own command. It answers four kinds of
 request: <strong>status</strong>, <strong>settings</strong>, <strong>routines</strong> and <strong>bots</strong>.</p>
 <ul class="label-list">
-<li><strong class="label-term">New vaults</strong><div class="label-body"><strong>Start with VIKI</strong> ships the skill that teaches a chat to use this. Add it to
-an existing vault yourself for the same behavior there.</div></li>
+<li><strong class="label-term">New vaults</strong><div class="label-body"><strong>Start with VIKI</strong> ships the skill that teaches a chat to use this. A Start
+with VIKI vault made earlier gets it through a starter update. <strong>status</strong> includes each
+vault&#x27;s starter update state.</div></li>
 <li><strong class="label-term">Permission</strong><div class="label-body">running it is an ordinary tool call, so it shows the chat&#x27;s usual permission
 card in every mode except <strong>Auto</strong>.</div></li>
 <li><strong class="label-term">What changes right away</strong><div class="label-body">how the window looks (theme, density, font scale, reduced
@@ -518,6 +519,12 @@ create it.</div></li>
 <li><strong class="label-term">Blank folder</strong><div class="label-body">holds only a welcome note, plus <code>.viki/vault.json</code> if you tick
 <strong>Write portable metadata</strong>.</div></li>
 </ul>
+<p><strong>Starter updates:</strong> when VIKI Agent ships newer Start with VIKI files, Settings › Workspaces and
+Vault says so, and Settings › Instructions and Persona lists each change. Files you never edited
+take the new text, files you changed get a merge you approve, files you deleted stay deleted, and
+your notes, memory, log, Home and maps are left out. <strong>Update in a chat</strong> drafts one message for a
+new chat; sending it applies the update. <strong>Open AGENTS.md with the update</strong> puts the new rules,
+with your Persona kept, in the AGENTS.md editor for you to Save.</p>
 <p>If interrupted starter setup cannot resume because its files or setup details changed, choose
 <strong>Cancel</strong> and start a new setup.</p>
 <p><strong>Other vaults</strong> lists every vault you have registered besides the active one. It also lists

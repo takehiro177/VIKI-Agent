@@ -5,7 +5,7 @@
  * review and send. Other vaults show the files as read-only text.
  */
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { WorkspaceJson } from "../../clients/app/shellApi";
+import type { StarterPlan, WorkspaceJson } from "../../clients/app/shellApi";
 import { t, tf } from "../../i18n/t";
 import { useReportUnsavedWork } from "../../state/unsavedWork";
 import type { InstructionName, VaultApi } from "../../state/vaultApi";
@@ -32,6 +32,7 @@ import {
   renderPersona,
   TONES,
 } from "./persona";
+import { StarterUpdate } from "./StarterUpdate";
 
 export interface PersonaPageProps {
   api: Pick<VaultApi, "note" | "saveInstruction"> | null;
@@ -40,6 +41,9 @@ export interface PersonaPageProps {
   onBack: () => void;
   /** Reads the vault's registration again, after a save was refused as made against an old one. */
   onRefreshVault?: () => void;
+  /** Loads this vault's starter-files update plan; the Starter update section shows only when
+   * this is given. */
+  starterPlan?: (workspaceId: string) => Promise<StarterPlan>;
   assistantName?: string;
   displayName?: string;
   nextLaunch?: string;
@@ -217,6 +221,7 @@ export function PersonaPage({
   onDraft,
   onBack,
   onRefreshVault,
+  starterPlan,
   assistantName,
   displayName,
   nextLaunch,
@@ -242,6 +247,11 @@ export function PersonaPage({
     value: "sent" | "no_editor";
   } | null>(null);
   const [dirtyFiles, setDirtyFiles] = useState({ agents: false, claude: false });
+  // The AGENTS.md proposal the owner chose to review, for the AGENTS.md editor's `proposal` prop;
+  // cleared on a fresh read (a new vault, or Read again) and once that editor saves successfully.
+  const [agentsProposal, setAgentsProposal] = useState<{ text: string; sha256: string } | null>(
+    null,
+  );
   const anyDirty = dirtyFiles.agents || dirtyFiles.claude;
   useReportUnsavedWork("instructions", anyDirty);
 
@@ -267,6 +277,7 @@ export function PersonaPage({
   useEffect(() => {
     // A new read, of another vault or by Read again, starts the form over from its file.
     setForm(null);
+    setAgentsProposal(null);
     if (noVault || api === null || workspaceId === undefined || root === undefined) {
       setRead(null);
       return;
@@ -320,6 +331,9 @@ export function PersonaPage({
     );
   }, [agents, persona]);
 
+  // The starter-update section's own key: forces its reload after an AGENTS.md save changes the
+  // file's hash, on top of a vault switch or Read again (both already bump `reloadToken`).
+  const starterRefreshKey = `${reloadToken}:${agents.status === "ok" ? (agents.sha256 ?? "") : ""}`;
   const protectedVault = vault !== null && vault.policy === "protected";
   const currentPersona = activeForm !== null ? personaFromForm(activeForm) : null;
   const currentBody = currentPersona !== null ? renderPersona(currentPersona) : null;
@@ -364,6 +378,11 @@ export function PersonaPage({
     });
   }
 
+  /** Stores the starter plan's AGENTS.md proposal for the AGENTS.md editor to pick up. */
+  function reviewAgentsProposal(proposal: { proposal: string; sha256: string }): void {
+    setAgentsProposal({ text: proposal.proposal, sha256: proposal.sha256 });
+  }
+
   const describedBy = protectedVault ? protectedNoticeId : undefined;
 
   // The server checks all of this again; here it only decides whether to offer an editor.
@@ -404,7 +423,7 @@ export function PersonaPage({
         name={name}
         source={file.source}
         sha256={file.sha256}
-        onFile={(source, sha256) =>
+        onFile={(source, sha256) => {
           setRead((prev) =>
             prev === null || prev.key.reloadToken !== reloadToken
               ? prev
@@ -412,10 +431,12 @@ export function PersonaPage({
                   ...prev,
                   [field]: { status: "ok", text: withoutBom(source), source, sha256 },
                 },
-          )
-        }
+          );
+          if (field === "agents") setAgentsProposal(null);
+        }}
         onDirty={(dirty) => setDirtyFiles((prev) => ({ ...prev, [field]: dirty }))}
         {...(onRefreshVault !== undefined ? { onStaleScope: onRefreshVault } : {})}
+        {...(field === "agents" ? { proposal: agentsProposal } : {})}
       />
     );
   }
@@ -435,6 +456,18 @@ export function PersonaPage({
         <p>Open a vault to see its persona. It lives in the vault's AGENTS.md.</p>
       ) : (
         <>
+          {starterPlan && (
+            <StarterUpdate
+              workspaceId={vault.workspace_id}
+              load={starterPlan}
+              refreshKey={starterRefreshKey}
+              // Every vault whose editor cannot save (not just "protected") has no dedicated
+              // AGENTS.md editor to route the rules change through, so it goes via the chat instead.
+              protectedVault={vault.policy !== "ordinary"}
+              onDraft={onDraft}
+              {...(vault.policy === "ordinary" ? { onReviewAgents: reviewAgentsProposal } : {})}
+            />
+          )}
           <p className="settings-page-intro">
             {tf("settings.persona.intro", { vault: vault.name })}
           </p>

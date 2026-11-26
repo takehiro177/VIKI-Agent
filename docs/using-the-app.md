@@ -444,8 +444,9 @@ A chat you opened in the VIKI Agent window can read and change your settings, ad
 routines, and create Bots, if you ask it to, by running its own command. It answers four kinds of
 request: **status**, **settings**, **routines** and **bots**.
 
-- **New vaults:** **Start with VIKI** ships the skill that teaches a chat to use this. Add it to
-  an existing vault yourself for the same behavior there.
+- **New vaults:** **Start with VIKI** ships the skill that teaches a chat to use this. A Start
+  with VIKI vault made earlier gets it through a starter update. **status** includes each
+  vault's starter update state.
 - **Permission:** running it is an ordinary tool call, so it shows the chat's usual permission
   card in every mode except **Auto**.
 - **What changes right away:** how the window looks (theme, density, font scale, reduced
@@ -602,6 +603,13 @@ A new vault starts from one of two choices:
   create it.
 - **Blank folder:** holds only a welcome note, plus `.viki/vault.json` if you tick
   **Write portable metadata**.
+
+**Starter updates:** when VIKI Agent ships newer Start with VIKI files, Settings › Workspaces and
+Vault says so, and Settings › Instructions and Persona lists each change. Files you never edited
+take the new text, files you changed get a merge you approve, files you deleted stay deleted, and
+your notes, memory, log, Home and maps are left out. **Update in a chat** drafts one message for a
+new chat; sending it applies the update. **Open AGENTS.md with the update** puts the new rules,
+with your Persona kept, in the AGENTS.md editor for you to Save.
 
 If interrupted starter setup cannot resume because its files or setup details changed, choose
 **Cancel** and start a new setup.

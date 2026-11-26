@@ -705,6 +705,64 @@ test("Undo is not offered once the user types after the save", async () => {
   expect(screen.queryByRole("button", { name: t("settings.persona.editor.undo") })).toBeNull();
 });
 
+const proposalProps = (save: Save = saved) => ({
+  api: { note: diskNote(""), saveInstruction: save },
+  scope: SCOPE,
+  name: NAME,
+  source: SOURCE,
+  sha256: SHA_READ,
+  onFile: vi.fn(),
+  onDirty: vi.fn(),
+});
+
+test("a proposal whose hash matches the base loads into the draft", () => {
+  const props = proposalProps();
+  const { rerender } = render(<InstructionEditor {...props} proposal={null} />);
+  expect(textarea().value).toBe("# A\nB\nC");
+  rerender(<InstructionEditor {...props} proposal={{ text: "# Proposed", sha256: SHA_READ }} />);
+  expect(textarea().value).toBe("# Proposed");
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("a proposal whose hash no longer matches the base warns and keeps the draft", () => {
+  const props = proposalProps();
+  const { rerender } = render(<InstructionEditor {...props} proposal={null} />);
+  rerender(<InstructionEditor {...props} proposal={{ text: "# Proposed", sha256: SHA_SAVED }} />);
+  expect(alertText()).toBe(t("settings.persona.editor.proposal_stale"));
+  expect(textarea().value).toBe("# A\nB\nC");
+});
+
+test("a proposal is applied once per object: the same object does not undo a later edit", () => {
+  const props = proposalProps();
+  const proposal = { text: "# Proposed", sha256: SHA_READ };
+  const { rerender } = render(<InstructionEditor {...props} proposal={null} />);
+  rerender(<InstructionEditor {...props} proposal={proposal} />);
+  expect(textarea().value).toBe("# Proposed");
+  type("# Proposed, then edited");
+  rerender(<InstructionEditor {...props} proposal={proposal} />);
+  expect(textarea().value).toBe("# Proposed, then edited");
+});
+
+test("a proposal that arrives while a save is in flight is not applied", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const props = proposalProps(async (...args) => {
+    await gate;
+    return saved(...args);
+  });
+  const { rerender } = render(<InstructionEditor {...props} proposal={null} />);
+  type("mine");
+  fireEvent.click(saveButton());
+  expect(textarea().readOnly).toBe(true);
+  rerender(<InstructionEditor {...props} proposal={{ text: "# Proposed", sha256: SHA_READ }} />);
+  expect(textarea().value).toBe("mine");
+  release();
+  await screen.findByText(t("settings.persona.editor.saved"));
+  expect(textarea().value).toBe("mine");
+});
+
 test("only the editor calls saveInstruction, in source outside the tests", () => {
   // `new URL(literal, import.meta.url)` written directly is Vite's asset-URL pattern.
   const here = import.meta.url;

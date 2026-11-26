@@ -6119,6 +6119,7 @@ export function App({
             assistantName={identity.assistantName}
             displayName={displayName}
             {...(personaNextLaunch !== undefined ? { nextLaunch: personaNextLaunch } : {})}
+            {...(shellApi?.starterPlan ? { starterPlan: shellApi.starterPlan } : {})}
             onDraft={(text) => restoreText(text)}
             onBack={() => navigate({ view: "chat" })}
             onRefreshVault={() => void shellStore.afterMutation(["capabilities", "workspaces"])}

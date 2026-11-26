@@ -12,3 +12,4 @@ The first public release of VIKI Agent.
 - **Bot usage.** **Bots → Usage** shows how many tokens your Bots used, by day, Bot, model and conversation, for the last 7, 30 or 90 days.
 - **Setup.** **Help → Setup guide** shows what is set up and what is left.
 - **Ask a chat to change settings.** It can also add and test routines and create Bots; turning on a routine and safety-list changes wait for your Apply.
+- **Starter updates.** A vault made with **Start with VIKI** can take newer starter files without losing your edits: see **Settings › Instructions and Persona**.

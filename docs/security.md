@@ -110,6 +110,9 @@ change settings, routines and Bots.
   an Origin, and accepts no window token.
 - **Credentials stay out of reach:** a request to read or change a credential setting is
   refused, and the surface leaves it out of every reply.
+- **Starter updates:** `status` also reports each vault's starter update state: its versions,
+  whether an update is available and how many files each kind of change touches, never their
+  contents.
 - **Apply:** changing how the window looks, its layout, the code editor, a Bot's color or icon,
   or read-aloud speed and voice takes effect at once. Every other setting, and turning on a
   routine, waits for your **Apply** in the window; that Apply route accepts only the window's own
@@ -966,6 +969,10 @@ chat image in the vault.
   moved, its policy changed, or another program wrote the file): then the save waits under **Saves
   stopped partway through**, with both texts kept in the vault's `.viki-` files. Discarding that
   record does not bring the file back; if another program wrote it, that version stays.
+- **Starter updates:** checking for a starter update only reads the vault's `.viki/vault.json`,
+  its starter files under `.claude/` and `_templates/`, `AGENTS.md`, `CLAUDE.md` and
+  `system/starter-updates.md`, without following links. VIKI Agent writes none of them: the chat you send makes each change
+  under your own hooks and permissions, and an AGENTS.md change waits for your Save.
 - **Saves at the same moment, off Windows:** off Windows, a file cannot be locked against other
   programs, so the app checks each step before and after it runs. When another program saves the
   note at the same moment, that version is kept and your save stops as a conflict. A new note's

@@ -312,5 +312,28 @@ export const catalog = defineCatalog({
     "settings.persona.draft.add_send": "Draft adding it in a new chat",
     "settings.persona.draft.sent":
       "Drafted in a new chat editor. Send it there to ask Claude Code to edit AGENTS.md under its own permissions.",
+    "settings.persona.editor.proposal_stale":
+      "AGENTS.md changed since the update was checked. Read it again first.",
+
+    "settings.starter.badge": "Starter update available: see Settings > Instructions and Persona.",
+    "settings.starter.error": "Couldn't check this vault's starter files.",
+    "settings.starter.newer": "This vault's starter files are newer than this VIKI Agent's.",
+    "settings.starter.current": "Starter files are up to date (version {to}).",
+    "settings.starter.kept": "Kept as they were ({count})",
+    "settings.starter.heading": "Starter update",
+    "settings.starter.intro":
+      "VIKI Agent ships starter version {to}; this vault was last updated to version {from}.",
+    "settings.starter.group.add": "New files",
+    "settings.starter.group.replace": "Unchanged since VIKI Agent added them",
+    "settings.starter.group.editor": "AGENTS.md rules (your Persona stays)",
+    "settings.starter.group.merge": "Files you changed: merged in the chat, with your OK",
+    "settings.starter.group.manual": "Apply by hand (chats may not edit these)",
+    "settings.starter.group.remove": "No longer shipped",
+    "settings.starter.group.skip": "Couldn't read: left as is",
+    "settings.starter.update_in_chat": "Update in a chat",
+    "settings.starter.drafted": "Drafted in a new chat. Send it to apply the update.",
+    "settings.starter.no_room": "No room for another chat draft. Close one and try again.",
+    "settings.starter.open_agents": "Open AGENTS.md with the update",
+    "settings.starter.agents_status": "AGENTS.md below now shows the update. Check it, then Save.",
   },
 });

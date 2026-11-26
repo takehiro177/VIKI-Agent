@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useLayoutEffect } from "react";
 import { afterEach, expect, test, vi } from "vitest";
-import type { WorkspaceJson } from "../../clients/app/shellApi";
+import type { StarterPlan, WorkspaceJson } from "../../clients/app/shellApi";
 import { catalog as settingsCatalog } from "../../i18n/settings";
 import { hasUnsavedWork } from "../../state/unsavedWork";
 import { type VaultApi, VaultWriteError } from "../../state/vaultApi";
@@ -737,4 +737,166 @@ test("next launch names selected vault while reading running vault", async () =>
   ).toBeTruthy();
   expect(api.note).toHaveBeenCalledWith(vault.workspace_id, "AGENTS.md");
   expect(screen.queryByRole("alert")).toBeNull();
+});
+
+function starterPlanFixture(overrides: Partial<StarterPlan> = {}): StarterPlan {
+  return {
+    state: "available",
+    from_version: 1,
+    to_version: 2,
+    notify: false,
+    items: [],
+    agents: null,
+    ...overrides,
+  };
+}
+
+test("without a starterPlan prop there is no Starter update section", async () => {
+  page(editApi(), ORDINARY);
+  await editor("AGENTS.md");
+  expect(screen.queryByText(settingsCatalog.en["settings.starter.heading"])).toBeNull();
+});
+
+test("a starterPlan prop loads this vault's plan and shows it above the intro", async () => {
+  const starterPlan = vi.fn(async () => starterPlanFixture());
+  const vault = workspaceFixture();
+  render(
+    <PersonaPage
+      api={noteApi()}
+      vault={vault}
+      starterPlan={starterPlan}
+      onDraft={vi.fn()}
+      onBack={vi.fn()}
+    />,
+  );
+  await fullText("AGENTS.md");
+  expect(starterPlan).toHaveBeenCalledWith(vault.workspace_id);
+  const heading = await screen.findByText(settingsCatalog.en["settings.starter.heading"]);
+  const intro = screen.getByText(/instruction files are shown in full below/);
+  expect(heading.compareDocumentPosition(intro) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test("a non-ordinary vault's Starter update gets no onReviewAgents, even with a proposal", async () => {
+  const starterPlan = vi.fn(async () =>
+    starterPlanFixture({ agents: { proposal: "new text", sha256: SHA_READ } }),
+  );
+  render(
+    <PersonaPage
+      api={noteApi()}
+      vault={workspaceFixture({ policy: "existing_readonly" })}
+      starterPlan={starterPlan}
+      onDraft={vi.fn()}
+      onBack={vi.fn()}
+    />,
+  );
+  await fullText("AGENTS.md");
+  await screen.findByText(settingsCatalog.en["settings.starter.heading"]);
+  expect(screen.queryByText(settingsCatalog.en["settings.starter.open_agents"])).toBeNull();
+});
+
+test("an existing_readonly vault has no editor for an AGENTS.md rules change, so its hand-off carries the change instead", async () => {
+  const onDraft = vi.fn().mockReturnValue(true);
+  const starterPlan = vi.fn(async () =>
+    starterPlanFixture({
+      items: [
+        {
+          path: "AGENTS.md",
+          action: "editor",
+          diff: "--- a/AGENTS.md\n+++ b/AGENTS.md",
+          text: null,
+        },
+      ],
+    }),
+  );
+  render(
+    <PersonaPage
+      api={noteApi()}
+      vault={workspaceFixture({ policy: "existing_readonly" })}
+      starterPlan={starterPlan}
+      onDraft={onDraft}
+      onBack={vi.fn()}
+    />,
+  );
+  await fullText("AGENTS.md");
+  await screen.findByText(settingsCatalog.en["settings.starter.heading"]);
+  expect(screen.queryByText(settingsCatalog.en["settings.starter.open_agents"])).toBeNull();
+  fireEvent.click(screen.getByText(settingsCatalog.en["settings.starter.update_in_chat"]));
+  expect(onDraft).toHaveBeenCalledTimes(1);
+  expect(onDraft.mock.calls[0]?.[0]).toContain("### `AGENTS.md`");
+});
+
+test("an ordinary vault keeps its own AGENTS.md editor button and leaves the rules change out of the hand-off", async () => {
+  const onDraft = vi.fn().mockReturnValue(true);
+  const api = editApi();
+  const starterPlan = vi.fn(async () =>
+    starterPlanFixture({
+      items: [
+        {
+          path: "AGENTS.md",
+          action: "editor",
+          diff: "--- a/AGENTS.md\n+++ b/AGENTS.md",
+          text: null,
+        },
+      ],
+      notify: true,
+      agents: { proposal: "# Updated AGENTS", sha256: SHA_READ },
+    }),
+  );
+  render(
+    <PersonaPage
+      api={api}
+      vault={workspaceFixture(ORDINARY)}
+      starterPlan={starterPlan}
+      onDraft={onDraft}
+      onBack={vi.fn()}
+    />,
+  );
+  await editor("AGENTS.md");
+  expect(await screen.findByText(settingsCatalog.en["settings.starter.open_agents"])).toBeTruthy();
+  fireEvent.click(screen.getByText(settingsCatalog.en["settings.starter.update_in_chat"]));
+  expect(onDraft).toHaveBeenCalledTimes(1);
+  expect(onDraft.mock.calls[0]?.[0]).not.toContain("### `AGENTS.md`");
+});
+
+test("the Open AGENTS.md button loads the Starter update's proposal into the editor", async () => {
+  const api = editApi();
+  const starterPlan = vi.fn(async () =>
+    starterPlanFixture({ agents: { proposal: "# Updated AGENTS", sha256: SHA_READ } }),
+  );
+  render(
+    <PersonaPage
+      api={api}
+      vault={workspaceFixture(ORDINARY)}
+      starterPlan={starterPlan}
+      onDraft={vi.fn()}
+      onBack={vi.fn()}
+    />,
+  );
+  await editor("AGENTS.md");
+  fireEvent.click(
+    await screen.findByRole("button", { name: settingsCatalog.en["settings.starter.open_agents"] }),
+  );
+  expect((await editor("AGENTS.md")).value).toBe("# Updated AGENTS");
+  expect(screen.getByText(settingsCatalog.en["settings.starter.agents_status"])).toBeTruthy();
+});
+
+test("an AGENTS.md save changes the Starter update's refresh key and reloads the plan", async () => {
+  const api = editApi();
+  const starterPlan = vi.fn(async () => starterPlanFixture({ state: "current", to_version: 1 }));
+  render(
+    <PersonaPage
+      api={api}
+      vault={workspaceFixture(ORDINARY)}
+      starterPlan={starterPlan}
+      onDraft={vi.fn()}
+      onBack={vi.fn()}
+    />,
+  );
+  await editor("AGENTS.md");
+  await screen.findByText(settingsCatalog.en["settings.starter.current"].replace("{to}", "1"));
+  const callsBeforeSave = starterPlan.mock.calls.length;
+  fireEvent.change(await editor("AGENTS.md"), { target: { value: `${MARKED}more\n` } });
+  fireEvent.click(screen.getByRole("button", { name: "Save AGENTS.md" }));
+  await screen.findByText("Saved.");
+  await waitFor(() => expect(starterPlan.mock.calls.length).toBeGreaterThan(callsBeforeSave));
 });

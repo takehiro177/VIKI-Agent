@@ -121,6 +121,9 @@ ALLOWED: dict[str, frozenset[str]] = {
     # The data-locations catalog names the provider location kinds the API reports (`home`,
     # `credentials`) as keys; the values never carry a path or a file name.
     "frontend/src/i18n/data.ts": frozenset({CREDENTIALS}),
+    # The starter's CLAUDE.md imports AGENTS.md on its own line; JSON writes the line break
+    # before it as `\n`, so the import reads as an address once escaped.
+    "src/viki_agent/resources/starter-history.json": frozenset({"n@" + "AGENTS.md"}),
     # The scrubber is where the banned list lives.
     "scripts/scrub_fixture.py": frozenset(
         {CREDENTIALS, USERS_SLASH, USERS_JSON, USERS_JSON2, API_KEY, SLUG}

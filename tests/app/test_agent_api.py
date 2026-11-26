@@ -23,6 +23,7 @@ from starlette.testclient import TestClient
 from tests.automation.test_routines import _document_raw
 from tests.persistence.test_storage import _workspace
 from tests.profiles.test_profile_document import document
+from tests.vaults.test_vault_storage import RESOURCES
 from viki_agent.app.agent_api import CHANGE_SETTINGS, COVERS, OPS, SAFETY_SETTINGS, agent_routes
 from viki_agent.app.agent_changes import AgentChanges
 from viki_agent.app.agent_grants import AgentGrants
@@ -35,6 +36,8 @@ from viki_agent.domain import SettingsDocument
 from viki_agent.messaging.bots import BotService
 from viki_agent.profiles.service import ProfileService
 from viki_agent.state import AppState, Prefs
+from viki_agent.vault_storage import VaultBootstrap
+from viki_agent.vaults import starter
 from viki_agent.workspaces import WorkspaceService, root_key
 
 BASE = "http://127.0.0.1:8765"
@@ -95,9 +98,10 @@ class StubScheduler:
 
 class Rig:
     """Real services on one synthetic store with an active ordinary vault, one profile and one
-    live grant for SESSION; `bots=False` stands for an app without Bots."""
+    live grant for SESSION; `bots=False` stands for an app without Bots, `bootstrap=False` for
+    one wired to no `VaultBootstrap` (so `status` never looks up a vault's starter state)."""
 
-    def __init__(self, tmp_path: Path, *, bots: bool = True) -> None:
+    def __init__(self, tmp_path: Path, *, bots: bool = True, bootstrap: bool = True) -> None:
         self.state = AppState(tmp_path / "data" / "state.json", Prefs())
         store = self.state.store
         self.settings = SettingsService(
@@ -111,6 +115,11 @@ class Rig:
             install_dir=tmp_path / "install",
             git_available=lambda: False,
             hide_previews=lambda: False,
+        )
+        self.bootstrap = (
+            VaultBootstrap(self.workspaces, resources=RESOURCES, home=tmp_path / "home")
+            if bootstrap
+            else None
         )
         root = tmp_path / "vault"
         root.mkdir()
@@ -156,6 +165,7 @@ class Rig:
             admission_lock=asyncio.Lock(),
             app_version=VERSION,
             workers=set(),
+            bootstrap=self.bootstrap,
         )
         routes += self.changes.routes(
             authorized=lambda request: (
@@ -203,6 +213,12 @@ def code(response: Any) -> tuple[int, str]:
 
 def setting(key: str, value: object, revision: int = 0) -> dict[str, Any]:
     return {"command_id": ident(), "expected_revision": revision, "key": key, "value": value}
+
+
+def workspace_entry(response: Any, workspace_id: str) -> dict[str, Any]:
+    """`status`'s one `workspaces` row for `workspace_id`."""
+    [entry] = [row for row in response.json()["workspaces"] if row["workspace_id"] == workspace_id]
+    return entry
 
 
 def test_ops_and_their_levels_are_the_pinned_table() -> None:
@@ -625,6 +641,7 @@ def test_status_names_the_chat_and_what_its_commands_can_target(rig: Rig) -> Non
                 "name": "synthetic",
                 "policy": "ordinary",
                 "active": True,
+                "starter": None,
             }
         ],
         "profiles": [
@@ -724,3 +741,76 @@ async def test_a_fifth_operation_in_flight_gets_429(tmp_path: Path) -> None:
         gate.set()
         assert [response.status_code for response in await asyncio.gather(*running)] == [202] * 4
         assert (await client.get(rig.path("status"), headers=rig.key())).status_code == 200
+
+
+def test_status_shows_a_fresh_starter_vault_as_current(rig: Rig) -> None:
+    assert rig.bootstrap is not None
+    workspace, _created, _files = rig.bootstrap.create(
+        ident(), "Starter Vault", None, None, "en", True, template="viki"
+    )
+    entry = workspace_entry(rig.send("GET", "status"), workspace.workspace_id)
+    assert entry["starter"] == {
+        "state": "current",
+        "from_version": starter.STARTER_VERSION,
+        "to_version": starter.STARTER_VERSION,
+        "notify": False,
+        "counts": {},
+    }
+
+
+def test_status_shows_a_vault_with_no_manifest_as_no_starter(rig: Rig) -> None:
+    entry = workspace_entry(rig.send("GET", "status"), rig.workspace_id)
+    assert entry["starter"] is None
+
+
+def test_status_without_a_bootstrap_shows_no_starter(tmp_path: Path) -> None:
+    rig = Rig(tmp_path, bootstrap=False)
+    with rig.client:
+        assert rig.bootstrap is None
+        entry = workspace_entry(rig.send("GET", "status"), rig.workspace_id)
+        assert entry["starter"] is None
+
+
+def test_a_starter_plan_s_files_diffs_text_and_proposal_never_reach_status(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert rig.bootstrap is not None
+    fake_plan = {
+        "state": "available",
+        "from_version": 1,
+        "to_version": starter.STARTER_VERSION,
+        "notify": True,
+        "items": [
+            {"path": "AGENTS.md", "action": "merge", "diff": SENTINEL, "text": None},
+            {"path": "Welcome.md", "action": "manual", "diff": None, "text": SENTINEL},
+            {"path": "_templates/area.md", "action": "add", "diff": None, "text": SENTINEL},
+        ],
+        "agents": {"proposal": SENTINEL, "sha256": "f" * 64},
+    }
+    monkeypatch.setattr(rig.bootstrap, "starter_plan", lambda _workspace_id: fake_plan)
+    response = rig.send("GET", "status")
+    assert response.status_code == 200
+    assert SENTINEL not in response.text
+    for key in ('"items"', '"diff"', '"text"', '"agents"'):
+        assert key not in response.text
+    assert workspace_entry(response, rig.workspace_id)["starter"] == {
+        "state": "available",
+        "from_version": 1,
+        "to_version": starter.STARTER_VERSION,
+        "notify": True,
+        "counts": {"add": 1, "manual": 1, "merge": 1},
+    }
+
+
+def test_a_starter_plan_that_raises_oserror_gives_none_and_status_still_answers(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert rig.bootstrap is not None
+
+    def boom(_workspace_id: str) -> dict[str, object]:
+        raise OSError()
+
+    monkeypatch.setattr(rig.bootstrap, "starter_plan", boom)
+    response = rig.send("GET", "status")
+    assert response.status_code == 200
+    assert workspace_entry(response, rig.workspace_id)["starter"] is None

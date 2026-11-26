@@ -276,6 +276,8 @@ def workspace_routes(
                 return await run(lambda: _suggestion(request))
             if not workspace_id:
                 return await run(_listing)
+            if path.endswith("/starter"):
+                return await run(lambda: _json(bootstrap.starter_plan(workspace_id)))
             if path.endswith("/policy"):
                 return await run(lambda: _json(asdict(workspaces.inspect_policy(workspace_id))))
             return await run(
@@ -468,6 +470,7 @@ def workspace_routes(
         Route("/api/v2/vaults/create", endpoint, methods=["POST"]),
         Route("/api/v2/vaults/open", endpoint, methods=["POST"]),
         Route("/api/v2/vaults/{workspace_id}/cancel-bootstrap", endpoint, methods=["POST"]),
+        Route("/api/v2/vaults/{workspace_id}/starter", endpoint, methods=["GET"]),
         Route("/api/v2/vaults/{workspace_id}/policy", endpoint, methods=["GET", "PATCH"]),
         Route("/api/v2/folders/pick", endpoint, methods=["GET", "POST"]),
     ]

@@ -66,7 +66,8 @@ from viki_agent.messaging import bot_usage_api, bots_api
 from viki_agent.messaging.bot_usage import BotUsageError
 from viki_agent.messaging.bots import BotError, BotService
 from viki_agent.profiles.service import ProfileService
-from viki_agent.workspaces import WorkspaceService
+from viki_agent.vault_storage import VaultBootstrap
+from viki_agent.workspaces import WorkspaceError, WorkspaceService
 
 MAX_BODY = 128 << 10
 BODY_TIMEOUT_S = 5.0
@@ -105,6 +106,7 @@ COVERS: dict[tuple[str, str], frozenset[tuple[str, str]]] = {
             ("GET", "/api/v2/profiles"),
             ("GET", "/api/v2/workspaces"),
             ("GET", "/api/v2/bots"),
+            ("GET", "/api/v2/vaults/{workspace_id}/starter"),
         }
     ),
     ("GET", "settings"): frozenset({("GET", "/api/v2/settings")}),
@@ -255,6 +257,26 @@ def _settings_view(effective: EffectiveSettings) -> dict[str, object]:
     return view
 
 
+def _starter_view(plan: dict[str, object]) -> dict[str, object] | None:
+    """`bootstrap.starter_plan`'s plan, with every file name, diff, text and proposal left out:
+    the vault's starter state and versions, whether an update is available, and how many of its
+    `items` each action covers. `None` once the plan itself has nothing to report."""
+    if plan["state"] == "none":
+        return None
+    items = plan["items"]
+    counts: dict[str, int] = {}
+    if isinstance(items, list):
+        for item in items:
+            counts[item["action"]] = counts.get(item["action"], 0) + 1
+    return {
+        "state": plan["state"],
+        "from_version": plan["from_version"],
+        "to_version": plan["to_version"],
+        "notify": plan["notify"],
+        "counts": dict(sorted(counts.items())),
+    }
+
+
 def agent_routes(
     grants: AgentGrants,
     changes: AgentChanges,
@@ -270,14 +292,26 @@ def agent_routes(
     app_version: str,
     workers: set[asyncio.Task[Any]],
     usage: bot_usage_api.UsageViews | None = None,
+    bootstrap: VaultBootstrap | None = None,
 ) -> list[Route]:
-    """The agent surface's one route; `bots` and `usage` are None when the app has no Bots."""
+    """The agent surface's one route; `bots` and `usage` are None when the app has no Bots, and
+    `status` reports no vault's starter state when `bootstrap` is None."""
     capacity = anyio.CapacityLimiter(MAX_IN_FLIGHT)
 
     def status(grant: AgentGrant) -> dict[str, Any]:
         active = workspaces.resolve_active().workspace.workspace_id
         mine = changes.for_session(grant.session_id)
         runs = runner.store.summaries()
+
+        def starter(workspace_id: str) -> dict[str, object] | None:
+            if bootstrap is None:
+                return None
+            try:
+                plan = bootstrap.starter_plan(workspace_id)
+            except WorkspaceError, OSError:
+                return None
+            return _starter_view(plan)
+
         return {
             "chat": {"session_id": grant.session_id},
             "app": {"version": app_version},
@@ -288,6 +322,7 @@ def agent_routes(
                     "name": workspace.name,
                     "policy": workspace.policy,
                     "active": workspace.workspace_id == active,
+                    "starter": starter(workspace.workspace_id),
                 }
                 for workspace in workspaces.list()
             ],

@@ -381,6 +381,24 @@ export interface ResetResult {
   results: Readonly<Record<string, ResetOutcome>>;
 }
 
+export type StarterAction = "add" | "replace" | "merge" | "manual" | "editor" | "remove" | "skip";
+
+export interface StarterItem {
+  path: string;
+  action: StarterAction;
+  diff: string | null;
+  text: string | null;
+}
+
+export interface StarterPlan {
+  state: "none" | "current" | "available" | "newer";
+  from_version: number | null;
+  to_version: number;
+  notify: boolean;
+  items: StarterItem[];
+  agents: { proposal: string; sha256: string } | null;
+}
+
 export interface ShellApi {
   capabilities(): Promise<Capabilities>;
   /** Opaque by design: the document is a redacted tree the Diagnostics page renders as text. */
@@ -422,6 +440,7 @@ export interface ShellApi {
     keys: string[],
   ): Promise<SettingsPatchResult>;
   reset(commandId: string, categories: ResetCategory[]): Promise<ResetResult>;
+  starterPlan?(workspaceId: string): Promise<StarterPlan>;
 }
 
 export interface ShellApiOptions {
@@ -535,6 +554,13 @@ function array(value: unknown): unknown[] {
   return value;
 }
 
+/** Refuses a response object that carries an unexpected or missing member. */
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return (
+    Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key))
+  );
+}
+
 const CLI_STATES = ["ready", "missing", "unusable", "config_dir_override"] as const;
 const LOGIN_STATES = ["unknown", "signed_in", "signed_out"] as const;
 const BILLING_STATES = ["clear", "blocked", "unknown"] as const;
@@ -572,6 +598,27 @@ const APP_DATA_KINDS = [
   "scratch",
   "legacy_state",
 ] as const;
+const STARTER_STATES = ["none", "current", "available", "newer"] as const;
+const STARTER_ACTIONS: readonly StarterAction[] = [
+  "add",
+  "replace",
+  "merge",
+  "manual",
+  "editor",
+  "remove",
+  "skip",
+];
+const STARTER_ITEM_KEYS = ["path", "action", "diff", "text"] as const;
+const STARTER_PLAN_KEYS = [
+  "state",
+  "from_version",
+  "to_version",
+  "notify",
+  "items",
+  "agents",
+] as const;
+const STARTER_AGENTS_KEYS = ["proposal", "sha256"] as const;
+const STARTER_SHA = /^[0-9a-f]{64}$/;
 
 function parseProvider(value: unknown): void {
   const row = object(value);
@@ -916,6 +963,45 @@ function parseResetResult(value: unknown): ResetResult {
   }
   if (!text(row.scope_of)) invalidResponse();
   return row as unknown as ResetResult;
+}
+
+function parseStarterItem(value: unknown): void {
+  const row = object(value);
+  if (
+    !exactKeys(row, STARTER_ITEM_KEYS) ||
+    !boundedText(row.path, 1, 512) ||
+    !oneOf(row.action, STARTER_ACTIONS) ||
+    !nullableText(row.diff) ||
+    !nullableText(row.text)
+  )
+    invalidResponse();
+}
+
+function parseStarterAgents(value: unknown): void {
+  if (value === null) return;
+  const row = object(value);
+  if (
+    !exactKeys(row, STARTER_AGENTS_KEYS) ||
+    !text(row.proposal) ||
+    !text(row.sha256) ||
+    !STARTER_SHA.test(row.sha256)
+  )
+    invalidResponse();
+}
+
+function parseStarterPlan(value: unknown): StarterPlan {
+  const row = object(value);
+  if (!exactKeys(row, STARTER_PLAN_KEYS)) invalidResponse();
+  array(row.items).forEach(parseStarterItem);
+  parseStarterAgents(row.agents);
+  if (
+    !oneOf(row.state, STARTER_STATES) ||
+    !(row.from_version === null || count(row.from_version)) ||
+    !count(row.to_version) ||
+    !flag(row.notify)
+  )
+    invalidResponse();
+  return row as unknown as StarterPlan;
 }
 
 /** Members the typed fields above already carry; everything else becomes `extra`. */
@@ -1304,6 +1390,15 @@ export function createShellApi(token: string, options: ShellApiOptions = {}): Sh
       });
       const { body } = await call("/api/v2/data/reset", "POST", DEFAULT_TIMEOUT_MS, payload);
       return parseResetResult(body);
+    },
+    async starterPlan(workspaceId) {
+      if (!uuid(workspaceId)) invalidInput();
+      const { body } = await call(
+        `/api/v2/vaults/${workspaceId}/starter`,
+        "GET",
+        DEFAULT_TIMEOUT_MS,
+      );
+      return parseStarterPlan(body);
     },
   };
 }
