@@ -19,9 +19,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import stat
 import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -31,6 +32,7 @@ from anyio.to_thread import run_sync
 
 from viki_agent.automation.routines import stamp
 from viki_agent.decision_loop.improve import match_tokens
+from viki_agent.domain import CanonicalRoot
 from viki_agent.messaging.bot_episodes import EpisodeRecorder, EpisodeStore, SessionInfo
 from viki_agent.messaging.bot_fence import FenceRoots, WriteFence
 from viki_agent.messaging.bot_proposals import (
@@ -47,12 +49,13 @@ from viki_agent.vaults import lesson_body, memory_record
 from viki_agent.vaults.memory import MemoryItem, MemoryService, MemoryServiceError
 from viki_agent.vaults.memory_record import NoteSource, SessionSource, Source
 from viki_agent.vaults.skill_proposals import SkillProposalError, SkillProposalService
-from viki_agent.vaults.vault import BOT_MEMORY_FOLDER, VaultError, VaultService
-from viki_agent.workspaces import WorkspaceError, WorkspaceService
+from viki_agent.vaults.vault import BOT_MEMORY_FOLDER, VaultError, VaultService, _is_reparse
+from viki_agent.workspaces import WorkspaceError, WorkspaceService, canonical_root
 
 log = logging.getLogger(__name__)
 
 MAX_IMPORT_FILES = 40
+MAX_IMPORT_READS = 400  # earlier memory files one import call reads looking for new proposals
 # A lesson used this often and found helpful more often than harmful is offered as a skill.
 SKILL_USES = 10
 MAX_SKILL_SESSIONS = 10
@@ -209,19 +212,20 @@ class BotLearning:
                     "last_used_at": stat.last_used_at if stat else None,
                 }
             )
+        proposed = self.proposals.listing(bot_id)
         return {
             "bot_id": bot_id,
             "workspace_id": workspace_id,
             "records_readable": records_readable,
             "runs": [run.__dict__ for run in self.proposals.runs(bot_id)],
-            "proposals": [summary(stored) for stored in self.proposals.listing(bot_id)],
+            "proposals": [summary(stored) for stored in proposed],
             "records": lessons,
             "tainted_sessions": self.episodes.tainted_sessions(bot_id),
             "episodes": {
                 "unreflected": self.episodes.count(bot_id, after=None, reflected=False),
                 "last_finished_at": self.episodes.last_finished(bot_id),
             },
-            "legacy_files": self._legacy_count(workspace_id, bot_id),
+            "legacy_files": self._legacy_count(workspace_id, bot_id, proposed),
         }
 
     # --- decisions
@@ -398,29 +402,47 @@ class BotLearning:
     # --- earlier auto memory
 
     def _legacy_refs(self, workspace_id: str, bot_id: str) -> list[str]:
-        prefix = f"{BOT_MEMORY_FOLDER}/{bot_id}/".casefold()
+        """This Bot's earlier memory file refs, sorted, within its own `bot-memory/<bot_id>/`
+        folder - never a whole-vault scan, which could stop (`VaultService.MAX_ENTRIES`,
+        `MAX_VISITED_ITEMS`) before reaching it in a large vault."""
+        area = _LegacyArea(self.workspaces, bot_id)
         try:
-            scan = self.vault.scan(workspace_id)
+            scan = area.scan(workspace_id)
         except VaultError:
             return []
-        return [
+        prefix = f"{BOT_MEMORY_FOLDER}/{bot_id}/"
+        names = sorted(
             entry.ref
             for entry in scan.entries
-            if entry.ref.casefold().startswith(prefix)
-            and entry.ref.casefold().endswith(".md")
+            if entry.ref.casefold().endswith(".md")
             and PurePosixPath(entry.ref).name.casefold() != "memory.md"
-        ][:MAX_IMPORT_FILES]
+        )
+        return [f"{prefix}{name}" for name in names]
 
-    def _legacy_count(self, workspace_id: str, bot_id: str) -> int:
+    def _legacy_count(self, workspace_id: str, bot_id: str, proposed: Sequence[Stored]) -> int:
+        """How many of this Bot's earlier memory files are not already behind a proposal, open
+        or decided (`proposed`: the same bounded listing `overview` already reads, so this adds
+        no query of its own). What the "Import earlier memory" button promises. A file an import
+        would skip as a duplicate of a kept record never becomes a proposal, so it can still
+        count here though a click would not offer it."""
         try:
             self.admission(workspace_id)
         except LearningError:
             return 0
-        return len(self._legacy_refs(workspace_id, bot_id))
+        noted = {
+            note.get("note")
+            for stored in proposed
+            for note in stored.body.get("notes", [])
+            if isinstance(note, dict)
+        }
+        return sum(1 for ref in self._legacy_refs(workspace_id, bot_id) if ref not in noted)
 
     def import_legacy(self, bot_id: str, trigger: str = "user") -> Run:
-        """Blocks. One `fact_add` proposal per earlier memory file of this Bot (its body, without
-        frontmatter), skipping one that repeats a record kept or a file already proposed."""
+        """Blocks. Up to MAX_IMPORT_FILES new `fact_add` proposals, one per earlier memory file
+        of this Bot (its body, without frontmatter), reading at most MAX_IMPORT_READS of them in
+        sorted order so a Bot with many earlier files is imported over several calls. Skips a
+        file whose claim repeats one already kept (and not retired), already open, or already
+        rejected."""
         bot = self.bot(bot_id)
         workspace_id = bot["workspace_id"]
         self.admission(workspace_id)
@@ -432,8 +454,18 @@ class BotLearning:
         except MemoryServiceError as error:
             raise LearningError(error.code) from None
         seen = [match_tokens(item.claim) for item in items if item.state != "retired"]
+        for stored in self.proposals.listing(bot_id):
+            if stored.state not in ("open", "rejected"):
+                continue
+            claim = stored.body.get("claim", "")
+            if claim:
+                seen.append(match_tokens(claim))
         proposals: list[Proposal] = []
+        read = 0
         for ref in refs:
+            if read >= MAX_IMPORT_READS or len(proposals) >= MAX_IMPORT_FILES:
+                break
+            read += 1
             try:
                 note = self.vault.read(workspace_id, ref)
             except VaultError:
@@ -455,16 +487,46 @@ class BotLearning:
                 )
             )
         run = self.proposals.start_run(workspace_id, bot_id, "import", "user", None, self._stamp())
-        stored = self.proposals.add(run, proposals, self._stamp())
+        stored_count = self.proposals.add(run, proposals, self._stamp())
         self.proposals.finish_run(
             run.run_id,
-            reason="" if stored else "nothing_new",
+            reason="" if stored_count else "nothing_new",
             episodes=0,
-            proposed=stored,
-            rejected=len(refs) - stored,
+            proposed=stored_count,
+            rejected=read - stored_count,
             now=self._stamp(),
         )
         return run
+
+
+class _LegacyArea(VaultService):
+    """`VaultService` rooted at one Bot's earlier memory folder inside the vault
+    (`bot-memory/<bot_id>/`), so listing it touches only that folder - never the whole vault.
+    The chain down to the vault root is the normal registered one (`VaultService._root`); these
+    last two levels get the reparse-point and directory checks `BotMemoryArea` applies to its
+    own (app-data) folder, then `canonical_root` re-derives the physical identity the scan's
+    budgets and checks (`VaultService.scan`) run against, exactly as for any other root."""
+
+    def __init__(self, workspaces: WorkspaceService, bot_id: str) -> None:
+        super().__init__(workspaces)
+        self._bot_id = bot_id
+
+    def _root(self, workspace_id: str) -> CanonicalRoot:
+        root = super()._root(workspace_id)
+        area = Path(root.display, BOT_MEMORY_FOLDER, self._bot_id)
+        for level in (area.parent, area):
+            try:
+                info = level.lstat()
+            except FileNotFoundError:
+                raise VaultError("missing_folder") from None
+            except OSError as exc:
+                raise VaultError("root_unavailable") from exc
+            if _is_reparse(info) or not stat.S_ISDIR(info.st_mode):
+                raise VaultError("unsafe_path")
+        try:
+            return canonical_root(str(area), deny=())
+        except WorkspaceError as exc:
+            raise VaultError("root_unavailable") from exc
 
 
 def skill_text(memory_id: str, lesson: lesson_body.Lesson, bot_name: str) -> str:

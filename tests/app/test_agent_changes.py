@@ -401,3 +401,18 @@ def test_the_journal_keeps_the_last_64_entries() -> None:
     changes.record(GRANT, SESSION, "routines.add", "routine-63")
     forgotten = decide(client, change_id)
     assert forgotten.status_code == 404 and code(forgotten) == "not_found"
+
+
+def test_made_answers_per_session_past_the_journal_s_cap_and_never_for_a_hold() -> None:
+    changes = AgentChanges(lambda grant_id: True)
+    changes.record(GRANT, SESSION, "routines.add", "routine-a")
+    held(changes, Apply())
+    # A resumed chat: a new grant for the same session still made it.
+    assert changes.made(SESSION, "routines.add", "routine-a")
+    assert not changes.made("session-2", "routines.add", "routine-a")
+    assert not changes.made(SESSION, "routines.test", "routine-a")
+    assert not changes.made(SESSION, "settings.set", "chat.default_mode")  # held, not applied
+    for n in range(agent_changes.JOURNAL_SIZE):
+        changes.record("grant-2", "session-2", "routines.add", f"routine-{n}")
+    assert "routine-a" not in [entry["target"] for entry in changes.for_session(SESSION)["recent"]]
+    assert changes.made(SESSION, "routines.add", "routine-a")

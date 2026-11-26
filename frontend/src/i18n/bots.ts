@@ -291,6 +291,8 @@ export const catalog = defineCatalog({
     "bots.learning.recent": "Recently decided",
     "bots.learning.records": "What {name} knows",
     "bots.learning.noRecords": "{name} keeps no approved records yet.",
+    "bots.learning.recordsUnreadable":
+      "VIKI Agent couldn't read {name}'s approved records. Check that the vault is reachable, then open this page again.",
     "bots.learning.uses": "Used {uses} times · helpful {helpful} · harmful {harmful}",
     "bots.learning.runs": "Recent runs",
     "bots.learning.tainted": "Sessions that read web or MCP content",

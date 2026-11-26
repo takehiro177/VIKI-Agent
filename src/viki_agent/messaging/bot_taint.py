@@ -1,7 +1,9 @@
 """Which tool calls taint a Bot session: text from outside the vault and its owner.
 
 A Bot session is tainted once it runs WebFetch or WebSearch (`web`) or any MCP tool (`mcp`):
-their results are text nobody here wrote, and it can carry instructions. Taint is kept per
+their results are text nobody here wrote, and it can carry instructions. "Any MCP tool" includes
+Claude Code's built-in `ListMcpResourcesTool` and `ReadMcpResourceTool`, which return MCP server
+text too but, unlike a server's own tools, carry no `mcp__` prefix. Taint is kept per
 session (`bot_session_taint`), reaches every member of the Bot thread a session takes part in,
 and only the owner clears it. A tainted session's turns stay out of what reflect and dream runs
 learn from (`bot_learning`), and the write fence (`bot_fence`) refuses its writes to instruction,
@@ -13,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 WEB_TOOLS = frozenset({"WebFetch", "WebSearch"})
+MCP_RESOURCE_TOOLS = frozenset({"ListMcpResourcesTool", "ReadMcpResourceTool"})
 SOURCES = ("web", "mcp")
 
 
@@ -22,7 +25,7 @@ def taint_source(tool: object) -> str | None:
         return None
     if tool in WEB_TOOLS:
         return "web"
-    if tool.startswith("mcp__"):
+    if tool.startswith("mcp__") or tool in MCP_RESOURCE_TOOLS:
         return "mcp"
     return None
 

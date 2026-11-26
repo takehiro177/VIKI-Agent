@@ -837,11 +837,13 @@ conversations it was learned from.
 
 ### Web and MCP content
 
-A chat that ran `WebFetch`, `WebSearch` or an MCP tool has read content from outside your
-computer. VIKI Agent marks such a chat, and the other chats of a Bot thread it takes part in,
-and keeps the mark after the turn ends. A marked chat's turns are never evidence for a proposal,
-and its write fence refuses more (see below). The Learning card lists marked chats under
-**Sessions that read web or MCP content**; **Clear** removes the mark from one you have checked.
+A chat that ran `WebFetch`, `WebSearch`, an MCP tool, or Claude Code's built-in
+`ListMcpResourcesTool` or `ReadMcpResourceTool` (which also read MCP server text, without the
+`mcp__` prefix) has read content from outside your computer. VIKI Agent marks such a chat, and
+the other chats of a Bot thread it takes part in, and keeps the mark after the turn ends. A
+marked chat's turns are never evidence for a proposal, and its write fence refuses more (see
+below). The Learning card lists marked chats under **Sessions that read web or MCP content**;
+**Clear** removes the mark from one you have checked.
 
 ### The write fence
 
@@ -850,9 +852,12 @@ Code asks VIKI Agent, through a `PreToolUse` hook, before its `Write`, `Edit`, `
 `NotebookEdit` tools run. The fence refuses a write into `memory/`, `bot-memory/` or the data
 folder's Bot memory area, and, in a marked chat, also into `system/memory/`, any `.claude`
 folder, or a file named `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `AGENTS.override.md` or
-`GEMINI.md`. Any other write goes on to Claude Code's usual permission check; the fence never
-allows anything by itself, and if it fails it refuses. It checks only those tools: a shell command still
-goes to its own permission card, so read what a Bash command writes before you allow it.
+`GEMINI.md`. On Windows, it also refuses, in every chat, a target whose raw or resolved file name
+carries a spelling NTFS would otherwise rewrite on creation: a stream name such as
+`CLAUDE.local.md::$DATA`, or a trailing dot or space such as `CLAUDE.md.`. Any other write goes
+on to Claude Code's usual permission check; the fence never allows anything by itself, and if it
+fails it refuses. It checks only those tools: a shell command still goes to its own permission
+card, so read what a Bash command writes before you allow it.
 
 ## Create and run routines
 

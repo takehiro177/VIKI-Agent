@@ -39,11 +39,25 @@
   width: auto;
 }
 
-/* R8: a routine_enable card's prompt, scrollable and wrapped rather than widening the banner. */
-.agent-changes-detail pre {
+/* Below an AgentChanges sentence: a routine's schedule, profile and workspace, then each value the
+   chat wrote, whole, in a box that scrolls past 160px so the card keeps a sensible height, wrapped
+   anywhere (a JSON value has no spaces to break at) rather than widening the banner. */
+.agent-changes-detail {
+  padding: 0 28px 9px;
+  font-size: 13px;
+  color: var(--t2);
+}
+
+.agent-changes-detail p {
+  margin: 6px 0 2px;
+}
+
+.agent-changes-value {
   max-height: 160px;
+  margin: 0;
   overflow: auto;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .chat-only-banner [aria-disabled="true"],
@@ -64,5 +78,9 @@
   .readiness-banner button {
     margin-left: 0;
     width: 100%;
+  }
+
+  .agent-changes-detail {
+    padding: 0 16px 9px;
   }
 }

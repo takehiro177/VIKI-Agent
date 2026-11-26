@@ -1,6 +1,6 @@
 [project]
 name = "viki-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local chat UI for VIKI that drives the unmodified Claude Code CLI on the owner's subscription."
 readme = "README.md"
 license = "AGPL-3.0-or-later"

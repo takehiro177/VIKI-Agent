@@ -40,7 +40,6 @@ const ROUTINE_FULL = {
     profile: { profile_id: "p1", name: "Research assistant" },
     workspace: { workspace_id: "w1", name: "Garden vault" },
     prompt: "Summarize the week.",
-    prompt_truncated: false,
   },
   expires_in_s: 600,
 };
@@ -75,26 +74,15 @@ test("a reset carries no `to`, only reset: true, and still parses", async () => 
   expect(result.changes).toEqual([reset]);
 });
 
-test("a setting's from_truncated and to_truncated parse through", async () => {
-  const truncated = {
+test("a setting's summary keeps only its key, both values and reset", async () => {
+  const extra = {
     ...SETTING,
     change_id: "c8",
-    summary: { ...SETTING.summary, from_truncated: true, to_truncated: false },
+    summary: { ...SETTING.summary, from_truncated: true, to_offset: 12 },
   };
-  const fetchImpl = reply({ seq: 1, changes: [truncated] });
+  const fetchImpl = reply({ seq: 1, changes: [extra] });
   const result = await createAgentChangesApi("tok", fetchImpl).list();
-  expect(result.changes).toEqual([truncated]);
-});
-
-test("a setting's from_offset parses through; a non-positive to_offset is dropped", async () => {
-  const offset = {
-    ...SETTING,
-    change_id: "c11",
-    summary: { ...SETTING.summary, from_offset: 12, to_offset: 0 },
-  };
-  const fetchImpl = reply({ seq: 1, changes: [offset] });
-  const result = await createAgentChangesApi("tok", fetchImpl).list();
-  expect(result.changes).toEqual([{ ...offset, summary: { ...SETTING.summary, from_offset: 12 } }]);
+  expect(result.changes).toEqual([{ ...extra, summary: SETTING.summary }]);
 });
 
 test("a routine_enable's schedule, profile, workspace and prompt parse through", async () => {
@@ -142,26 +130,31 @@ test("a 404 with no JSON body (the surface itself is gone) defaults to not_found
   expect(await codeOf(createAgentChangesApi("tok", gone).list())).toBe("not_found");
 });
 
-test("an answer over 1 MiB is unavailable", async () => {
+test("an answer over 4 MiB is unavailable", async () => {
   const big = vi.fn(
     async () =>
-      new Response(`${JSON.stringify({ seq: 1, changes: [] })}${" ".repeat(1024 * 1024 + 1024)}`, {
-        status: 200,
-      }),
+      new Response(
+        `${JSON.stringify({ seq: 1, changes: [] })}${" ".repeat(4 * 1024 * 1024 + 1024)}`,
+        { status: 200 },
+      ),
   ) as typeof fetch;
   expect(await codeOf(createAgentChangesApi("tok", big).list())).toBe("unavailable");
 });
 
-test("an answer past the old 64 KiB bound now succeeds, under the raised 1 MiB one", async () => {
-  // 16 held changes can each carry a 2,000-character prompt, non-Latin text included; this pads
-  // well past the old bound and well under the new one.
-  const padded = vi.fn(
-    async () =>
-      new Response(`${JSON.stringify({ seq: 1, changes: [] })}${" ".repeat(512 * 1024)}`, {
-        status: 200,
-      }),
-  ) as typeof fetch;
-  expect(await createAgentChangesApi("tok", padded).list()).toEqual({ seq: 1, changes: [] });
+test("16 whole prompts at their worst-case escaped size fit under the 4 MiB bound", async () => {
+  // A 32,768-byte prompt of control characters escapes to 6 bytes each: about 192 KiB a change.
+  const prompt = "\u0001".repeat(32768);
+  const changes = Array.from({ length: 16 }, (_, n) => ({
+    ...ROUTINE_FULL,
+    change_id: `c${n}`,
+    summary: { ...ROUTINE_FULL.summary, prompt },
+  }));
+  const body = JSON.stringify({ seq: 1, changes });
+  expect(body.length).toBeGreaterThan(3 * 1024 * 1024);
+  const result = await createAgentChangesApi("tok", reply({ seq: 1, changes })).list();
+  expect(result.changes.map((change: AgentChange) => change.summary)).toEqual(
+    changes.map((change) => change.summary),
+  );
 });
 
 test("the request aborts at the 15 s timeout, not before", async () => {

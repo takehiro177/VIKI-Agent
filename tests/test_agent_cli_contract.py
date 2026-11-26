@@ -178,11 +178,48 @@ def test_bots_create_when_bots_exist(tmp_path: Path) -> None:
     assert (bot["profile_id"], bot["workspace_id"]) == (profile_id, agent.workspace_id)
 
 
+def _added(agent: AgentApp, session_id: str, profile_id: str) -> tuple[int, dict[str, Any]]:
+    """`routines add` of a manual draft under `profile_id`, from the chat `session_id`."""
+    code, out = _run(
+        agent,
+        session_id,
+        [
+            "routines",
+            "add",
+            "--name",
+            "On demand",
+            "--prompt",
+            "Summarize the day",
+            "--profile",
+            profile_id,
+            "--workspace",
+            agent.workspace_id,
+        ],
+    )
+    return code, json.loads(out)
+
+
 def test_routines_test_of_a_draft_exits_0_not_3(tmp_path: Path) -> None:
     """Fix round R2's rule: a 202 reply exits 3 only when its body holds `pending`; `routines
     test` answers 202 with a `run` body, so it exits 0. Run last (per the work file's
     Amendments, 17:58), after the other commands have proven the boundary agrees elsewhere; if
-    this still exits 3, the bug is in agent_cli.py's `_respond`, not here or in agent_api.py."""
+    this still exits 3, the bug is in agent_cli.py's `_respond`, not here or in agent_api.py.
+    `_run` issues a fresh key per command, so the chat that tests here is the one that added the
+    routine, resumed."""
+    agent = _agent_app(tmp_path)
+    with agent.client:
+        profile_id = _profiled(agent)
+        session_id = _ident()
+        code, added = _added(agent, session_id, profile_id)
+        assert code == 0
+        code, out = _run(agent, session_id, ["routines", "test", added["routine"]["routine_id"]])
+    assert code == 0, f"routines test exited {code}, expected 0 (body: {out})"
+    assert "run" in json.loads(out)
+
+
+def test_routines_test_of_a_routine_this_chat_did_not_add_exits_1_with_its_fix(
+    tmp_path: Path,
+) -> None:
     agent = _agent_app(tmp_path)
     with agent.client:
         profile_id = _profiled(agent)
@@ -193,8 +230,45 @@ def test_routines_test_of_a_draft_exits_0_not_3(tmp_path: Path) -> None:
             _ident(), _document_raw(profile_id=profile_id, workspace_id=agent.workspace_id)
         )[0]["routine_id"]
         code, out = _run(agent, _ident(), ["routines", "test", routine_id])
-    assert code == 0, f"routines test exited {code}, expected 0 (body: {out})"
-    assert "run" in json.loads(out)
+    assert code == agent_cli.EXIT_REFUSED
+    assert json.loads(out)["error"] == {
+        "code": "not_added_here",
+        "message": "A chat can test only a routine it added itself.",
+        "fix": "Only a routine this chat added can be tested from a chat. "
+        "Ask the owner to run it from Routines.",
+    }
+
+
+def test_routines_add_for_a_bot_s_profile_exits_1_with_its_fix(tmp_path: Path) -> None:
+    agent = _agent_app(tmp_path)
+    with agent.client:
+        profile_id = _profiled(agent)
+        code, _out = _run(agent, _ident(), ["bots", "create", "--profile", profile_id])
+        assert code == 0
+        code, body = _added(agent, _ident(), profile_id)
+    assert code == agent_cli.EXIT_REFUSED
+    assert body["error"] == {
+        "code": "profile_not_allowed",
+        "message": "A chat can't add or test a routine for a profile with MCP servers or a Bot.",
+        "fix": "A chat can add routines only for a profile without MCP servers or a Bot. "
+        "Ask the owner to add it in Routines.",
+    }
+
+
+def test_bots_create_for_a_profile_that_runs_routines_exits_1_with_its_fix(
+    tmp_path: Path,
+) -> None:
+    agent = _agent_app(tmp_path)
+    with agent.client:
+        profile_id = _profiled(agent)
+        assert _added(agent, _ident(), profile_id)[0] == 0
+        code, out = _run(agent, _ident(), ["bots", "create", "--profile", profile_id])
+    assert code == agent_cli.EXIT_REFUSED
+    assert json.loads(out)["error"] == {
+        "code": "profile_has_routines",
+        "message": "A chat can't create a Bot for a profile that runs routines.",
+        "fix": "That profile already runs routines. Ask the owner to create this Bot in Agents.",
+    }
 
 
 # --- P18: bots usage / trace against the window's own bot-usage routes ------------------------

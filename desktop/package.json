@@ -1,7 +1,7 @@
 {
   "name": "viki-agent-desktop",
   "productName": "VIKI Agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A local chat for your notes vault that runs your own Claude Code.",
   "author": "VIKI Agent",

@@ -11,9 +11,14 @@ initialize request, so they hold in every permission mode a Bot runs in:
   (`system/memory/`), anything under a `.claude` folder and an instruction file (`CLAUDE.md`,
   `CLAUDE.local.md`, `AGENTS.md`, `AGENTS.override.md`, `GEMINI.md`) at any depth.
 
-A path is compared after resolving links and with letter case folded, so a spelling cannot step
-around a rule. A hook that fails refuses the write rather than let it through. The hooks see only
-the file tools: a Bash command that writes a file is not stopped here.
+A path is compared after resolving links and with letter case folded. On Windows, that
+comparison alone is not enough: for a file that does not yet exist, `realpath` keeps a literal
+spelling NTFS would rewrite on creation (an alternate-data-stream name such as
+`CLAUDE.local.md::$DATA`, or a trailing dot or space such as `CLAUDE.md.`), which can land on a
+rule's exact name without ever spelling it. So, on Windows, any target whose raw or resolved path
+has such a component is refused outright, rule or not. A hook that fails refuses the write rather
+than let it through. The hooks see only the file tools: a Bash command that writes a file is not
+stopped here.
 """
 
 from __future__ import annotations
@@ -22,7 +27,7 @@ import logging
 import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, cast
 
 from anyio.to_thread import run_sync
@@ -35,7 +40,7 @@ log = logging.getLogger(__name__)
 
 WRITE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
 WRITE_MATCHER = "Write|Edit|MultiEdit|NotebookEdit"
-TAINT_MATCHER = "WebFetch|WebSearch|mcp__.*"
+TAINT_MATCHER = "WebFetch|WebSearch|mcp__.*|ListMcpResourcesTool|ReadMcpResourceTool"
 INSTRUCTION_NAMES = frozenset(
     {"claude.md", "claude.local.md", "agents.md", "agents.override.md", "gemini.md"}
 )
@@ -51,6 +56,10 @@ MSG_RECORDS = (
 MSG_TAINTED = (
     "This session read web or MCP content, so it can't change instruction, skill or memory "
     "files. Ask the owner to make this change."
+)
+MSG_SPELLING = (
+    "VIKI Agent refuses this file name spelling: a stream name, or a trailing dot or space. Use "
+    "the plain file name."
 )
 MSG_FAILED = "VIKI Agent couldn't check this write, so it was refused. Try again."
 
@@ -79,6 +88,18 @@ def _within(path: str, root: Path) -> bool:
     return path == base or path.startswith(base + os.sep.casefold()) or path.startswith(base + "/")
 
 
+def _windows_spelling_problem(raw: str) -> bool:
+    """Whether `raw`, read as a Windows path, has a component NTFS would rewrite on creation: a
+    stream name (a colon past the drive or UNC/``\\\\?\\`` anchor) or a trailing dot or space.
+    `.` and `..` themselves are not flagged. A pure function over `PureWindowsPath`, so it can be
+    tested on every platform; `fence_reason` calls it only when `os.name == "nt"`."""
+    pure = PureWindowsPath(raw)
+    parts = pure.parts[1:] if pure.anchor else pure.parts
+    return any(
+        part not in (".", "..") and (":" in part or part.endswith((".", " "))) for part in parts
+    )
+
+
 def fence_reason(
     tool: object, tool_input: Mapping[str, Any], roots: FenceRoots, *, tainted: bool
 ) -> str | None:
@@ -90,6 +111,8 @@ def fence_reason(
         return None
     path = Path(raw)
     resolved = _key(path if path.is_absolute() else roots.cwd / path)
+    if os.name == "nt" and (_windows_spelling_problem(raw) or _windows_spelling_problem(resolved)):
+        return MSG_SPELLING
     if _within(resolved, roots.vault / "bot-memory") or _within(resolved, roots.app_memory):
         return MSG_BOT_MEMORY
     if _within(resolved, roots.vault / "memory"):
@@ -148,13 +171,14 @@ class WriteFence:
         self, input_data: HookInput, tool_use_id: str | None, context: HookContext
     ) -> HookJSONOutput:
         source = taint_source(cast(Mapping[str, Any], input_data).get("tool_name"))
-        if source is not None:
-            # Held here first, so a write later in this process is fenced even if storing fails.
-            self._seen.add(source)
-            try:
-                await run_sync(self._mark, source)
-            except Exception as error:
-                log.warning("Bot taint was not stored: %s", type(error).__name__)
+        if source is None or source in self._seen:
+            return {}
+        # Held here first, so a write later in this process is fenced even if storing fails.
+        self._seen.add(source)
+        try:
+            await run_sync(self._mark, source)
+        except Exception as error:
+            log.warning("Bot taint was not stored: %s", type(error).__name__)
         return {}
 
     async def fence(

@@ -15,8 +15,18 @@ outside `CHANGE_SETTINGS` or enabling a routine, waits for the window's Apply (`
 a held setting applies at the revision current at Apply unless its own stored value changed since
 it was held. `settings` and `status` leave out every credential key (`is_credential_key`), and a
 change to one gets 403 `secret_key`. `status` names a chat's pending holds without their
-summaries' values (`_CHAT_VIEW`); only the window's Apply list shows those. A 5xx logs its code
-only.
+summaries' values (`_CHAT_VIEW`); only the window's Apply list shows those, whole: a held
+setting's current and proposed value, a routine's whole prompt. A setting value longer than
+`REVIEW_CHARS` gets 422 `too_long_to_review` and is not held. A 5xx logs its code only.
+
+A run under a profile carries that profile's MCP servers and, with a Bot bound to it, the Bot's
+identity and recall, so the routine and Bot operations narrow what the window's own routes allow,
+each checked before anything is made (`plain_profile`): a chat adds or tests a routine only for a
+profile with no MCP servers and no Bot in any workspace, else 403 `profile_not_allowed`; it tests
+only a routine its own session added here since launch (`AgentChanges.made`, so a resumed chat
+keeps its own), else 403 `not_added_here`; and it creates a Bot only for a profile with no routine
+that is not archived, else 409 `profile_has_routines`. Adding a routine and creating a Bot take
+one lock, so two chats cannot slip a routine and a Bot onto one profile at once.
 """
 
 from __future__ import annotations
@@ -24,7 +34,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from collections.abc import Callable, Coroutine
 from typing import Any
 
@@ -56,6 +65,7 @@ from viki_agent.automation.routines import (
     RoutineService,
     _integer,
     _uuid,
+    parse_document,
 )
 from viki_agent.automation.scheduler import Scheduler
 from viki_agent.automation.tasks import TaskRunner
@@ -65,16 +75,17 @@ from viki_agent.domain import EffectiveSettings
 from viki_agent.messaging import bot_usage_api, bots_api
 from viki_agent.messaging.bot_usage import BotUsageError
 from viki_agent.messaging.bots import BotError, BotService
-from viki_agent.profiles.service import ProfileService
+from viki_agent.profiles.service import ProfileError, ProfileService
 from viki_agent.vault_storage import VaultBootstrap
 from viki_agent.workspaces import WorkspaceError, WorkspaceService
 
 MAX_BODY = 128 << 10
 BODY_TIMEOUT_S = 5.0
 MAX_IN_FLIGHT = 4
-# How much of a long string an Apply card carries: a held setting's `from` and `to`, a routine's
-# prompt. The held change itself keeps the whole value.
-SUMMARY_CHARS = 2000
+# The longest setting value an Apply card shows, in characters; a longer one is refused, never
+# held cut. No key a hold can name gets near it (the longest, `layout.panes`, takes 8,192), and a
+# routine's prompt is at most 32,768 UTF-8 bytes (`routines._prompt`), so a card shows it whole.
+REVIEW_CHARS = 64 << 10
 # A hold's kind -> the summary fields its chat sees in `status`. Never a value: a routine's prompt
 # is sealed from chats, and a setting's `from` and `to` are for the window's Apply card.
 _CHAT_VIEW = {"setting": ("key",), "routine_enable": ("routine_id", "name")}
@@ -172,6 +183,13 @@ _REFUSALS = {
     "too_large": (413, "The request is too large."),
     "overloaded": (429, "Busy; try again in a moment."),
     "secret_key": (403, "Credentials change only in the VIKI Agent window."),
+    "not_added_here": (403, "A chat can test only a routine it added itself."),
+    "profile_not_allowed": (
+        403,
+        "A chat can't add or test a routine for a profile with MCP servers or a Bot.",
+    ),
+    "profile_has_routines": (409, "A chat can't create a Bot for a profile that runs routines."),
+    "too_long_to_review": (422, "The value is too long to review on the Apply card."),
 }
 
 _Handler = Callable[[AgentGrant, str | None, dict[str, Any]], Coroutine[Any, Any, Response]]
@@ -297,6 +315,30 @@ def agent_routes(
     """The agent surface's one route; `bots` and `usage` are None when the app has no Bots, and
     `status` reports no vault's starter state when `bootstrap` is None."""
     capacity = anyio.CapacityLimiter(MAX_IN_FLIGHT)
+    # Held from the check to the write in `add_routine` and `create_bot`.
+    binding = asyncio.Lock()
+
+    def plain_profile(profile_id: str) -> bool:
+        """Whether a run under `profile_id` reaches no further than the chat itself: the profile
+        names no MCP servers (`tools.mcp_configuration`) and no Bot, in any workspace, is bound
+        to it. A profile that is not there names none."""
+        try:
+            profile = profiles.get(profile_id)
+        except ProfileError as error:
+            if error.code != "not_found":
+                raise
+        else:
+            if profile["document"]["tools"]["mcp_configuration"] is not None:
+                return False
+        return bots is None or all(bot["profile_id"] != profile_id for bot in bots.list())
+
+    def runs_routines(profile_id: object) -> bool:
+        """Whether any routine that is not archived runs under `profile_id`."""
+        return any(
+            routines.get(row["routine_id"])["document"]["profile_id"] == profile_id
+            for row in routines.list()
+            if row["state"] != "archived"
+        )
 
     def status(grant: AgentGrant) -> dict[str, Any]:
         active = workspaces.resolve_active().workspace.workspace_id
@@ -405,7 +447,7 @@ def agent_routes(
             raise RoutineError("not_ready", tuple(blockers))
         profile = profiles.get(document["profile_id"])
         workspace = workspaces.get(document["workspace_id"])
-        schedule, prompt = document["schedule"], document["prompt"]
+        schedule = document["schedule"]
         return {
             "routine_id": routine_id,
             "name": document["name"],
@@ -416,8 +458,7 @@ def agent_routes(
                 "name": profile["document"]["identity"]["name"],
             },
             "workspace": {"workspace_id": document["workspace_id"], "name": workspace.name},
-            "prompt": prompt[:SUMMARY_CHARS],
-            "prompt_truncated": len(prompt) > SUMMARY_CHARS,
+            "prompt": document["prompt"],  # whole: the chat wrote it, so the owner reads it all
         }
 
     async def get_status(grant: AgentGrant, _target: str | None, _body: dict[str, Any]) -> Response:
@@ -481,27 +522,19 @@ def agent_routes(
                 status = settings_api._STATUS.get(error.code, 503)
                 raise AgentChangeError(error.code, status, error.message) from None
 
-        # `to` as the store will keep it, so it lines up with the stored `from` character by
-        # character (a re-spaced JSON list must not move where the two first differ).
+        # Both whole: `from` the current value (a reset discards it), `to` as the store will keep
+        # it (NFC, a re-spaced JSON list normalised), so the card shows what Apply writes.
         summary = {
             "key": key,
             "from": current.effective[key],
             "to": _validate_change(key, value),
             "reset": value is None,
         }
-        texts = [text if isinstance(text, str) else "" for text in (summary["from"], summary["to"])]
-        if max(map(len, texts)) > SUMMARY_CHARS:
-            # Both shown from 100 characters before where they first differ, so a change past
-            # the cut cannot hide behind an equal start.
-            start = max(0, len(os.path.commonprefix(texts)) - 100)
-            for field in ("from", "to"):
-                shown = summary[field]
-                if isinstance(shown, str):
-                    summary[field] = shown[start : start + SUMMARY_CHARS]
-                    if start:
-                        summary[f"{field}_offset"] = start
-                    if start + SUMMARY_CHARS < len(shown):
-                        summary[f"{field}_truncated"] = True
+        if any(
+            isinstance(text, str) and len(text) > REVIEW_CHARS
+            for text in (summary["from"], summary["to"])
+        ):
+            raise _refused("too_long_to_review")
         pending = changes.hold(
             grant.id, grant.session_id, "settings.set", key, "setting", summary, apply
         )
@@ -513,9 +546,17 @@ def agent_routes(
         return json_response(await run_sync(routine_list))
 
     async def add_routine(grant: AgentGrant, _target: str | None, body: dict[str, Any]) -> Response:
-        result, created = await run_sync(
-            lambda: routines.create(body["command_id"], body["document"])
-        )
+        command_id, raw = body["command_id"], body["document"]
+
+        def create() -> tuple[dict[str, Any], bool]:
+            # Checked as `create` checks them, so a malformed request is refused as before.
+            _uuid(command_id)
+            if not plain_profile(parse_document(raw)[0]["profile_id"]):
+                raise _refused("profile_not_allowed")
+            return routines.create(command_id, raw)
+
+        async with binding:
+            result, created = await run_sync(create)
         if created:
             scheduler.wake()
             changes.record(grant.id, grant.session_id, "routines.add", result["routine_id"])
@@ -523,6 +564,15 @@ def agent_routes(
 
     async def run_routine(grant: AgentGrant, target: str | None, body: dict[str, Any]) -> Response:
         routine_id = _uuid(target)
+        if not changes.made(grant.session_id, "routines.add", routine_id):
+            raise _refused("not_added_here")
+
+        def check() -> None:
+            # Again at each test: the owner may since have given its profile MCP servers or a Bot.
+            if not plain_profile(routines.get(routine_id)["document"]["profile_id"]):
+                raise _refused("profile_not_allowed")
+
+        await run_sync(check)
         attempt, created = await runner.run_now(
             routine_id,
             body["command_id"],
@@ -574,8 +624,12 @@ def agent_routes(
         if bots is None:
             raise AgentChangeError("unavailable", 503, "Bots aren't available.")
         create = bots.create
-        async with admission_lock:
-            bot, replayed = await storage_call(lambda: create(**body))
+        async with binding:
+            # A Bot turns its profile's routines, the owner's enabled ones too, into Bot runs.
+            if await run_sync(runs_routines, body["profile_id"]):
+                raise _refused("profile_has_routines")
+            async with admission_lock:
+                bot, replayed = await storage_call(lambda: create(**body))
         if not replayed:
             changes.record(grant.id, grant.session_id, "bots.create", bot["bot_id"])
         view = {key: bot[key] for key in ("bot_id", "profile_id", "workspace_id")}

@@ -24,7 +24,15 @@ from tests.automation.test_routines import _document_raw
 from tests.persistence.test_storage import _workspace
 from tests.profiles.test_profile_document import document
 from tests.vaults.test_vault_storage import RESOURCES
-from viki_agent.app.agent_api import CHANGE_SETTINGS, COVERS, OPS, SAFETY_SETTINGS, agent_routes
+from viki_agent.app import agent_api
+from viki_agent.app.agent_api import (
+    CHANGE_SETTINGS,
+    COVERS,
+    OPS,
+    REVIEW_CHARS,
+    SAFETY_SETTINGS,
+    agent_routes,
+)
 from viki_agent.app.agent_changes import AgentChanges
 from viki_agent.app.agent_grants import AgentGrants
 from viki_agent.app.diagnostics import is_credential_key
@@ -527,48 +535,66 @@ def test_two_settings_held_at_one_revision_both_apply(rig: Rig) -> None:
     ]
 
 
-def test_a_held_setting_s_card_shows_at_most_2000_characters_of_each_value(rig: Rig) -> None:
-    rig.settings.patch(ident(), 0, {"layout.panes": "f" * 2001})
-    exact = rig.send("PATCH", "settings", setting("layout.panes", "t" * 2000, 1)).json()
-    longer = rig.send("PATCH", "settings", setting("layout.panes", "t" * 2001, 1)).json()
-    summaries = {row["change_id"]: row["summary"] for row in rig.held()}
-    shown = {"key": "layout.panes", "from": "f" * 2000, "to": "t" * 2000, "reset": False}
-    assert summaries[exact["pending"]["change_id"]] == {**shown, "from_truncated": True}
-    assert summaries[longer["pending"]["change_id"]] == {
-        **shown,
-        "from_truncated": True,
-        "to_truncated": True,
-    }
-    assert rig.decide(longer["pending"]["change_id"]).status_code == 200
-    assert rig.settings.read().effective["layout.panes"] == "t" * 2001
-
-
-@pytest.mark.parametrize(
-    ("stored", "sent", "shown"),
-    [
-        # Neither longer than 2,000 characters: both whole, and the summary's shape unchanged.
-        ("a" * 1990, "a" * 1990 + "b" * 10, {"from": "a" * 1990, "to": "a" * 1990 + "b" * 10}),
-        # A change at the very end of a long value: both from 100 characters before it.
-        (
-            "a" * 3000,
-            "a" * 3000 + "b",
-            {"from": "a" * 100, "to": "a" * 100 + "b", "from_offset": 2900, "to_offset": 2900},
-        ),
-    ],
-    ids=["short", "change_at_the_end"],
-)
-def test_a_held_setting_s_card_shows_where_its_value_changes(
-    rig: Rig, stored: str, sent: str, shown: dict[str, object]
-) -> None:
+def test_a_held_setting_s_card_carries_both_values_whole(rig: Rig) -> None:
+    # The longest value a held key takes, changed at both ends: a window around the first
+    # difference would hide the second.
+    longest = KEYS["layout.panes"].max_len
+    assert longest is not None
+    stored = "a" * longest
+    sent = "b" + "a" * (longest - 2) + "b"
     rig.settings.patch(ident(), 0, {"layout.panes": stored})
-    assert rig.send("PATCH", "settings", setting("layout.panes", sent, 1)).status_code == 202
+    held = rig.send("PATCH", "settings", setting("layout.panes", sent, 1))
+    assert held.status_code == 202
     [listed] = rig.held()
-    assert listed["summary"] == {"key": "layout.panes", "reset": False, **shown}
+    assert listed["summary"] == {"key": "layout.panes", "from": stored, "to": sent, "reset": False}
+    assert rig.decide(held.json()["pending"]["change_id"]).status_code == 200
+    assert rig.settings.read().effective["layout.panes"] == sent
 
 
-def test_a_change_past_2000_equal_characters_shows_on_the_card(rig: Rig) -> None:
+def test_a_reset_s_card_carries_the_whole_value_it_discards(rig: Rig) -> None:
+    folders = [f"private/client-{n:03d}-{'x' * 100}/" for n in range(32)]
+    stored = json.dumps(folders, separators=(",", ":"))  # as the store keeps it
+    rig.settings.patch(ident(), 0, {"decision.never_send": stored})
+    assert len(stored) > 2000  # past where the card used to cut it
+    held = rig.send("PATCH", "settings", setting("decision.never_send", None, 1))
+    assert held.status_code == 202
+    [listed] = rig.held()
+    assert listed["summary"] == {
+        "key": "decision.never_send",
+        "from": stored,
+        "to": None,
+        "reset": True,
+    }
+
+
+def test_no_key_a_hold_can_name_outgrows_the_card() -> None:
+    """`REVIEW_CHARS` refuses rather than cuts; today no held key's value can reach it."""
+    for key in SAFETY_SETTINGS:
+        assert (KEYS[key].max_len or 0) <= REVIEW_CHARS, key
+
+
+def test_a_value_past_the_review_limit_is_refused_and_not_held(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(agent_api, "REVIEW_CHARS", 10)
+    refused = rig.send("PATCH", "settings", setting("identity.display_name", "x" * 11))
+    assert code(refused) == (422, "too_long_to_review")
+    assert rig.held() == []
+    shown = rig.send("PATCH", "settings", setting("identity.display_name", "x" * 10))
+    assert shown.status_code == 202
+    rig.decide(shown.json()["pending"]["change_id"], "reject")
+    rig.settings.patch(ident(), 0, {"identity.display_name": "y" * 11})
+    # The current value counts too: a reset would discard what the card could not show.
+    for value in (None, "z"):
+        refused = rig.send("PATCH", "settings", setting("identity.display_name", value, 1))
+        assert code(refused) == (422, "too_long_to_review")
+    assert rig.held() == []
+    assert rig.settings.read().effective["identity.display_name"] == "y" * 11
+
+
+def test_a_never_send_list_s_card_carries_both_lists_whole_as_stored(rig: Rig) -> None:
     # 32 never-send folders; the proposal keeps the first 20, swaps the last 12, and is
-    # re-spaced, so its raw text already differs from the stored one at the first comma.
+    # re-spaced: `to` is the list as the store will keep it.
     kept = [f"private/client-{n:03d}-{'x' * 100}/" for n in range(32)]
     swapped = [f"archive/old-{n:03d}-{'y' * 100}/" for n in range(12)]
     stored = json.dumps(kept, separators=(",", ":"))
@@ -578,17 +604,12 @@ def test_a_change_past_2000_equal_characters_shows_on_the_card(rig: Rig) -> None
         "PATCH", "settings", setting("decision.never_send", json.dumps(kept[:20] + swapped), 1)
     )
     [listed] = rig.held()
-    start = proposed.index(swapped[0]) - 100
     assert listed["summary"] == {
         "key": "decision.never_send",
-        "from": stored[start : start + 2000],
-        "to": proposed[start : start + 2000],
+        "from": stored,
+        "to": proposed,
         "reset": False,
-        "from_offset": start,
-        "to_offset": start,
     }
-    assert all(entry in listed["summary"]["from"] for entry in kept[20:])
-    assert all(entry in listed["summary"]["to"] for entry in swapped)
     assert rig.decide(held.json()["pending"]["change_id"]).status_code == 200
     assert rig.settings.read().effective["decision.never_send"] == proposed
 
@@ -681,6 +702,31 @@ def test_a_bot_is_created_and_journaled(rig: Rig) -> None:
     assert code(rig.send("POST", "bots", {**body, "bot_id": ident()})) == (409, "conflict")
 
 
+def test_a_bot_for_a_profile_that_runs_routines_gets_409_and_nothing_is_made(rig: Rig) -> None:
+    """A Bot would turn the profile's routines, the owner's enabled ones too, into Bot runs. A
+    routine in another workspace counts: the check is the profile's, not the pair's."""
+    assert rig.bots is not None
+    [routine, _created] = rig.routines.create(
+        ident(), _document_raw(profile_id=rig.profile_id, workspace_id=ident())
+    )
+    body = {
+        "bot_id": ident(),
+        "profile_id": rig.profile_id,
+        "expected_profile_revision": 1,
+        "workspace_id": rig.workspace_id,
+    }
+    refused = rig.send("POST", "bots", body)
+    assert code(refused) == (409, "profile_has_routines")
+    assert refused.json()["error"]["message"] == (
+        "A chat can't create a Bot for a profile that runs routines."
+    )
+    assert rig.bots.list() == []
+    assert rig.journal() == []
+    # An archived routine no longer runs, so it no longer counts.
+    rig.routines.archive(routine["routine_id"], ident(), routine["state_revision"])
+    assert rig.send("POST", "bots", body).status_code == 201
+
+
 def test_without_bots_creating_one_gets_503(tmp_path: Path) -> None:
     rig = Rig(tmp_path, bots=False)
     body = {
@@ -723,11 +769,18 @@ async def test_a_fifth_operation_in_flight_gets_429(tmp_path: Path) -> None:
     gate = rig.runner.gate = asyncio.Event()
     transport = httpx.ASGITransport(app=rig.app)
     async with httpx.AsyncClient(transport=transport, base_url=BASE) as client:
+        document = _document_raw(profile_id=rig.profile_id, workspace_id=rig.workspace_id)
+        added = await client.post(
+            rig.path("routines"),
+            headers=rig.key(),
+            json={"command_id": ident(), "document": document},
+        )
+        routine_id = added.json()["routine"]["routine_id"]
 
         async def run() -> httpx.Response:
             body = {"command_id": ident(), "expected_revision": 1}
             return await client.post(
-                rig.path(f"routines/{ident()}/run"), headers=rig.key(), json=body
+                rig.path(f"routines/{routine_id}/run"), headers=rig.key(), json=body
             )
 
         running = [asyncio.create_task(run()) for _ in range(4)]

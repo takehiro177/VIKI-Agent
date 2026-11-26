@@ -1,6 +1,7 @@
 """The agent surface's routine operations over a real `RoutineService` (the rig of
 `test_agent_api`): add, list, test through the stub runner, and enable, which waits for the
-window's Apply."""
+window's Apply. A chat adds and tests routines only for a plain profile (no MCP servers, no
+Bot), and tests only the routines its own session added."""
 
 from __future__ import annotations
 
@@ -12,7 +13,12 @@ import pytest
 
 from tests.app.test_agent_api import NOW, SESSION, Rig, code, ident
 from tests.automation.test_routines import _document_raw, _manual_schedule
+from tests.profiles.test_profile_document import document as profile_document
+from tests.profiles.test_profiles_api import with_server
 from viki_agent.automation.routines import record_tested, stamp
+
+NOT_ADDED_HERE = "A chat can test only a routine it added itself."
+NOT_PLAIN = "A chat can't add or test a routine for a profile with MCP servers or a Bot."
 
 
 @pytest.fixture
@@ -40,6 +46,36 @@ def _enable(rig: Rig, routine_id: str, state_revision: int = 2) -> Any:
         f"routines/{routine_id}/enable",
         {"command_id": ident(), "expected_state_revision": state_revision},
     )
+
+
+def _add(rig: Rig, document: dict[str, Any]) -> Any:
+    return rig.send("POST", "routines", {"command_id": ident(), "document": document})
+
+
+def _added(rig: Rig, document: dict[str, Any]) -> str:
+    """A draft routine this chat (SESSION) added through the agent surface."""
+    added = _add(rig, document)
+    assert added.status_code == 201
+    return added.json()["routine"]["routine_id"]
+
+
+def _run(rig: Rig, routine_id: str, revision: int = 1) -> Any:
+    return rig.send(
+        "POST",
+        f"routines/{routine_id}/run",
+        {"command_id": ident(), "expected_revision": revision},
+    )
+
+
+def _bot(rig: Rig, profile_id: str) -> None:
+    """The owner binds a Bot to `profile_id` in the rig's vault, from the window."""
+    assert rig.bots is not None
+    rig.bots.create(ident(), profile_id, 1, rig.workspace_id)
+
+
+def _refused_with(response: Any, status: int, code_: str, message: str) -> None:
+    assert response.status_code == status
+    assert response.json() == {"error": {"code": code_, "message": message}}
 
 
 def test_add_makes_a_draft_and_a_journal_entry(rig: Rig) -> None:
@@ -106,7 +142,7 @@ def test_routines_lists_each_with_its_schedule_last_run_and_running(rig: Rig) ->
 
 
 def test_a_test_runs_the_current_revision_through_the_runner(rig: Rig) -> None:
-    routine_id = rig.routines.create(ident(), _document(rig))[0]["routine_id"]
+    routine_id = _added(rig, _document(rig))
     rig.routines.revise(routine_id, ident(), 1, _document(rig, prompt="Second revision."))
     [listed] = rig.send("GET", "routines").json()["routines"]
     command_id = ident()
@@ -122,8 +158,74 @@ def test_a_test_runs_the_current_revision_through_the_runner(rig: Rig) -> None:
     rig.send("POST", f"routines/{routine_id}/run", {"command_id": ident(), "expected_revision": 2})
     assert rig.runner.calls[-1][3] is False
     assert [(entry["operation"], entry["target"]) for entry in rig.journal()] == [
-        ("routines.test", routine_id)
-    ] * 2
+        ("routines.test", routine_id),
+        ("routines.test", routine_id),
+        ("routines.add", routine_id),
+    ]
+
+
+def test_a_chat_tests_only_a_routine_its_own_session_added(rig: Rig) -> None:
+    owner_s = rig.routines.create(ident(), _document(rig))[0]["routine_id"]
+    _refused_with(_run(rig, owner_s), 403, "not_added_here", NOT_ADDED_HERE)
+    other = rig.grants.issue(ident())
+    assert other is not None
+    another_chat_s = rig.client.post(
+        f"/api/agent/{other.id}/routines",
+        headers={"authorization": f"Bearer {other.token}"},
+        json={"command_id": ident(), "document": _document(rig, name="Theirs")},
+    ).json()["routine"]["routine_id"]
+    _refused_with(_run(rig, another_chat_s), 403, "not_added_here", NOT_ADDED_HERE)
+    assert rig.runner.calls == []
+    assert [entry["operation"] for entry in rig.journal()] == []
+    # This chat's own, from a resumed chat: a new key for the same session.
+    mine = _added(rig, _document(rig, name="Mine"))
+    rig.grant.revoke()
+    resumed = rig.grants.issue(SESSION)
+    assert resumed is not None
+    rig.grant = resumed
+    assert _run(rig, mine).status_code == 202
+    assert [call[0] for call in rig.runner.calls] == [mine]
+
+
+def test_a_test_is_refused_once_the_routine_s_profile_gets_a_bot_or_mcp_servers(rig: Rig) -> None:
+    routine_id = _added(rig, _document(rig))
+    _bot(rig, rig.profile_id)
+    _refused_with(_run(rig, routine_id), 403, "profile_not_allowed", NOT_PLAIN)
+    plain = ident()
+    rig.profiles.create(plain, ident(), profile_document())
+    other = _added(rig, _document_raw(profile_id=plain, workspace_id=rig.workspace_id))
+    rig.profiles.revise(plain, ident(), 1, with_server())
+    _refused_with(_run(rig, other), 403, "profile_not_allowed", NOT_PLAIN)
+    assert rig.runner.calls == []
+    assert {entry["operation"] for entry in rig.journal()} == {"routines.add"}
+
+
+def test_adding_a_routine_for_a_profile_with_mcp_servers_or_a_bot_is_refused(rig: Rig) -> None:
+    with_mcp = ident()
+    rig.profiles.create(with_mcp, ident(), with_server())
+    _refused_with(
+        _add(rig, _document_raw(profile_id=with_mcp, workspace_id=rig.workspace_id)),
+        403,
+        "profile_not_allowed",
+        NOT_PLAIN,
+    )
+    # A Bot in this vault refuses a routine for its profile in any workspace.
+    _bot(rig, rig.profile_id)
+    _refused_with(
+        _add(rig, _document_raw(profile_id=rig.profile_id, workspace_id=ident())),
+        403,
+        "profile_not_allowed",
+        NOT_PLAIN,
+    )
+    assert rig.routines.list() == []
+    assert rig.journal() == []
+    assert rig.scheduler.wakes == 0
+    # A plain profile, or one that is not there, carries nothing past the chat.
+    plain = ident()
+    rig.profiles.create(plain, ident(), profile_document())
+    for profile_id in (plain, ident()):
+        _added(rig, _document_raw(profile_id=profile_id, workspace_id=ident()))
+    assert len(rig.routines.list()) == 2
 
 
 def test_enabling_a_draft_gets_409_and_holds_nothing(rig: Rig) -> None:
@@ -159,7 +261,6 @@ def test_enabling_a_tested_routine_waits_for_apply_then_wakes_the_scheduler(rig:
             "profile": {"profile_id": rig.profile_id, "name": "Review helper"},
             "workspace": {"workspace_id": rig.workspace_id, "name": "synthetic"},
             "prompt": "Summarize overnight news.",
-            "prompt_truncated": False,
         },
     )
     applied = rig.decide(pending["change_id"])
@@ -185,14 +286,15 @@ def test_enabling_a_tested_routine_waits_for_apply_then_wakes_the_scheduler(rig:
     )
 
 
-def test_the_enable_summary_shows_at_most_2000_characters_of_the_prompt(rig: Rig) -> None:
-    shown = "é" * 2000  # two UTF-8 bytes each: the cut counts characters, not bytes
-    exact = _tested(rig, _document(rig, prompt=shown))
-    longer = _tested(rig, _document(rig, prompt=shown + "x"))
-    assert _enable(rig, exact).status_code == _enable(rig, longer).status_code == 202
-    summaries = {row["summary"]["routine_id"]: row["summary"] for row in rig.held()}
-    assert (summaries[exact]["prompt"], summaries[exact]["prompt_truncated"]) == (shown, False)
-    assert (summaries[longer]["prompt"], summaries[longer]["prompt_truncated"]) == (shown, True)
+def test_the_enable_summary_carries_the_whole_prompt(rig: Rig) -> None:
+    # The longest prompt a routine takes (32,768 UTF-8 bytes), its end unlike its start.
+    longest = "é" * 16381 + "‮end"
+    assert len(longest.encode("utf-8")) == 32768
+    routine_id = _tested(rig, _document(rig, prompt=longest))
+    assert _enable(rig, routine_id).status_code == 202
+    [listed] = rig.held()
+    assert listed["summary"]["prompt"] == longest
+    assert "prompt_truncated" not in listed["summary"]
 
 
 def test_a_chat_never_reads_a_routine_s_prompt_through_its_hold(rig: Rig) -> None:

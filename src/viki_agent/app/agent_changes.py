@@ -2,13 +2,15 @@
 
 The agent surface holds a safety change with `AgentChanges.hold` and records each change it
 applies itself with `record`; every hold and every record lands in a 64-entry journal with the
-calling chat's session id, and `seq` rises per applied change. A hold expires after `ttl_s` or
-once its chat's process has ended (`live(grant_id)` is false): it is then no longer listed and a
-decision on it gets 409 `expired`. The two Apply routes answer only requests `authorized` accepts,
-meant to be the window token alone, and a POST needs an allowed Origin. A hold applies at most
-once: the decision marks it `applying` before its first await, and its apply runs in a task
-tracked in `workers` under `asyncio.shield`, so a client that leaves does not cancel it midway.
-Holds and the journal live in memory only.
+calling chat's session id, and `seq` rises per applied change. `made` answers whether a chat's
+session id recorded an operation on a target since launch, from a set the journal's cap does not
+trim, so a resumed chat (a new key for the same session) keeps what it made. A hold expires
+after `ttl_s` or once its chat's process has ended (`live(grant_id)` is false): it is then no
+longer listed and a decision on it gets 409 `expired`. The two Apply routes answer only requests
+`authorized` accepts, meant to be the window token alone, and a POST needs an allowed Origin. A
+hold applies at most once: the decision marks it `applying` before its first await, and its
+apply runs in a task tracked in `workers` under `asyncio.shield`, so a client that leaves does
+not cancel it midway. Holds, the journal and what `made` reads live in memory only.
 """
 
 from __future__ import annotations
@@ -121,13 +123,22 @@ class AgentChanges:
         self._lock = threading.Lock()
         self._holds: dict[str, _Hold] = {}
         self._journal: deque[dict[str, Any]] = deque(maxlen=JOURNAL_SIZE)
+        # (session id, operation, target) of every `record`, never trimmed: what `made` reads.
+        self._made: set[tuple[str, str, str]] = set()
         self.seq = 0
 
     def record(self, grant_id: str, session_id: str, operation: str, target: str) -> None:
         """Journals a change the agent surface applied itself."""
         with self._lock:
             self._journal.append(_entry(session_id, operation, target, "applied"))
+            self._made.add((session_id, operation, target))
             self.seq += 1
+
+    def made(self, session_id: str, operation: str, target: str) -> bool:
+        """Whether `record` recorded `operation` on `target` for the chat `session_id` since
+        launch, under any of its keys; a held change never counts."""
+        with self._lock:
+            return (session_id, operation, target) in self._made
 
     def hold(
         self,

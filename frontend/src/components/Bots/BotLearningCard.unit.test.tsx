@@ -224,3 +224,25 @@ it("offers a retry when the overview cannot be read and writes the auto settings
       .checked,
   ).toBe(true);
 });
+
+it("shows the empty-records note when records_readable is true and there are no records", async () => {
+  const api = learningApi(overview({ records_readable: true, records: [] }));
+  render(<BotLearningCard api={api} bot={bot} disabled={false} />);
+  await act(async () => {});
+
+  expect(screen.getByText(tf("bots.learning.noRecords", { name: "Research Bot" }))).toBeTruthy();
+  expect(
+    screen.queryByText(tf("bots.learning.recordsUnreadable", { name: "Research Bot" })),
+  ).toBeNull();
+});
+
+it("shows that the approved records could not be read, instead of the empty-records note (F1)", async () => {
+  const api = learningApi(overview({ records_readable: false, records: [] }));
+  render(<BotLearningCard api={api} bot={bot} disabled={false} />);
+  await act(async () => {});
+
+  expect(
+    screen.getByText(tf("bots.learning.recordsUnreadable", { name: "Research Bot" })),
+  ).toBeTruthy();
+  expect(screen.queryByText(tf("bots.learning.noRecords", { name: "Research Bot" }))).toBeNull();
+});

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -15,13 +16,20 @@ from tests.messaging.test_bots import service as service
 from tests.vaults.test_memory import CREATED, NOON, Harness, _harness
 from viki_agent.automation.routines import stamp
 from viki_agent.messaging.bot_episodes import EpisodeRecorder, EpisodeStore
-from viki_agent.messaging.bot_learning import BotLearning, LearningError, result_id, skill_text
+from viki_agent.messaging.bot_learning import (
+    MAX_IMPORT_FILES,
+    BotLearning,
+    LearningError,
+    result_id,
+    skill_text,
+)
 from viki_agent.messaging.bot_proposals import ProposalError, ProposalStore
 from viki_agent.messaging.bot_recall import HEADER, LessonStat, compose, creator_for
 from viki_agent.messaging.bots import BotService
 from viki_agent.messaging.dream_ops import Evidence, Proposal, Score
 from viki_agent.profiles.native_assets import parse_skill_text
 from viki_agent.vaults import lesson_body
+from viki_agent.vaults import vault as vault_module
 from viki_agent.vaults.memory import MemoryItem
 from viki_agent.vaults.memory_record import Fields, SessionSource
 from viki_agent.vaults.memory_record import compose as compose_record
@@ -324,6 +332,117 @@ def test_earlier_memory_files_become_open_fact_proposals(tmp_path: Path) -> None
     assert learning.proposals.runs(BOT)[0].run_id == run.run_id
     with pytest.raises(LearningError, match="nothing_to_import"):
         learning.import_legacy(str(uuid.uuid4()))
+
+
+def _finished(learning: BotLearning, run: Any) -> Any:
+    """`run` re-read after `finish_run`: `import_legacy` answers the row as `start_run` left it,
+    proposed and rejected still 0, since `finish_run` updates the stored row, not that object."""
+    return next(r for r in learning.proposals.runs(BOT) if r.run_id == run.run_id)
+
+
+async def test_more_than_forty_earlier_files_import_over_two_calls(tmp_path: Path) -> None:
+    """F1: a Bot with more files than MAX_IMPORT_FILES gets the rest on a later import, once the
+    first batch is decided - not a card stuck forever at the same 40."""
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    for n in range(45):
+        harness.write(f"{folder}/f{n:02d}.md", f"Earlier note topic{n} detail{n}\n".encode())
+
+    first = _finished(learning, learning.import_legacy(BOT))
+    assert (first.proposed, first.rejected) == (MAX_IMPORT_FILES, 0)
+    first_open = [s for s in learning.proposals.listing(BOT) if s.state == "open"]
+    assert {s.body["notes"][0]["note"] for s in first_open} == {
+        f"{folder}/f{n:02d}.md" for n in range(40)
+    }
+    for stored in first_open:
+        assert await learning.apply(stored.proposal_id) == "applied"
+
+    second = _finished(learning, learning.import_legacy(BOT))
+    assert (second.proposed, second.rejected) == (5, 40)  # the 40 already kept are skipped
+    second_open = [s for s in learning.proposals.listing(BOT) if s.state == "open"]
+    assert {s.body["notes"][0]["note"] for s in second_open} == {
+        f"{folder}/f{n:02d}.md" for n in range(40, 45)
+    }
+
+
+async def test_a_rejected_import_is_not_re_proposed(tmp_path: Path) -> None:
+    """F1: a file whose proposal the owner rejected stays rejected on a later import - its
+    unchanged claim still matches the one already turned down."""
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    harness.write(f"{folder}/tea.md", b"Prefers tea over coffee\n")
+
+    first = _finished(learning, learning.import_legacy(BOT))
+    assert first.proposed == 1
+    (proposal,) = [s for s in learning.proposals.listing(BOT) if s.state == "open"]
+    await learning.reject(proposal.proposal_id)
+
+    again = _finished(learning, learning.import_legacy(BOT))
+    assert (again.proposed, again.rejected) == (0, 1)
+    assert [s.state for s in learning.proposals.listing(BOT) if s.op == "fact_add"] == ["rejected"]
+
+
+def test_a_legacy_folder_scan_is_not_blocked_by_the_whole_vaults_entry_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F1: a whole-vault scan that spends its entry budget in `00-inbox/` (which sorts before
+    `bot-memory/`) never reaches the Bot's folder; listing only that folder still finds its
+    file. `os.scandir` is pinned to a fixed, name-sorted order first, since the real order a
+    filesystem gives is not guaranteed."""
+    real_scandir = os.scandir
+
+    class _OrderedScandir:
+        def __init__(self, folder: Path | int) -> None:
+            with real_scandir(folder) as real:
+                entries = sorted(real, key=lambda entry: entry.name)
+            self._entries = iter(entries)
+
+        def __enter__(self) -> _OrderedScandir:
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            return None
+
+        def __iter__(self) -> _OrderedScandir:
+            return self
+
+        def __next__(self) -> os.DirEntry[str]:
+            return next(self._entries)
+
+    monkeypatch.setattr(vault_module.os, "scandir", _OrderedScandir)
+    monkeypatch.setattr(vault_module, "MAX_ENTRIES", 1)
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    harness.write(f"{folder}/tea.md", b"Prefers tea\n")
+    for n in range(2):
+        harness.write(f"00-inbox/note{n}.md", b"padding\n")
+
+    whole = harness.vault.scan(harness.wid)
+    assert whole.partial_reasons == ("entry_limit",)
+    assert not any(entry.ref.startswith(f"{folder}/") for entry in whole.entries)
+
+    assert learning._legacy_refs(harness.wid, BOT) == [f"{folder}/tea.md"]
+
+
+def test_the_legacy_count_falls_as_files_land_behind_a_proposal(tmp_path: Path) -> None:
+    """F1: the "Import earlier memory" count is the Bot's earlier files not yet behind any
+    proposal, open or decided - not a number permanently capped at MAX_IMPORT_FILES, and not one
+    that stays put once an import has offered what it can."""
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    for n in range(3):
+        harness.write(f"{folder}/f{n}.md", f"Earlier note alpha{n} beta{n}\n".encode())
+    harness.write(f"{folder}/MEMORY.md", b"- index\n")  # the index file, not a memory note
+
+    assert learning.overview(BOT)["legacy_files"] == 3
+
+    run = _finished(learning, learning.import_legacy(BOT))
+    assert run.proposed == 3
+    assert learning.overview(BOT)["legacy_files"] == 0
 
 
 def test_a_proven_lesson_is_offered_as_an_installable_skill(tmp_path: Path) -> None:

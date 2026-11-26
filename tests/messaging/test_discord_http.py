@@ -8,6 +8,7 @@ import json
 import ssl
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import replace
+from importlib import metadata
 from pathlib import Path
 from typing import Any, cast
 
@@ -188,7 +189,7 @@ class Server:
         assert request.headers["authorization"] == "Bot " + CONFIG.bot_token
         assert (
             request.headers["user-agent"]
-            == "DiscordBot (https://client.example.test/support, 0.1.0)"
+            == f"DiscordBot (https://client.example.test/support, {metadata.version('viki-agent')})"
         )
         assert request.headers["accept-encoding"] == "identity"
         assert "cookie" not in request.headers
