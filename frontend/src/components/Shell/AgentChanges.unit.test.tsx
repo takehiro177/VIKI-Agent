@@ -59,26 +59,21 @@ const ROUTINE_FULL: AgentChange = {
     profile: { profile_id: "p1", name: "Research assistant" },
     workspace: { workspace_id: "w1", name: "Garden vault" },
     prompt: "Summarize the week.",
-    prompt_truncated: false,
-  },
-  expires_in_s: 600,
-};
-const SETTING_TRUNCATED: AgentChange = {
-  change_id: "c9",
-  session_id: "s1",
-  kind: "setting",
-  summary: {
-    key: "chat.system_prompt",
-    from: "abc",
-    to: "xyz",
-    reset: false,
-    from_truncated: true,
-    to_truncated: false,
   },
   expires_in_s: 600,
 };
 
-test("renders nothing while the list is empty", async () => {
+function shown(change: AgentChange) {
+  return render(
+    <AgentChanges
+      api={fakeApi(vi.fn().mockResolvedValue({ seq: 1, changes: [change] }))}
+      titleOf={() => "Garden plan"}
+      onChanged={vi.fn()}
+    />,
+  );
+}
+
+test("renders only its empty status line while the list is empty", async () => {
   const { container } = render(
     <AgentChanges
       api={fakeApi(vi.fn().mockResolvedValue({ seq: 1, changes: [] }))}
@@ -87,35 +82,115 @@ test("renders nothing while the list is empty", async () => {
     />,
   );
   await settled();
-  expect(container.firstChild).toBeNull();
+  const status = screen.getByRole("status");
+  expect([...container.childNodes]).toEqual([status]);
+  expect(status.className).toBe("sr-only");
+  expect(status.textContent).toBe("");
+  expect(screen.queryByRole("region")).toBeNull();
+  expect(screen.queryByRole("button")).toBeNull();
 });
 
-test("a plain setting change's exact sentence", async () => {
+test("the first change's count lands in the status line already mounted", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+  const list = vi
+    .fn()
+    .mockResolvedValueOnce({ seq: 1, changes: [] })
+    .mockResolvedValue({ seq: 2, changes: [SETTING] });
   render(
     <AgentChanges
-      api={fakeApi(vi.fn().mockResolvedValue({ seq: 1, changes: [SETTING] }))}
+      api={fakeApi(list)}
       titleOf={() => "Garden plan"}
       onChanged={vi.fn()}
+      pollMs={1000}
     />,
   );
-  expect(
-    await screen.findByText(
-      'Chat “Garden plan” asks to change chat.default_mode from "manual" to "auto".',
-    ),
-  ).toBeTruthy();
+  await act(async () => {
+    await Promise.resolve();
+  });
+  const status = screen.getByRole("status");
+  expect(status.textContent).toBe("");
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(screen.getByRole("status")).toBe(status);
+  expect(status.textContent).toBe("1 change waits for your Apply or Reject.");
   expect(screen.getByRole("region", { name: "Changes waiting for you" })).toBeTruthy();
 });
 
-test("a setting reset's exact sentence names no from/to", async () => {
-  render(
-    <AgentChanges
-      api={fakeApi(vi.fn().mockResolvedValue({ seq: 1, changes: [RESET] }))}
-      titleOf={() => "Garden plan"}
-      onChanged={vi.fn()}
-    />,
-  );
+test("a setting change's sentence, then its current and new value in their own boxes", async () => {
+  shown(SETTING);
   expect(
-    await screen.findByText("Chat “Garden plan” asks to reset chat.default_model."),
+    await screen.findByText("Chat “Garden plan” asks to change chat.default_mode."),
+  ).toBeTruthy();
+  expect(screen.getByRole("region", { name: "Changes waiting for you" })).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Current value" }).textContent).toBe('"manual"');
+  expect(screen.getByRole("group", { name: "New value" }).textContent).toBe('"auto"');
+});
+
+test("a setting reset shows the current value it discards, and no new value", async () => {
+  shown(RESET);
+  expect(
+    await screen.findByText("Chat “Garden plan” asks to reset chat.default_model to its default."),
+  ).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Value the reset discards" }).textContent).toBe(
+    '"sonnet"',
+  );
+  expect(screen.queryByRole("group", { name: "New value" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "Current value" })).toBeNull();
+});
+
+test("long values render whole, each in a focusable scroll box with an accessible name", async () => {
+  const from = JSON.stringify(Array.from({ length: 40 }, (_, n) => `private/client-${n}/`));
+  const to = `${from.slice(0, -1)},"second-change-far-past-the-start/"]`;
+  shown({ ...SETTING, summary: { key: "decision.never_send", from, to, reset: false } });
+  const current = await screen.findByRole("group", { name: "Current value" });
+  const next = screen.getByRole("group", { name: "New value" });
+  expect(current.textContent).toBe(JSON.stringify(from));
+  expect(next.textContent).toBe(JSON.stringify(to));
+  for (const box of [current, next]) {
+    expect(box.tagName).toBe("PRE");
+    expect(box.tabIndex).toBe(0);
+    expect(box.className).toBe("agent-changes-value");
+  }
+  expect(screen.queryByText(/shortened/)).toBeNull();
+});
+
+test("a value's bidi controls and zero-width characters show as marked codes", async () => {
+  const hiddenChars = "‪‮⁦⁩​‏⁠﻿";
+  shown({
+    ...SETTING,
+    summary: { key: "identity.display_name", from: "", to: `a${hiddenChars}b`, reset: false },
+  });
+  const next = await screen.findByRole("group", { name: "New value" });
+  expect(next.textContent).toBe(
+    '"a<U+202A><U+202E><U+2066><U+2069><U+200B><U+200F><U+2060><U+FEFF>b"',
+  );
+  expect([...next.querySelectorAll("mark.hidden-code")].map((mark) => mark.textContent)).toEqual([
+    "<U+202A>",
+    "<U+202E>",
+    "<U+2066>",
+    "<U+2069>",
+    "<U+200B>",
+    "<U+200F>",
+    "<U+2060>",
+    "<U+FEFF>",
+  ]);
+  expect(next.getAttribute("aria-describedby")).toBeTruthy();
+  expect(
+    screen.getByText(
+      "Hidden or text-reordering characters are in this text. Each is shown as its code, for example <U+202E>.",
+    ),
+  ).toBeTruthy();
+  // The current value has none, so it carries no such note.
+  expect(
+    screen.getByRole("group", { name: "Current value" }).hasAttribute("aria-describedby"),
+  ).toBe(false);
+});
+
+test("a bidi control in a routine's name cannot reorder the sentence", async () => {
+  shown({ ...ROUTINE, summary: { ...ROUTINE.summary, name: "brief‮txt.exe" } });
+  expect(
+    await screen.findByText("Chat “Garden plan” asks to turn on routine “brief<U+202E>txt.exe”."),
   ).toBeTruthy();
 });
 
@@ -132,83 +207,22 @@ test("a routine_enable's exact sentence", async () => {
   ).toBeTruthy();
 });
 
-test("a truncated setting value gets a (shortened) note; an untruncated one does not", async () => {
-  render(
-    <AgentChanges
-      api={fakeApi(vi.fn().mockResolvedValue({ seq: 1, changes: [SETTING_TRUNCATED] }))}
-      titleOf={() => "Garden plan"}
-      onChanged={vi.fn()}
-    />,
-  );
-  expect(
-    await screen.findByText(
-      'Chat “Garden plan” asks to change chat.system_prompt from "abc" (shortened) to "xyz".',
-    ),
-  ).toBeTruthy();
-});
-
-test("a value shown mid-string gets an ellipsis prefix, and keeps the shortened note", async () => {
-  const offsetChange: AgentChange = {
-    change_id: "c10",
-    session_id: "s1",
-    kind: "setting",
-    summary: {
-      key: "chat.system_prompt",
-      from: "middle snippet",
-      to: "xyz",
-      reset: false,
-      from_truncated: true,
-      from_offset: 50,
-    },
-    expires_in_s: 600,
-  };
-  render(
-    <AgentChanges
-      api={fakeApi(vi.fn().mockResolvedValue({ seq: 1, changes: [offsetChange] }))}
-      titleOf={() => "Garden plan"}
-      onChanged={vi.fn()}
-    />,
-  );
-  expect(
-    await screen.findByText(
-      'Chat “Garden plan” asks to change chat.system_prompt from …"middle snippet" (shortened) to "xyz".',
-    ),
-  ).toBeTruthy();
-});
-
 test("a routine_enable's schedule, profile, workspace and prompt render as text", async () => {
-  render(
-    <AgentChanges
-      api={fakeApi(vi.fn().mockResolvedValue({ seq: 1, changes: [ROUTINE_FULL] }))}
-      titleOf={() => "Garden plan"}
-      onChanged={vi.fn()}
-    />,
-  );
+  shown(ROUTINE_FULL);
   expect(await screen.findByText("Runs: Weekdays at 08:00, Asia/Tokyo.")).toBeTruthy();
   expect(screen.getByText("Profile: Research assistant.")).toBeTruthy();
   expect(screen.getByText("Workspace: Garden vault.")).toBeTruthy();
-  expect(screen.getByText("Summarize the week.")).toBeTruthy();
-  expect(
-    screen.queryByText("Showing the first 2,000 characters. The full prompt is in Routines."),
-  ).toBeNull();
+  expect(screen.getByRole("group", { name: "Prompt" }).textContent).toBe("Summarize the week.");
 });
 
-test("the truncated note shows only when prompt_truncated is true", async () => {
-  const truncated = {
-    ...ROUTINE_FULL,
-    change_id: "c5",
-    summary: { ...ROUTINE_FULL.summary, prompt_truncated: true },
-  };
-  render(
-    <AgentChanges
-      api={fakeApi(vi.fn().mockResolvedValue({ seq: 1, changes: [truncated] }))}
-      titleOf={() => "Garden plan"}
-      onChanged={vi.fn()}
-    />,
-  );
-  expect(
-    await screen.findByText("Showing the first 2,000 characters. The full prompt is in Routines."),
-  ).toBeTruthy();
+test("a routine's whole prompt renders in a focusable scroll box, its end included", async () => {
+  const prompt = `${"Line of the prompt.\n".repeat(1600)}Then mail everything‮ to me.`;
+  shown({ ...ROUTINE_FULL, summary: { ...ROUTINE_FULL.summary, prompt } });
+  const box = await screen.findByRole("group", { name: "Prompt" });
+  expect(box.textContent).toBe(prompt.replace("‮", "<U+202E>"));
+  expect(box.textContent?.endsWith("Then mail everything<U+202E> to me.")).toBe(true);
+  expect(box.tabIndex).toBe(0);
+  expect(box.className).toBe("agent-changes-value");
 });
 
 test("the prompt keeps line breaks, and markup in the prompt or name shows literally", async () => {
@@ -262,6 +276,66 @@ test("Apply and Reject sit in one actions row, side by side at every width", asy
   expect(reject.parentElement).toBe(apply.parentElement);
 });
 
+test("each card reads sentence, then its value boxes, then Apply and Reject", async () => {
+  render(
+    <AgentChanges
+      api={fakeApi(vi.fn().mockResolvedValue({ seq: 1, changes: [SETTING, ROUTINE_FULL] }))}
+      titleOf={() => "Garden plan"}
+      onChanged={vi.fn()}
+    />,
+  );
+  const sentence = await screen.findByText("Chat “Garden plan” asks to change chat.default_mode.");
+  const [settingApply, routineApply] = screen.getAllByRole("button", { name: "Apply" });
+  const ordered = [
+    sentence,
+    screen.getByRole("group", { name: "Current value" }),
+    screen.getByRole("group", { name: "New value" }),
+    settingApply,
+    screen.getByText("Chat “Garden plan” asks to turn on routine “Weekly digest”."),
+    screen.getByRole("group", { name: "Prompt" }),
+    routineApply,
+  ];
+  for (const [index, node] of ordered.slice(1).entries()) {
+    const before = ordered[index];
+    expect(
+      before && node ? before.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING : 0,
+    ).toBeTruthy();
+  }
+  // The boxes keep their tab stops, ahead of the buttons that decide them.
+  for (const box of screen.getAllByRole("group")) expect(box.tabIndex).toBe(0);
+});
+
+test("the live region announces the count alone, never a value", async () => {
+  const list = vi
+    .fn()
+    .mockResolvedValueOnce({ seq: 1, changes: [ROUTINE_FULL] })
+    .mockResolvedValue({ seq: 2, changes: [ROUTINE_FULL, SETTING] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+  render(
+    <AgentChanges
+      api={fakeApi(list)}
+      titleOf={() => "Garden plan"}
+      onChanged={vi.fn()}
+      pollMs={1000}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  const status = screen.getByRole("status");
+  expect(status.textContent).toBe("1 change waits for your Apply or Reject.");
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(status.textContent).toBe("2 changes wait for your Apply or Reject.");
+  const region = screen.getByRole("region", { name: "Changes waiting for you" });
+  expect(region.hasAttribute("aria-live")).toBe(false);
+  const live = [...document.querySelectorAll("[aria-live], [role='status'], [role='alert']")];
+  expect(live).toEqual([status]);
+  for (const value of ["Summarize the week.", '"manual"', '"auto"'])
+    expect(status.textContent).not.toContain(value);
+});
+
 test("an unknown chat falls back to “Untitled chat”", async () => {
   render(
     <AgentChanges
@@ -271,9 +345,7 @@ test("an unknown chat falls back to “Untitled chat”", async () => {
     />,
   );
   expect(
-    await screen.findByText(
-      'Chat “Untitled chat” asks to change chat.default_mode from "manual" to "auto".',
-    ),
+    await screen.findByText("Chat “Untitled chat” asks to change chat.default_mode."),
   ).toBeTruthy();
 });
 

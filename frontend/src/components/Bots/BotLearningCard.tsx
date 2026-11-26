@@ -267,7 +267,9 @@ export function BotLearningCard({ api, bot, disabled, auto, pollMs = 3000 }: Bot
         </details>
       ) : null}
       <h4>{tf("bots.learning.records", { name })}</h4>
-      {ready.records.length === 0 ? (
+      {!ready.records_readable ? (
+        <p className="bots-note">{tf("bots.learning.recordsUnreadable", { name })}</p>
+      ) : ready.records.length === 0 ? (
         <p className="bots-note">{tf("bots.learning.noRecords", { name })}</p>
       ) : (
         <ul className="bot-learning-list" aria-label={tf("bots.learning.records", { name })}>

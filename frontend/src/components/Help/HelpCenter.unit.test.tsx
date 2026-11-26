@@ -396,6 +396,8 @@ describe("What's new", () => {
     act(() => openHelp({ kind: "whats-new" }));
     const { container } = renderCenter();
     await screen.findByRole("heading", { name: "What's new" });
+    screen.getByRole("heading", { name: "VIKI Agent 0.2.0" });
+    screen.getByText("Bots learn only what you approve.");
     screen.getByRole("heading", { name: "VIKI Agent 0.1.0" });
     screen.getByText("Your own Claude Code.");
     screen.getByText("Bring your own model.");

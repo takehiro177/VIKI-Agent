@@ -57,6 +57,19 @@ _FIX_BY_CODE = {
     "secret_key": "Change it in Settings.",
     "read_only": "Open Settings.",
     "too_many_pending": "Ask the owner to decide the waiting changes.",
+    "not_added_here": (
+        "Only a routine this chat added can be tested from a chat. "
+        "Ask the owner to run it from Routines."
+    ),
+    "profile_not_allowed": (
+        "A chat can add routines only for a profile with no MCP servers, no Bot, and no "
+        "permission mode that skips asking (Accept edits or Auto). "
+        "Ask the owner to add it in Routines."
+    ),
+    "profile_has_routines": (
+        "That profile already runs routines. Ask the owner to create this Bot in Agents."
+    ),
+    "too_long_to_review": "Too long to review here; change it in Settings.",
 }
 _DEFAULT_FIX = "Try again, or use the VIKI Agent window."
 
@@ -588,7 +601,15 @@ def _cmd_routines_test(
     def fix_for(code: str) -> str | None:
         # The real refusal for an attempt already open (tasks.py's `occupancy`); `enable` can
         # never answer this code, only `run` (W9).
-        return _WAIT_FIX if code == "run_active" else None
+        if code == "run_active":
+            return _WAIT_FIX
+        if code == "profile_not_allowed":
+            # This chat added it, so the profile has changed since.
+            return (
+                "This routine's profile now has MCP servers, a Bot, or a permission mode that "
+                "skips asking (Accept edits or Auto). Ask the owner to run it from Routines."
+            )
+        return None
 
     return _respond(body, status, as_json, out, err, fix_for=fix_for)
 

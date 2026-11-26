@@ -539,6 +539,62 @@ def test_routines_test_run_active_from_the_server_gets_the_wait_fix() -> None:
     )
 
 
+def test_routines_test_refusals_name_the_owner_s_way_instead() -> None:
+    """The agent surface's narrowing: a routine another chat or the owner added, and one whose
+    profile has since gained MCP servers, a Bot or a pinned mode that skips asking, each get a fix
+    that sends the chat to the owner rather than "again"."""
+    for refused, fix in (
+        (
+            "not_added_here",
+            "Only a routine this chat added can be tested from a chat. "
+            "Ask the owner to run it from Routines.",
+        ),
+        (
+            "profile_not_allowed",
+            "This routine's profile now has MCP servers, a Bot, or a permission mode that skips "
+            "asking (Accept edits or Auto). Ask the owner to run it from Routines.",
+        ),
+    ):
+
+        def send(
+            method: str, path: str, body: dict[str, Any] | None, code_: str = refused
+        ) -> tuple[int, dict[str, Any]]:
+            if method == "GET" and path.endswith("/routines"):
+                return 200, _routines_list()
+            return 403, {"error": {"code": code_, "message": "refused"}}
+
+        code, out, _err = _run(["routines", "test", "r1", "--json"], send)
+        assert code == 1
+        assert json.loads(out)["error"] == {"code": refused, "message": "refused", "fix": fix}
+
+
+def test_routines_add_for_a_profile_a_chat_may_not_use_gets_its_fix() -> None:
+    def send(method: str, path: str, body: dict[str, Any] | None) -> tuple[int, dict[str, Any]]:
+        return 403, {"error": {"code": "profile_not_allowed", "message": "refused"}}
+
+    code, _out, err = _run(
+        [
+            "routines",
+            "add",
+            "--name",
+            "N",
+            "--prompt",
+            "P",
+            "--profile",
+            "p1",
+            "--workspace",
+            "w1",
+        ],
+        send,
+    )
+    assert code == 1
+    assert (
+        "fix: A chat can add routines only for a profile with no MCP servers, no Bot, and no "
+        "permission mode that skips asking (Accept edits or Auto). "
+        "Ask the owner to add it in Routines.\n" in err
+    )
+
+
 def test_routines_test_unknown_id_exits_1() -> None:
     def send(method: str, path: str, body: dict[str, Any] | None) -> tuple[int, dict[str, Any]]:
         return 200, _routines_list()
@@ -703,6 +759,36 @@ def test_bots_create_conflict_names_status_check_not_run_again() -> None:
         "fix: A Bot already exists for that profile and workspace; check "
         "`viki-agent status --json`.\n" in err
     )
+
+
+def test_bots_create_for_a_profile_that_runs_routines_gets_its_fix() -> None:
+    def send(method: str, path: str, body: dict[str, Any] | None) -> tuple[int, dict[str, Any]]:
+        if method == "GET":
+            return 200, {
+                "profiles": [{"profile_id": "p1", "name": "x", "current_revision": 1}],
+                "workspaces": [
+                    {"workspace_id": "w1", "name": "x", "policy": "ordinary", "active": True}
+                ],
+            }
+        return 409, {"error": {"code": "profile_has_routines", "message": "refused"}}
+
+    code, _out, err = _run(["bots", "create", "--profile", "p1"], send)
+    assert code == 1
+    assert (
+        "fix: That profile already runs routines. Ask the owner to create this Bot in Agents.\n"
+        in err
+    )
+
+
+def test_a_setting_too_long_to_review_gets_its_fix() -> None:
+    def send(method: str, path: str, body: dict[str, Any] | None) -> tuple[int, dict[str, Any]]:
+        if method == "GET":
+            return 200, _settings_view({"identity.display_name": {"kind": "string"}})
+        return 422, {"error": {"code": "too_long_to_review", "message": "refused"}}
+
+    code, _out, err = _run(["settings", "set", "identity.display_name", "x"], send)
+    assert code == 1
+    assert "fix: Too long to review here; change it in Settings.\n" in err
 
 
 def test_other_commands_conflict_fix_is_unchanged() -> None:

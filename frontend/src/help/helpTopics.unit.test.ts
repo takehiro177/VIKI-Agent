@@ -180,6 +180,17 @@ describe("searchHelp", () => {
 describe("loadWhatsNew", () => {
   it("loads current public changes with their limits and review steps", async () => {
     const { default: notes } = await loadWhatsNew();
+    expect(notes).toContain("\n## VIKI Agent 0.2.0\n");
+    expect(notes.indexOf("## VIKI Agent 0.2.0")).toBeLessThan(notes.indexOf("## VIKI Agent 0.1.0"));
+    for (const feature of [
+      "Bots learn only what you approve",
+      "Kanban answers",
+      "More chats at once",
+      "Bot usage",
+      "Starter updates",
+    ]) {
+      expect(notes).toContain(`**${feature}.**`);
+    }
     expect(notes).toContain("\n## VIKI Agent 0.1.0\n");
     for (const feature of [
       "Your own Claude Code",

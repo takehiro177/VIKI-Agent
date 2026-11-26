@@ -3,24 +3,20 @@ import { boundedJson } from "../boundedResponse";
 // The wire format is the server's window-token-only Apply surface: `GET /api/v2/agent-changes`
 // and `POST /api/v2/agent-changes/{change_id}`.
 const BASE = "/api/v2/agent-changes";
-// Up to 16 held changes, each a routine's prompt at up to 2,000 characters; the server escapes
-// non-ASCII as \uXXXX, up to 6 bytes per character, so a non-Latin worst case measures up to
-// about 754 KiB. 1 MiB gives that room.
-const MAX = 1024 * 1024;
+// Up to 16 held changes, each carrying its values whole: a routine's prompt is at most 32,768
+// UTF-8 bytes, and a held setting's two values at most 8,192 characters each. The server escapes
+// every non-ASCII or control character as \uXXXX (a character outside the BMP as two), so one
+// change measures at most about 192 KiB and 16 about 3 MiB. 4 MiB gives that room.
+const MAX = 4 * 1024 * 1024;
 const TIMEOUT = 15_000;
 
 export interface SettingChangeSummary {
   key: string;
+  /** The current value, whole; a reset discards it. */
   from: unknown;
+  /** The value Apply stores, whole; null for a reset. */
   to: unknown;
   reset: boolean;
-  /** Present and true only when the server cut that value at 2,000 characters. */
-  from_truncated?: boolean;
-  to_truncated?: boolean;
-  /** Set only when the shown text starts this many characters after the value's own start
-   * (the window the server drew around where `from` and `to` first differ). */
-  from_offset?: number;
-  to_offset?: number;
 }
 export interface ScheduleSummary {
   kind: "manual" | "daily" | "weekly";
@@ -44,9 +40,8 @@ export interface RoutineEnableSummary {
   schedule?: ScheduleSummary;
   profile?: ProfileRef;
   workspace?: WorkspaceRef;
-  /** The routine's prompt, at most 2,000 characters. */
+  /** The routine's whole prompt. */
   prompt?: string;
-  prompt_truncated?: boolean;
 }
 export type AgentChange =
   | {
@@ -86,10 +81,6 @@ const record = (value: unknown): Record<string, unknown> | null =>
 const str = (value: unknown): value is string => typeof value === "string";
 const finite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
-const bool = (value: unknown): boolean | undefined =>
-  typeof value === "boolean" ? value : undefined;
-const positiveInt = (value: unknown): number | undefined =>
-  typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 const stringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(str);
 const numberArray = (value: unknown): value is number[] =>
   Array.isArray(value) && value.every(finite);
@@ -136,27 +127,11 @@ function parseChange(value: unknown): AgentChange | null {
   const summary = record(row.summary);
   if (!summary) return null;
   if (row.kind === "setting" && str(summary.key) && typeof summary.reset === "boolean") {
-    const settingSummary: SettingChangeSummary = {
-      key: summary.key,
-      from: summary.from,
-      to: summary.to,
-      reset: summary.reset,
-    };
-    // exactOptionalPropertyTypes: an absent optional field is fine, an explicit `undefined`
-    // value is not, so a malformed or missing one is left off rather than set to undefined.
-    const fromTruncated = bool(summary.from_truncated);
-    const toTruncated = bool(summary.to_truncated);
-    const fromOffset = positiveInt(summary.from_offset);
-    const toOffset = positiveInt(summary.to_offset);
-    if (fromTruncated !== undefined) settingSummary.from_truncated = fromTruncated;
-    if (toTruncated !== undefined) settingSummary.to_truncated = toTruncated;
-    if (fromOffset !== undefined) settingSummary.from_offset = fromOffset;
-    if (toOffset !== undefined) settingSummary.to_offset = toOffset;
     return {
       change_id: row.change_id,
       session_id: row.session_id,
       kind: "setting",
-      summary: settingSummary,
+      summary: { key: summary.key, from: summary.from, to: summary.to, reset: summary.reset },
       expires_in_s: row.expires_in_s,
     };
   }
@@ -175,12 +150,12 @@ function parseChange(value: unknown): AgentChange | null {
     const profile = parseProfile(summary.profile);
     const workspace = parseWorkspace(summary.workspace);
     const prompt = str(summary.prompt) ? summary.prompt : undefined;
-    const promptTruncated = bool(summary.prompt_truncated);
+    // exactOptionalPropertyTypes: an absent optional field is fine, an explicit `undefined`
+    // value is not, so a malformed or missing one is left off rather than set to undefined.
     if (schedule !== undefined) routineSummary.schedule = schedule;
     if (profile !== undefined) routineSummary.profile = profile;
     if (workspace !== undefined) routineSummary.workspace = workspace;
     if (prompt !== undefined) routineSummary.prompt = prompt;
-    if (promptTruncated !== undefined) routineSummary.prompt_truncated = promptTruncated;
     return {
       change_id: row.change_id,
       session_id: row.session_id,

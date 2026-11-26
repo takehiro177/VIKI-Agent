@@ -39,11 +39,30 @@
   width: auto;
 }
 
-/* R8: a routine_enable card's prompt, scrollable and wrapped rather than widening the banner. */
-.agent-changes-detail pre {
+/* An AgentChanges card reads sentence, values, then Apply and Reject, in DOM order, so the values
+   wrap onto a full row of their own between the sentence and the actions row. The values: a
+   routine's schedule, profile and workspace, then each value the chat wrote, whole, in a box that
+   scrolls past 160px so the card keeps a sensible height, wrapped anywhere (a JSON value has no
+   spaces to break at) rather than widening the banner. */
+.agent-changes-card {
+  flex-wrap: wrap;
+}
+
+.agent-changes-detail {
+  flex: 1 0 100%;
+  min-width: 0;
+}
+
+.agent-changes-detail p {
+  margin: 6px 0 2px;
+}
+
+.agent-changes-value {
   max-height: 160px;
+  margin: 0;
   overflow: auto;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .chat-only-banner [aria-disabled="true"],

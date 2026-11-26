@@ -11,8 +11,14 @@
  * call carries its own `AbortController`; a call superseded by a newer one before it resolves is
  * aborted, and its handler checks that controller's own `aborted` flag before touching state, so
  * a stale answer that still resolves (a fake that ignores the signal, in a test) is dropped.
+ *
+ * View trace works the same way, by identity rather than `aborted`: `handleTrace` keeps the
+ * latest call's own `AbortController` in `traceRequestRef`, aborts the previous one (if any) and
+ * replaces the ref before awaiting, then only opens the panel when the ref still holds that same
+ * controller when the answer lands — so a second click's trace always wins over an earlier one
+ * that resolves later, and an unmount (which clears the ref too) drops a still-pending answer.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   BotUsageApi,
   UsageDays,
@@ -149,6 +155,14 @@ export function BotUsage({ api, onOpenSession }: BotUsageProps) {
   const [failed, setFailed] = useState(false);
   const [tableShown, setTableShown] = useState(false);
   const [traced, setTraced] = useState<TracedState | null>(null);
+  const traceRequestRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      traceRequestRef.current?.abort();
+      traceRequestRef.current = null;
+    };
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey forces a reload
   useEffect(() => {
@@ -176,15 +190,23 @@ export function BotUsage({ api, onOpenSession }: BotUsageProps) {
 
   function handleTrace(sessionId: string): void {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    api.trace(sessionId).then(
+    traceRequestRef.current?.abort();
+    const controller = new AbortController();
+    traceRequestRef.current = controller;
+    api.trace(sessionId, controller.signal).then(
       (trace) => {
+        // Dropped if a later click replaced this call's controller (by identity, not just
+        // `aborted`: a fake that ignores the signal in a test still resolves) or an unmount
+        // cleared it.
+        if (traceRequestRef.current !== controller) return;
         const match = shown?.summary.bots.find((bot) => bot.bot_id === trace.bot_id);
         const botName = match ? botLabel(match.name, match.current) : botLabel(null, true);
         setTraced({ trace, botName, opener });
       },
       () => {
         // Leave the dashboard as is: a failed trace fetch has no Spec'd UI of its own, and
-        // nothing was showing yet for this click to replace.
+        // nothing was showing yet for this click to replace. Also covers a call superseded by a
+        // later click (its own controller was aborted above) and one dropped by an unmount.
       },
     );
   }

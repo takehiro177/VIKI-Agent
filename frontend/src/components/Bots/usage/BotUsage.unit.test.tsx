@@ -135,6 +135,46 @@ function summaryFixture(days: UsageDays, totalInput: number): UsageSummary {
   };
 }
 
+/** Two Bots ("Research Bot"/session-1, "Support Bot"/session-2), each its own largest
+ * conversation row, so a test can click two distinct "Trace <name>" buttons. */
+function summaryFixtureTwoSessions(): UsageSummary {
+  const base = summaryFixture(30, 900);
+  return {
+    ...base,
+    bots: [
+      ...base.bots,
+      {
+        bot_id: "bot-b",
+        profile_id: "profile-b",
+        name: "Support Bot",
+        current: true,
+        input: 100,
+        output: 0,
+        cache_read: 0,
+        cache_write: 0,
+        calls: 5,
+        sessions: 1,
+      },
+    ],
+    largest: [
+      ...base.largest,
+      {
+        session_id: "session-2",
+        bot_id: "bot-b",
+        kind: "main",
+        input: 100,
+        output: 0,
+        cache_read: 0,
+        cache_write: 0,
+        calls: 5,
+        first_at: new Date(2026, 10, 19, 8, 0, 0).toISOString(),
+        last_at: new Date(2026, 10, 21, 9, 0, 0).toISOString(),
+        transcript: true,
+      },
+    ],
+  };
+}
+
 function heroValue(): string | null {
   return document.querySelector(".bot-usage-hero-value")?.textContent ?? null;
 }
@@ -328,6 +368,72 @@ describe("BotUsage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("heading", { name: "Conversation trace" })).toBeNull();
     expect(document.activeElement).toBe(traceButton);
+  });
+
+  test("Trace B after Trace A shows B even when A's answer lands last", async () => {
+    const { api, summaryDeferreds, traceCalls, traceDeferreds } = fakeApi();
+    render(<BotUsage api={api} onOpenSession={() => {}} />);
+    summaryDeferreds[0]?.resolve(summaryFixtureTwoSessions());
+    await flush();
+
+    fireEvent.click(screen.getByRole("button", { name: "Trace Research Bot" }));
+    fireEvent.click(screen.getByRole("button", { name: "Trace Support Bot" }));
+    expect(traceCalls).toEqual(["session-1", "session-2"]);
+
+    // B (the later click) resolves first; A (the earlier click, now stale) resolves after it.
+    traceDeferreds[1]?.resolve({
+      session_id: "session-2",
+      bot_id: "bot-b",
+      kind: "main",
+      connection_id: null,
+      connection_name: null,
+      transcript: true,
+      omitted: 0,
+      calls: [],
+    });
+    await flush();
+    expect(screen.getByText("Support Bot · Main Bot chat · Claude Code · 0 calls")).toBeTruthy();
+
+    traceDeferreds[0]?.resolve({
+      session_id: "session-1",
+      bot_id: "bot-a",
+      kind: "main",
+      connection_id: null,
+      connection_name: null,
+      transcript: true,
+      omitted: 0,
+      calls: [],
+    });
+    await flush();
+    // A's stale answer did not replace B's panel.
+    expect(screen.getByText("Support Bot · Main Bot chat · Claude Code · 0 calls")).toBeTruthy();
+    expect(screen.queryByText("Research Bot · Main Bot chat · Claude Code · 0 calls")).toBeNull();
+  });
+
+  test("unmounting while a trace is pending drops the answer without a React warning", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { api, summaryDeferreds, traceDeferreds } = fakeApi();
+    const { unmount } = render(<BotUsage api={api} onOpenSession={() => {}} />);
+    summaryDeferreds[0]?.resolve(summaryFixture(30, 900));
+    await flush();
+
+    fireEvent.click(screen.getByRole("button", { name: "Trace Research Bot" }));
+    unmount();
+    await act(async () => {
+      traceDeferreds[0]?.resolve({
+        session_id: "session-1",
+        bot_id: "bot-a",
+        kind: "main",
+        connection_id: null,
+        connection_name: null,
+        transcript: true,
+        omitted: 0,
+        calls: [],
+      });
+    });
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 
   test("By Bot's Show table reveals one combined table (All Bots plus each panel)", async () => {

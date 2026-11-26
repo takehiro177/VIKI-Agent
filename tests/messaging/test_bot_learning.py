@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -14,14 +15,22 @@ from tests.messaging.test_bots import _bind_chat, _bot, _group_member, _owned_ch
 from tests.messaging.test_bots import service as service
 from tests.vaults.test_memory import CREATED, NOON, Harness, _harness
 from viki_agent.automation.routines import stamp
+from viki_agent.messaging import bot_learning
 from viki_agent.messaging.bot_episodes import EpisodeRecorder, EpisodeStore
-from viki_agent.messaging.bot_learning import BotLearning, LearningError, result_id, skill_text
+from viki_agent.messaging.bot_learning import (
+    MAX_IMPORT_FILES,
+    BotLearning,
+    LearningError,
+    result_id,
+    skill_text,
+)
 from viki_agent.messaging.bot_proposals import ProposalError, ProposalStore
 from viki_agent.messaging.bot_recall import HEADER, LessonStat, compose, creator_for
 from viki_agent.messaging.bots import BotService
 from viki_agent.messaging.dream_ops import Evidence, Proposal, Score
 from viki_agent.profiles.native_assets import parse_skill_text
 from viki_agent.vaults import lesson_body
+from viki_agent.vaults import vault as vault_module
 from viki_agent.vaults.memory import MemoryItem
 from viki_agent.vaults.memory_record import Fields, SessionSource
 from viki_agent.vaults.memory_record import compose as compose_record
@@ -199,6 +208,34 @@ def test_proposals_are_sealed_bound_to_their_row_and_decided_once(service: BotSe
     assert (done.state, done.proposed, done.rejected) == ("done", 2, 1)
 
 
+def test_fact_add_notes_covers_more_than_listings_window_and_only_fact_add(
+    service: BotService,
+) -> None:
+    """Merge review (round 2): `fact_add_notes` must not be windowed the way `listing` is (60
+    open, 20 decided across every op) - an earlier-memory import needs every `fact_add` proposal
+    still open, rejected or applied to recognise a file it has already proposed, whatever became
+    of that proposal, while still leaving out a non-`fact_add` op and a `stale` one (the write
+    never happened, so a retry is wanted, not a free skip)."""
+    store = ProposalStore(service.store)
+    workspace = str(uuid.uuid4())
+    run = store.start_run(workspace, BOT, "import", "user", None, stamp(NOW))
+    facts = [_proposal(f"Fact {n}") for n in range(70)]
+    lesson = Proposal("lesson_add", _lesson("Case"), (), "why")
+    store.add(run, [*facts, lesson], stamp(NOW))
+    store.finish_run(run.run_id, reason="", episodes=0, proposed=71, rejected=0, now=stamp(NOW))
+
+    decisions = store.fact_add_notes(BOT)
+    assert len(decisions) == 70  # every fact_add, past listing's 60-open window
+    assert {d.op for d in decisions} == {"fact_add"}  # the lesson_add is left out
+
+    store.decide(decisions[0].proposal_id, expected="open", state="rejected", now=stamp(NOW))
+    store.decide(decisions[1].proposal_id, expected="open", state="applied", now=stamp(NOW))
+    store.decide(decisions[2].proposal_id, expected="open", state="stale", now=stamp(NOW))
+    after = store.fact_add_notes(BOT)
+    assert len(after) == 69  # open, rejected and applied all still count; the stale one does not
+    assert {d.state for d in after} == {"open", "rejected", "applied"}
+
+
 def test_scores_count_beside_uses(service: BotService) -> None:
     store = ProposalStore(service.store)
     workspace, lesson = str(uuid.uuid4()), str(uuid.uuid4())
@@ -324,6 +361,215 @@ def test_earlier_memory_files_become_open_fact_proposals(tmp_path: Path) -> None
     assert learning.proposals.runs(BOT)[0].run_id == run.run_id
     with pytest.raises(LearningError, match="nothing_to_import"):
         learning.import_legacy(str(uuid.uuid4()))
+
+
+def _finished(learning: BotLearning, run: Any) -> Any:
+    """`run` re-read after `finish_run`: `import_legacy` answers the row as `start_run` left it,
+    proposed and rejected still 0, since `finish_run` updates the stored row, not that object."""
+    return next(r for r in learning.proposals.runs(BOT) if r.run_id == run.run_id)
+
+
+async def test_more_than_forty_earlier_files_import_over_two_calls(tmp_path: Path) -> None:
+    """F1: a Bot with more files than MAX_IMPORT_FILES gets the rest on a later import, once the
+    first batch is decided - not a card stuck forever at the same 40."""
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    for n in range(45):
+        harness.write(f"{folder}/f{n:02d}.md", f"Earlier note topic{n} detail{n}\n".encode())
+
+    first = _finished(learning, learning.import_legacy(BOT))
+    assert (first.proposed, first.rejected) == (MAX_IMPORT_FILES, 0)
+    first_open = [s for s in learning.proposals.listing(BOT) if s.state == "open"]
+    assert {s.body["notes"][0]["note"] for s in first_open} == {
+        f"{folder}/f{n:02d}.md" for n in range(40)
+    }
+    for stored in first_open:
+        assert await learning.apply(stored.proposal_id) == "applied"
+
+    second = _finished(learning, learning.import_legacy(BOT))
+    assert (second.proposed, second.rejected) == (5, 0)  # the 40 applied ones are noted, not read
+    second_open = [s for s in learning.proposals.listing(BOT) if s.state == "open"]
+    assert {s.body["notes"][0]["note"] for s in second_open} == {
+        f"{folder}/f{n:02d}.md" for n in range(40, 45)
+    }
+
+
+async def test_a_rejected_import_is_not_re_proposed(tmp_path: Path) -> None:
+    """F1: a file whose proposal the owner rejected stays rejected on a later import - its ref
+    is noted, so the file is skipped before it can spend any of the read budget."""
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    harness.write(f"{folder}/tea.md", b"Prefers tea over coffee\n")
+
+    first = _finished(learning, learning.import_legacy(BOT))
+    assert first.proposed == 1
+    (proposal,) = [s for s in learning.proposals.listing(BOT) if s.state == "open"]
+    await learning.reject(proposal.proposal_id)
+
+    again = _finished(learning, learning.import_legacy(BOT))
+    assert (again.proposed, again.rejected) == (0, 0)  # noted and skipped for free, not re-read
+    assert [s.state for s in learning.proposals.listing(BOT) if s.op == "fact_add"] == ["rejected"]
+
+
+async def test_more_than_twenty_rejected_files_all_stay_rejected(tmp_path: Path) -> None:
+    """Merge review repro: `listing`'s 20-newest-decided window missed 20 of 40 rejected
+    proposals, so a later import re-proposed them (proposed 25 instead of 5 on 45 files).
+    `ProposalStore.fact_add_notes` is not windowed, so every rejection sticks."""
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    for n in range(45):
+        harness.write(f"{folder}/f{n:02d}.md", f"Earlier note topic{n} detail{n}\n".encode())
+
+    first = _finished(learning, learning.import_legacy(BOT))
+    assert first.proposed == MAX_IMPORT_FILES
+    first_open = [s for s in learning.proposals.listing(BOT) if s.state == "open"]
+    assert len(first_open) == MAX_IMPORT_FILES
+    for stored in first_open:
+        await learning.reject(stored.proposal_id)
+
+    second = _finished(learning, learning.import_legacy(BOT))
+    assert (second.proposed, second.rejected) == (5, 0)  # only the 5 never-proposed files are new
+    second_open = {
+        s.body["notes"][0]["note"] for s in learning.proposals.listing(BOT) if s.state == "open"
+    }
+    assert second_open == {f"{folder}/f{n:02d}.md" for n in range(40, 45)}
+
+
+async def test_more_than_sixty_open_files_are_never_duplicated(tmp_path: Path) -> None:
+    """Merge review repro: `listing`'s 60-oldest-open window missed the newest 20 of 80 open
+    proposals on a third import, which re-proposed them as 20 duplicates.
+    `ProposalStore.fact_add_notes` is not windowed, so none of the 80 are ever duplicated."""
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    for n in range(80):
+        harness.write(f"{folder}/f{n:02d}.md", f"Earlier note topic{n} detail{n}\n".encode())
+
+    _finished(learning, learning.import_legacy(BOT))
+    _finished(learning, learning.import_legacy(BOT))
+    before = [s.body["notes"][0]["note"] for s in learning.proposals.fact_add_notes(BOT)]
+    assert sorted(before) == sorted({f"{folder}/f{n:02d}.md" for n in range(80)})
+
+    third = _finished(learning, learning.import_legacy(BOT))
+    assert (third.proposed, third.rejected) == (0, 0)  # every file is already noted
+    after = [s.body["notes"][0]["note"] for s in learning.proposals.fact_add_notes(BOT)]
+    assert sorted(after) == sorted(before)  # no duplicates
+
+
+async def test_file_401_becomes_reachable_once_earlier_files_are_noted(tmp_path: Path) -> None:
+    """Merge review repro: with one real fact sitting among 400 near-duplicate files, that one
+    file's read cost was paid again on every import (never noted), so file 401 was never
+    reached. Noting it instead of re-reading it frees exactly the budget needed to get past it."""
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    for n in range(400):
+        harness.write(f"{folder}/f{n:03d}.md", b"Earlier note shared across the whole batch\n")
+    harness.write(f"{folder}/f400.md", b"Earlier note about a wholly different later topic\n")
+
+    first = _finished(learning, learning.import_legacy(BOT))
+    assert (first.proposed, first.rejected) == (1, 399)  # f400 is never reached this call
+    first_notes = {s.body["notes"][0]["note"] for s in learning.proposals.fact_add_notes(BOT)}
+    assert first_notes == {f"{folder}/f000.md"}
+
+    second = _finished(learning, learning.import_legacy(BOT))
+    assert (second.proposed, second.rejected) == (1, 399)  # f000 is noted, not re-read
+    second_notes = {s.body["notes"][0]["note"] for s in learning.proposals.fact_add_notes(BOT)}
+    assert second_notes == {f"{folder}/f000.md", f"{folder}/f400.md"}
+
+
+async def test_approved_files_are_noted_so_later_files_stay_reachable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Merge review repro (round 2): an approved (applied) proposal's file must also be noted,
+    or its read cost is paid again on every import, starving the files behind it forever.
+    Scaled-down probe: 5 proposals and 10 reads per import; two imports with every proposal
+    applied, then a third and fourth must still reach files past 10, instead of ending
+    `nothing_new`."""
+    monkeypatch.setattr(bot_learning, "MAX_IMPORT_FILES", 5)
+    monkeypatch.setattr(bot_learning, "MAX_IMPORT_READS", 10)
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    for n in range(15):
+        harness.write(f"{folder}/f{n:02d}.md", f"Earlier note topic{n} detail{n}\n".encode())
+
+    for _ in range(2):  # two imports, every proposal approved
+        run = _finished(learning, learning.import_legacy(BOT))
+        assert run.proposed == 5
+        for stored in [s for s in learning.proposals.listing(BOT) if s.state == "open"]:
+            assert await learning.apply(stored.proposal_id) == "applied"
+
+    third = _finished(learning, learning.import_legacy(BOT))
+    assert third.proposed == 5  # not "nothing_new": files 11-15 are reached, not re-read as 1-10
+    third_open = {
+        s.body["notes"][0]["note"] for s in learning.proposals.listing(BOT) if s.state == "open"
+    }
+    assert third_open == {f"{folder}/f{n:02d}.md" for n in range(10, 15)}
+
+
+def test_a_legacy_folder_scan_is_not_blocked_by_the_whole_vaults_entry_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F1: a whole-vault scan that spends its entry budget in `00-inbox/` (which sorts before
+    `bot-memory/`) never reaches the Bot's folder; listing only that folder still finds its
+    file. `os.scandir` is pinned to a fixed, name-sorted order first, since the real order a
+    filesystem gives is not guaranteed."""
+    real_scandir = os.scandir
+
+    class _OrderedScandir:
+        def __init__(self, folder: Path | int) -> None:
+            with real_scandir(folder) as real:
+                entries = sorted(real, key=lambda entry: entry.name)
+            self._entries = iter(entries)
+
+        def __enter__(self) -> _OrderedScandir:
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            return None
+
+        def __iter__(self) -> _OrderedScandir:
+            return self
+
+        def __next__(self) -> os.DirEntry[str]:
+            return next(self._entries)
+
+    monkeypatch.setattr(vault_module.os, "scandir", _OrderedScandir)
+    monkeypatch.setattr(vault_module, "MAX_ENTRIES", 1)
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    harness.write(f"{folder}/tea.md", b"Prefers tea\n")
+    for n in range(2):
+        harness.write(f"00-inbox/note{n}.md", b"padding\n")
+
+    whole = harness.vault.scan(harness.wid)
+    assert whole.partial_reasons == ("entry_limit",)
+    assert not any(entry.ref.startswith(f"{folder}/") for entry in whole.entries)
+
+    assert learning._legacy_refs(harness.wid, BOT) == [f"{folder}/tea.md"]
+
+
+def test_the_legacy_count_is_the_number_of_earlier_memory_files(tmp_path: Path) -> None:
+    """Merge review narrowing: the "Import earlier memory ({count} files)" label is a plain file
+    count, kept cheap (the overview is read often) by never decoding a proposal's sealed body -
+    unaffected by what an import has already proposed, open, rejected or applied."""
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    for n in range(3):
+        harness.write(f"{folder}/f{n}.md", f"Earlier note alpha{n} beta{n}\n".encode())
+    harness.write(f"{folder}/MEMORY.md", b"- index\n")  # the index file, not a memory note
+
+    assert learning.overview(BOT)["legacy_files"] == 3
+
+    run = _finished(learning, learning.import_legacy(BOT))
+    assert run.proposed == 3
+    assert learning.overview(BOT)["legacy_files"] == 3  # still every file - a plain count
 
 
 def test_a_proven_lesson_is_offered_as_an_installable_skill(tmp_path: Path) -> None:
