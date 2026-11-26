@@ -2580,6 +2580,7 @@ def create_app(
                     app_version=app_version,
                     workers=agent_workers,
                     usage=usage_views,
+                    bootstrap=bootstrap,
                 )
             )
             routes.extend(

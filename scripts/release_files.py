@@ -14,7 +14,9 @@ _RULES = json.loads(Path(__file__).with_name("private-files.json").read_text(enc
 _PRIVATE = [re.compile(pattern) for pattern in _RULES["private_patterns"]]
 CERTIFICATE_LIMIT: int = _RULES["certificate_limit"]
 _PRIVATE_DIRECTORIES = set(_RULES["private_directories"])
-_RESOURCES = {"welcome.en.md"} | {"starter/" + source_of(target) for target in FILES}
+_RESOURCES = {"welcome.en.md", "starter-history.json"} | {
+    "starter/" + source_of(target) for target in FILES
+}
 _RESOURCE_DIRS = {
     parent.as_posix()
     for name in _RESOURCES

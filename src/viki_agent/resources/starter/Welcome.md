@@ -1,6 +1,6 @@
 # Welcome
 
-This vault was set up from the VIKI starter v7. The assistant `{{viki.assistant_name}}` reads `AGENTS.md` and `.claude/` when a chat starts here.
+This vault was set up from the VIKI starter v8. The assistant `{{viki.assistant_name}}` reads `AGENTS.md` and `.claude/` when a chat starts here.
 
 ## What is here
 - `AGENTS.md` — the persona between its markers, plus the rules. Change the persona in Settings › Instructions and Persona, by hand, or by asking `{{viki.assistant_name}}`.

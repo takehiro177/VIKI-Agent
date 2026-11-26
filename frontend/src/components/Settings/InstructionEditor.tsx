@@ -5,7 +5,8 @@
  * file that changed on disk answers `conflict`. Then the disk version is re-read and shown as text,
  * the draft is kept, and Save stays off: only the separate Replace button saves the draft over the
  * disk version, against the disk hash. File and disk text only ever appear as a textarea value or
- * a text node.
+ * a text node. An optional `proposal` prop can also set the draft from outside, once per object
+ * and only while its hash still names the file this editor holds as `base`.
  */
 import { type ReactElement, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Key } from "../../i18n/index";
@@ -43,6 +44,11 @@ export interface InstructionEditorProps {
   onDirty(dirty: boolean): void;
   /** A refusal that says the vault's registration moved under this page; the draft is kept. */
   onStaleScope?(): void;
+  /**
+   * A proposed replacement text to load into the draft, once per distinct object, matched by
+   * hash against `base`. A hash that no longer matches warns and leaves the draft as it was.
+   */
+  proposal?: { text: string; sha256: string } | null;
 }
 
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -101,6 +107,7 @@ export function InstructionEditor({
   onFile,
   onDirty,
   onStaleScope,
+  proposal,
 }: InstructionEditorProps): ReactElement {
   const [base, setBase] = useState<Base | null>(() => {
     const first = editableText(source);
@@ -136,6 +143,26 @@ export function InstructionEditor({
     report.current(dirty);
     return () => report.current(false);
   }, [dirty]);
+
+  // `base` and `busy` as of the moment `proposal` last changed, and `warn` itself: read through
+  // refs inside the effect below, not listed as its dependencies, so a save finishing, the base
+  // changing or a re-render that redefines `warn` does not re-fire it.
+  const atProposal = useRef({ base, busy });
+  atProposal.current = { base, busy };
+  const warnRef = useRef(warn);
+  warnRef.current = warn;
+  const handledProposal = useRef<InstructionEditorProps["proposal"]>(undefined);
+  useEffect(() => {
+    if (!proposal || proposal === handledProposal.current) return;
+    handledProposal.current = proposal;
+    const { base: currentBase, busy: currentBusy } = atProposal.current;
+    if (currentBase === null || currentBusy) return;
+    if (proposal.sha256 !== currentBase.sha256) {
+      warnRef.current("settings.persona.editor.proposal_stale");
+      return;
+    }
+    setDraft(proposal.text);
+  }, [proposal]);
 
   if (base === null) {
     const reason = editableText(source);

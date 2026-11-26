@@ -505,7 +505,7 @@ export function personaDiff(before: string, after: string): DiffEntry[] {
 
 /** The longest run of consecutive backticks in `text`, plus one, floored at 3: a fence this long
  * can never be closed early by anything already inside the text. */
-function fenceFor(text: string): string {
+export function fenceFor(text: string): string {
   let longest = 0;
   let current = 0;
   for (const char of text) {

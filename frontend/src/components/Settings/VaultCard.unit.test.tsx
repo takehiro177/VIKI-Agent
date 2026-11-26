@@ -1,8 +1,14 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import type { Capabilities, WorkspacesListing } from "../../clients/app/shellApi";
+import type {
+  Capabilities,
+  StarterPlan,
+  WorkspaceJson,
+  WorkspacesListing,
+} from "../../clients/app/shellApi";
 import { ShellApiError } from "../../clients/app/shellApi";
 import type { CommandArg, CommandId } from "../../commands";
+import { t } from "../../i18n/t";
 import type { ShellSnapshot, ShellStore } from "../../state/shell";
 import {
   capabilitiesFixture,
@@ -434,4 +440,210 @@ test("a failed openVault during Change vault… shows the refusal via errorText"
   await waitFor(() =>
     expect(screen.getByRole("alert").textContent).toBe("The operation could not be completed."),
   );
+});
+
+// The starter-update badge: fetched only for a registered, non-pending-bootstrap, non-protected
+// vault row, and only when the api exposes `starterPlan` at all.
+
+const BADGE_TEXT = t("settings.starter.badge");
+
+function activeVaultCapabilities(workspace: WorkspaceJson): Capabilities {
+  return capabilitiesFixture({
+    workspace: {
+      chat_only: false,
+      active: {
+        id: workspace.workspace_id,
+        kind: "vault",
+        name: workspace.name,
+        policy: workspace.policy,
+        layout: "unknown",
+        source: workspace.source,
+        aliased: false,
+        root_available: true,
+      },
+    },
+  });
+}
+
+function starterPlanFixture(overrides: Partial<StarterPlan> = {}): StarterPlan {
+  return {
+    state: "available",
+    from_version: 1,
+    to_version: 2,
+    notify: false,
+    items: [],
+    agents: null,
+    ...overrides,
+  };
+}
+
+function deferredPlan() {
+  let resolve!: (value: StarterPlan) => void;
+  const promise = new Promise<StarterPlan>((yes) => {
+    resolve = yes;
+  });
+  return { promise, resolve };
+}
+
+test("fetches the starter plan for the active vault and shows the badge when notify is true", async () => {
+  const workspace = workspaceFixture({ workspace_id: FAKE_WORKSPACE_ID });
+  const starterPlan = vi.fn(async () => starterPlanFixture({ notify: true }));
+  const api = { ...fakeShellApi(), starterPlan };
+  render(
+    <VaultCard
+      api={api}
+      store={fakeStore()}
+      snapshot={snapshotFixture(activeVaultCapabilities(workspace), listingFixture([workspace]))}
+      onCommand={onCommand}
+    />,
+  );
+  expect(await screen.findByText(BADGE_TEXT)).toBeTruthy();
+  expect(starterPlan).toHaveBeenCalledWith(FAKE_WORKSPACE_ID);
+});
+
+test("fetches the starter plan and shows the badge for a none-bootstrap vault (added with Open)", async () => {
+  const workspace = workspaceFixture({ workspace_id: FAKE_WORKSPACE_ID, bootstrap: "none" });
+  const starterPlan = vi.fn(async () => starterPlanFixture({ notify: true }));
+  const api = { ...fakeShellApi(), starterPlan };
+  render(
+    <VaultCard
+      api={api}
+      store={fakeStore()}
+      snapshot={snapshotFixture(activeVaultCapabilities(workspace), listingFixture([workspace]))}
+      onCommand={onCommand}
+    />,
+  );
+  expect(await screen.findByText(BADGE_TEXT)).toBeTruthy();
+  expect(starterPlan).toHaveBeenCalledWith(FAKE_WORKSPACE_ID);
+});
+
+test("shows nothing when the plan's notify is false", async () => {
+  const workspace = workspaceFixture({ workspace_id: FAKE_WORKSPACE_ID });
+  const starterPlan = vi.fn(async () => starterPlanFixture({ notify: false }));
+  const api = { ...fakeShellApi(), starterPlan };
+  render(
+    <VaultCard
+      api={api}
+      store={fakeStore()}
+      snapshot={snapshotFixture(activeVaultCapabilities(workspace), listingFixture([workspace]))}
+      onCommand={onCommand}
+    />,
+  );
+  await waitFor(() => expect(starterPlan).toHaveBeenCalled());
+  expect(screen.queryByText(BADGE_TEXT)).toBeNull();
+});
+
+test("shows nothing when the starter-plan fetch rejects", async () => {
+  const workspace = workspaceFixture({ workspace_id: FAKE_WORKSPACE_ID });
+  const starterPlan = vi.fn(async () => {
+    throw new ShellApiError(500, "unavailable");
+  });
+  const api = { ...fakeShellApi(), starterPlan };
+  render(
+    <VaultCard
+      api={api}
+      store={fakeStore()}
+      snapshot={snapshotFixture(activeVaultCapabilities(workspace), listingFixture([workspace]))}
+      onCommand={onCommand}
+    />,
+  );
+  await waitFor(() => expect(starterPlan).toHaveBeenCalled());
+  expect(screen.queryByText(BADGE_TEXT)).toBeNull();
+});
+
+test("never fetches the starter plan for a protected vault", () => {
+  const workspace = workspaceFixture({ workspace_id: FAKE_WORKSPACE_ID, policy: "protected" });
+  const starterPlan = vi.fn(async () => starterPlanFixture({ notify: true }));
+  const api = { ...fakeShellApi(), starterPlan };
+  render(
+    <VaultCard
+      api={api}
+      store={fakeStore()}
+      snapshot={snapshotFixture(activeVaultCapabilities(workspace), listingFixture([workspace]))}
+      onCommand={onCommand}
+    />,
+  );
+  expect(starterPlan).not.toHaveBeenCalled();
+  expect(screen.queryByText(BADGE_TEXT)).toBeNull();
+});
+
+test("never fetches the starter plan while bootstrap has not completed", () => {
+  const workspace = workspaceFixture({ workspace_id: FAKE_WORKSPACE_ID, bootstrap: "pending" });
+  const starterPlan = vi.fn(async () => starterPlanFixture({ notify: true }));
+  const api = { ...fakeShellApi(), starterPlan };
+  render(
+    <VaultCard
+      api={api}
+      store={fakeStore()}
+      snapshot={snapshotFixture(activeVaultCapabilities(workspace), listingFixture([workspace]))}
+      onCommand={onCommand}
+    />,
+  );
+  expect(starterPlan).not.toHaveBeenCalled();
+  expect(screen.queryByText(BADGE_TEXT)).toBeNull();
+});
+
+test("shows nothing when the api has no starterPlan", () => {
+  const workspace = workspaceFixture({ workspace_id: FAKE_WORKSPACE_ID });
+  render(
+    <VaultCard
+      api={fakeShellApi()}
+      store={fakeStore()}
+      snapshot={snapshotFixture(activeVaultCapabilities(workspace), listingFixture([workspace]))}
+      onCommand={onCommand}
+    />,
+  );
+  expect(screen.queryByText(BADGE_TEXT)).toBeNull();
+});
+
+test("drops a stale starter-plan answer from a previous active id", async () => {
+  const SECOND_WORKSPACE_ID = "77777777-7777-4777-8777-777777777777";
+  const workspaceA = workspaceFixture({ workspace_id: FAKE_WORKSPACE_ID });
+  const workspaceB = workspaceFixture({
+    workspace_id: SECOND_WORKSPACE_ID,
+    name: "Second vault",
+  });
+  const listing = listingFixture([workspaceA, workspaceB]);
+  const pending = new Map<string, ReturnType<typeof deferredPlan>>();
+  const starterPlan = vi.fn((id: string) => {
+    const entry = deferredPlan();
+    pending.set(id, entry);
+    return entry.promise;
+  });
+  const api = { ...fakeShellApi(), starterPlan };
+
+  const { rerender } = render(
+    <VaultCard
+      api={api}
+      store={fakeStore()}
+      snapshot={snapshotFixture(activeVaultCapabilities(workspaceA), listing)}
+      onCommand={onCommand}
+    />,
+  );
+  await waitFor(() => expect(starterPlan).toHaveBeenCalledWith(FAKE_WORKSPACE_ID));
+
+  // Switch the active vault before the first answer arrives.
+  rerender(
+    <VaultCard
+      api={api}
+      store={fakeStore()}
+      snapshot={snapshotFixture(activeVaultCapabilities(workspaceB), listing)}
+      onCommand={onCommand}
+    />,
+  );
+  await waitFor(() => expect(starterPlan).toHaveBeenCalledWith(SECOND_WORKSPACE_ID));
+
+  // The new vault's own answer lands first, with no update due.
+  await act(async () => {
+    pending.get(SECOND_WORKSPACE_ID)?.resolve(starterPlanFixture({ notify: false }));
+    await pending.get(SECOND_WORKSPACE_ID)?.promise;
+  });
+  expect(screen.queryByText(BADGE_TEXT)).toBeNull();
+
+  // The old vault's answer arrives last, saying notify: true — it must be dropped, not shown.
+  await act(async () => {
+    pending.get(FAKE_WORKSPACE_ID)?.resolve(starterPlanFixture({ notify: true }));
+    await pending.get(FAKE_WORKSPACE_ID)?.promise;
+  });
+  expect(screen.queryByText(BADGE_TEXT)).toBeNull();
 });
