@@ -129,7 +129,7 @@ It shows the real app working through a scripted example, so the **Learning** nu
 are sample data, not anyone's real results. A generated voice narrates it, and captions are
 optional.
 
-The separate [launch film](assets/videos/cinematic-launch.html) is a shorter introduction.
+The [launch film](index.html#cinematic-launch) is a shorter introduction.
 
 ## The proactive loop
 

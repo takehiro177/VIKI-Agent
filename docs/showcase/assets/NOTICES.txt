@@ -280,5 +280,5 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 ================================================================
 Soundtrack
 ================================================================
-assets/soundtrack.m4a, also the sound of media/viki-agent-tile-genesis.mp4, is an edit of an
-instrumental score generated with Eleven Music (ElevenLabs) through Higgsfield.
+assets/soundtrack.m4a is an edit of an instrumental score generated with Eleven Music
+(ElevenLabs) through Higgsfield.
