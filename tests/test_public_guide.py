@@ -33,10 +33,9 @@ GENERATED = {
         "search.html",
     )
 }
-PUBLIC_PAGES = GENERATED | {
-    GUIDE,
-    REPO / "docs/assets/videos/cinematic-launch.html",
-}
+# The blog (docs/blog/) is hand-written HTML on the manual layout, linked from the guide.
+BLOG = {REPO / "docs/blog" / name for name in ("index.html", "bots-learn-what-you-approve.html")}
+PUBLIC_PAGES = GENERATED | BLOG | {GUIDE}
 PUBLIC_DOWNLOADS = {
     REPO / "docs/assets" / name
     for name in (

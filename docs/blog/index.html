@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Posts about how VIKI Agent works: design notes, safeguards and the reasoning behind them.">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0b0b">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'self'; frame-src 'none'">
+  <title>Blog — VIKI Agent</title>
+  <link rel="icon" href="../assets/brand-icon.ico" sizes="any">
+  <link rel="stylesheet" href="../assets/guide.css">
+  <link rel="stylesheet" href="../assets/manual.css">
+  <link rel="stylesheet" href="../assets/blog.css">
+</head>
+<body class="manual-page">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="masthead">
+    <a class="brand" href="../index.html" aria-label="VIKI Agent field guide"><img class="brand-mark" src="../assets/brand-mark.png" alt="" width="42" height="42"><span>VIKI <b>Agent</b></span></a>
+    <span class="edition">Blog</span>
+    <form class="doc-search" role="search" aria-label="Documentation search" action="../manual/search.html" method="get"><label class="doc-search-label" for="docs-query">Search guides and videos</label><input id="docs-query" name="q" type="search" placeholder="Search guides and videos" maxlength="160" autocomplete="off"><button type="submit">Search</button></form>
+    <a class="header-link" href="../index.html#library">Documentation <span aria-hidden="true">↗</span></a>
+  </header>
+
+  <div class="manual-layout">
+    <nav class="manual-nav" aria-label="Blog">
+      <div class="manual-nav-group"><p class="nav-label">Blog</p>
+        <a href="index.html" aria-current="page"><span class="icon icon-book" aria-hidden="true"></span>All posts</a>
+        <a href="bots-learn-what-you-approve.html"><span class="icon icon-bot" aria-hidden="true"></span>Bots that learn only what you approve</a>
+      </div>
+      <div class="manual-nav-group"><p class="nav-label">Read more</p>
+        <a href="../index.html"><span class="icon icon-compass" aria-hidden="true"></span>Field guide</a>
+        <a href="../manual/docs/bots.html"><span class="icon icon-bot" aria-hidden="true"></span>Bots</a>
+        <a href="../manual/docs/security.html"><span class="icon icon-shield" aria-hidden="true"></span>Security</a>
+      </div>
+    </nav>
+
+    <main id="main" class="manual-content" tabindex="-1">
+      <div class="manual-kicker"><p class="eyebrow">VIKI Agent / Blog</p></div>
+      <article>
+        <header class="manual-hero">
+          <span class="manual-icon" aria-hidden="true"><span class="icon icon-book"></span></span>
+          <h1 id="blog">Blog</h1>
+          <p>How VIKI Agent works and why: design notes, safeguards and the trade-offs behind them.</p>
+        </header>
+        <ul class="post-list" aria-label="Posts">
+          <li>
+            <div class="blog-byline"><time datetime="2026-11-26">November 26, 2026</time><span>Bots</span><span>Memory</span><span>Security</span></div>
+            <h2 id="post-bots-learn-what-you-approve"><a href="bots-learn-what-you-approve.html">Bots that learn only what you approve</a></h2>
+            <p>Bots now learn from their finished work. Read-only reflect and dream runs propose lessons and facts, code checks every proposal against the conversation it came from, and what you approve is recalled in every chat. The post walks through the architecture, the safety design and the research behind each choice.</p>
+          </li>
+        </ul>
+      </article>
+      <footer class="manual-footer"><p class="manual-footer-links"><a href="#main">Back to top ↑</a><a href="../index.html">← Back to field guide</a><a href="../index.html#library">Documentation ↗</a></p></footer>
+    </main>
+  </div>
+</body>
+</html>

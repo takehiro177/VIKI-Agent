@@ -54,5 +54,5 @@ Keep the desktop host awake and the app running when you use a messaging bridge.
 
 - [Visual guide](index.html)
 - [How VIKI Agent works](concepts.md)
-- [Launch film](assets/videos/cinematic-launch.html)
+- [Launch film](index.html#cinematic-launch)
 - [Proactive workflow guide transcript](assets/videos/chat-launcher-demo-transcript.md)
