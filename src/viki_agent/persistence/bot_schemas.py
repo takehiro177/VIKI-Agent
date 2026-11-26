@@ -132,3 +132,89 @@ BOT_SCHEMAS = {
     FOREIGN KEY (bot_id) REFERENCES bots(bot_id)
 ) STRICT""",
 }
+
+# What Bots learn from (episodes, session taint) and what learning runs propose; identifiers,
+# states, hashes, stamps and counts only. Conversation text stays in Claude Code's transcripts and
+# a proposal's text is sealed (ADR-088).
+BOT_LEARNING_SCHEMA_STEP = 43
+BOT_LEARNING_SCHEMAS = {
+    "bot_episodes": """CREATE TABLE bot_episodes (
+    episode_id TEXT PRIMARY KEY NOT NULL CHECK(length(episode_id) = 36),
+    workspace_id TEXT NOT NULL CHECK(length(workspace_id) = 36),
+    bot_id TEXT NOT NULL CHECK(length(bot_id) = 36),
+    session_id TEXT NOT NULL CHECK(length(session_id) = 36),
+    kind TEXT NOT NULL CHECK(kind IN ('main','task','bot_thread','routine')),
+    started_at TEXT NOT NULL CHECK(length(started_at) = 24),
+    finished_at TEXT NOT NULL CHECK(length(finished_at) = 24),
+    status TEXT NOT NULL CHECK(status IN ('success','cancelled','error')),
+    tainted INTEGER NOT NULL CHECK(tainted IN (0,1)),
+    tools INTEGER NOT NULL CHECK(tools BETWEEN 0 AND 100000),
+    lessons TEXT NOT NULL CHECK(length(lessons) <= 190 AND lessons NOT GLOB '*[^0-9a-f,-]*'),
+    reflected INTEGER NOT NULL CHECK(reflected IN (0,1))
+) STRICT""",
+    "bot_session_taint": """CREATE TABLE bot_session_taint (
+    session_id TEXT PRIMARY KEY NOT NULL CHECK(length(session_id) = 36),
+    workspace_id TEXT NOT NULL CHECK(length(workspace_id) = 36),
+    bot_id TEXT NOT NULL CHECK(length(bot_id) = 36),
+    sources TEXT NOT NULL CHECK(sources IN ('web','mcp','web,mcp')),
+    tainted_at TEXT NOT NULL CHECK(length(tainted_at) = 24)
+) STRICT""",
+    "bot_runs": """CREATE TABLE bot_runs (
+    run_id TEXT PRIMARY KEY NOT NULL CHECK(length(run_id) = 36),
+    workspace_id TEXT NOT NULL CHECK(length(workspace_id) = 36),
+    bot_id TEXT NOT NULL CHECK(length(bot_id) = 36),
+    mode TEXT NOT NULL CHECK(mode IN ('reflect','dream','import')),
+    trigger TEXT NOT NULL CHECK(trigger IN ('user','auto')),
+    session_id TEXT CHECK(session_id IS NULL OR length(session_id) = 36),
+    state TEXT NOT NULL CHECK(state IN ('running','done','failed')),
+    reason TEXT NOT NULL CHECK(length(reason) <= 32),
+    episodes INTEGER NOT NULL CHECK(episodes BETWEEN 0 AND 1000),
+    proposed INTEGER NOT NULL CHECK(proposed BETWEEN 0 AND 1000),
+    rejected INTEGER NOT NULL CHECK(rejected BETWEEN 0 AND 1000),
+    started_at TEXT NOT NULL CHECK(length(started_at) = 24),
+    finished_at TEXT CHECK(finished_at IS NULL OR length(finished_at) = 24),
+    CHECK((state = 'running') = (finished_at IS NULL))
+) STRICT""",
+    "bot_proposals": """CREATE TABLE bot_proposals (
+    proposal_id TEXT PRIMARY KEY NOT NULL CHECK(length(proposal_id) = 36),
+    run_id TEXT NOT NULL CHECK(length(run_id) = 36),
+    workspace_id TEXT NOT NULL CHECK(length(workspace_id) = 36),
+    bot_id TEXT NOT NULL CHECK(length(bot_id) = 36),
+    op TEXT NOT NULL CHECK(op IN
+        ('lesson_add','fact_add','profile_add','record_supersede','record_retire')),
+    target_id TEXT CHECK(target_id IS NULL OR length(target_id) = 36),
+    target_sha256 TEXT CHECK(target_sha256 IS NULL OR (length(target_sha256) = 64
+        AND target_sha256 NOT GLOB '*[^0-9a-f]*')),
+    body BLOB NOT NULL CHECK(length(body) BETWEEN 1 AND 131072),
+    body_sha256 TEXT NOT NULL CHECK(length(body_sha256) = 64
+        AND body_sha256 NOT GLOB '*[^0-9a-f]*'),
+    state TEXT NOT NULL CHECK(state IN ('open','applied','rejected','stale','undone')),
+    result_id TEXT CHECK(result_id IS NULL OR length(result_id) = 36),
+    created_at TEXT NOT NULL CHECK(length(created_at) = 24),
+    decided_at TEXT CHECK(decided_at IS NULL OR length(decided_at) = 24),
+    CHECK((state = 'open') = (decided_at IS NULL)),
+    CHECK((target_id IS NULL) = (target_sha256 IS NULL)),
+    FOREIGN KEY (run_id) REFERENCES bot_runs(run_id)
+) STRICT""",
+    "bot_lesson_stats": """CREATE TABLE bot_lesson_stats (
+    workspace_id TEXT NOT NULL CHECK(length(workspace_id) = 36),
+    memory_id TEXT NOT NULL CHECK(length(memory_id) = 36),
+    bot_id TEXT NOT NULL CHECK(length(bot_id) = 36),
+    uses INTEGER NOT NULL CHECK(uses BETWEEN 0 AND 1000000000),
+    helpful INTEGER NOT NULL CHECK(helpful BETWEEN 0 AND 1000000000),
+    harmful INTEGER NOT NULL CHECK(harmful BETWEEN 0 AND 1000000000),
+    last_used_at TEXT CHECK(last_used_at IS NULL OR length(last_used_at) = 24),
+    PRIMARY KEY (workspace_id, memory_id)
+) STRICT""",
+}
+# Delete order for a removed Bot or workspace: proposals before the runs they name.
+LEARNING_TABLES = (
+    "bot_proposals",
+    "bot_runs",
+    "bot_episodes",
+    "bot_session_taint",
+    "bot_lesson_stats",
+)
+BOT_LEARNING_INDEXES = {
+    "bot_episodes_bot": "CREATE INDEX bot_episodes_bot ON bot_episodes(bot_id,finished_at)",
+}

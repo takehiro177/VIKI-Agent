@@ -26,6 +26,16 @@ const MAX_THREADS = 20;
 const MAX_MESSAGES = 200;
 const MAX_SOURCE_PAGES = 16;
 
+/** A participant's stated purpose on one line, so a handoff can name the right Bot. */
+const PURPOSE_CHARS = 200;
+function participantPurpose(row: ThreadMember): string {
+  const purpose = (row.identity?.purpose ?? row.bot?.profile?.identity.purpose ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const chars = [...purpose];
+  return chars.length > PURPOSE_CHARS ? `${chars.slice(0, PURPOSE_CHARS - 1).join("")}…` : purpose;
+}
+
 export interface ThreadMember {
   key: string;
   name: string;
@@ -915,7 +925,10 @@ export function createBotThreadStore({
         : []),
       "Only use a handoff for useful remaining work. Do not repeat a failed action or resend a message.",
       "Participating Bots:",
-      ...participants.map((row) => `${row.key}: ${row.name}`),
+      ...participants.map((row) => {
+        const purpose = participantPurpose(row);
+        return purpose ? `${row.key}: ${row.name} (${purpose})` : `${row.key}: ${row.name}`;
+      }),
       `VIKI_THREAD_CONTEXT ${JSON.stringify({ request: thread.messages.findLast((message) => message.memberKey === null && !message.steer)?.text ?? "", handoff })}`,
     ].join("\n");
   }

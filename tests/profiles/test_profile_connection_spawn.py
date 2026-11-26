@@ -219,6 +219,7 @@ class ConnectionRig(Rig):
         assert cwd == self.vault
         assert json.loads(Path(memory).read_text(encoding="ascii")) == {
             "autoMemoryDirectory": str(self.vault / "bot-memory" / owner),
+            "autoMemoryEnabled": False,
             "claudeMdExcludes": instruction_excludes(self.vault),
         }
         assert Path(mcp).parent == self.data / "mcp"

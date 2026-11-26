@@ -107,7 +107,11 @@ def test_protected_bot_spawn_requests_app_memory(
     assert config is not None and Path(config).parent == rig.data / "bot-memory-settings"
     # A protected vault keeps the memory in the data folder, and its instruction files skipped.
     assert Path(config).read_bytes() == json.dumps(
-        {"autoMemoryDirectory": str(target), "claudeMdExcludes": instruction_excludes(rig.vault)},
+        {
+            "autoMemoryDirectory": str(target),
+            "autoMemoryEnabled": False,
+            "claudeMdExcludes": instruction_excludes(rig.vault),
+        },
         separators=(",", ":"),
     ).encode("ascii")
     assert not (rig.data / "bot-memory").exists() and not (rig.vault / "bot-memory").exists()
@@ -191,6 +195,7 @@ def test_main_and_task_spawns_share_only_their_bots_native_memory(
     assert prompts == [prompt, prompt, None]
     assert json.loads(Path(configs[0]).read_text(encoding="ascii")) == {
         "autoMemoryDirectory": str(rig.vault / "bot-memory" / owner),
+        "autoMemoryEnabled": False,
         "claudeMdExcludes": instruction_excludes(rig.vault),
     }
     assert not (rig.vault / "bot-memory").exists()

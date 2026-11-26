@@ -21,6 +21,7 @@ _TABLES = (
     "bot_code_baselines",
     *storage.BOT_USAGE_SCHEMAS,
     *storage.INBOX_SUGGESTION_SCHEMAS,
+    *storage.LEARNING_TABLES,
 )
 _BINDING_COLUMNS = (
     "session_id,command_id,request_hash,profile_id,profile_revision,workspace_id,"
@@ -169,7 +170,7 @@ def _schema(connection: sqlite3.Connection) -> list[Any]:
 
 
 def test_fresh_and_migrated_v40_have_identical_sql_and_keep_old_rows(tmp_path: Path) -> None:
-    assert storage.SCHEMA_VERSION == 42
+    assert storage.SCHEMA_VERSION == 43
     assert MAX_BINDINGS == 4096
     path = version_39(tmp_path)
     with contextlib.closing(sqlite3.connect(path)) as connection:
@@ -178,7 +179,7 @@ def test_fresh_and_migrated_v40_have_identical_sql_and_keep_old_rows(tmp_path: P
     state = AppState(tmp_path / "state.json", Prefs())
     fresh = AppState(tmp_path / "fresh" / "state.json", Prefs())
     with state.store._connection() as connection, fresh.store._connection() as created:
-        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (43,)
         assert _schema(connection) == _schema(created)
         assert _legacy_rows(connection) == before
         assert (

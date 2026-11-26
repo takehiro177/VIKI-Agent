@@ -74,6 +74,7 @@ def test_bot_tasks_share_memory_after_rename_and_service_restart(rig: Any) -> No
     path = Path(paths[0])
     assert json.loads(path.read_text(encoding="ascii")) == {
         "autoMemoryDirectory": str(vault / memory_ref(owner)),
+        "autoMemoryEnabled": False,
         "claudeMdExcludes": instruction_excludes(vault),
     }
     assert not (vault / "bot-memory").exists()  # the app writes only the settings file
@@ -155,6 +156,24 @@ def test_bot_system_prompt_gains_the_kanban_rule_once_the_vault_has_the_skill(ri
     assert service.bot_system_prompt(sid) == bot_system_prompt(
         document()["instructions"], kanban=True
     )
+
+
+def test_bot_system_prompt_ends_with_what_the_bot_recalls(rig: Any) -> None:
+    # ADR-087: recall follows the rules, asked again at every spawn with the session's ids.
+    service, _state, _vault, pid, wid = rig
+    owner, sid = bot(service, pid, wid), ident()
+    service.prepare(pid, ident(), sid, 1, wid, owner)
+    asked: list[tuple[str, str, str]] = []
+
+    def recall(workspace_id: str, bot_id: str, session_id: str) -> str:
+        asked.append((workspace_id, bot_id, session_id))
+        return "<facts>\n- x\n</facts>" if len(asked) == 1 else ""
+
+    service.bind_recall(recall)
+    rules = bot_system_prompt(document()["instructions"])
+    assert service.bot_system_prompt(sid) == f"{rules}\n\n<facts>\n- x\n</facts>"
+    assert service.bot_system_prompt(sid) == rules
+    assert asked == [(wid, owner, sid)] * 2
 
 
 def test_a_profile_session_without_a_bot_keeps_its_instructions_in_the_draft(rig: Any) -> None:
@@ -264,7 +283,11 @@ def test_nonordinary_bot_sessions_keep_memory_in_app_data(rig: Any, policy: str)
     assert path and Path(path).parent == service.bot_settings_directory
     # The session still runs in the vault, so its instruction files are named all the same.
     assert Path(path).read_bytes() == json.dumps(
-        {"autoMemoryDirectory": str(target), "claudeMdExcludes": instruction_excludes(vault)},
+        {
+            "autoMemoryDirectory": str(target),
+            "autoMemoryEnabled": False,
+            "claudeMdExcludes": instruction_excludes(vault),
+        },
         separators=(",", ":"),
     ).encode("ascii")
     argv = build_argv(
@@ -288,6 +311,7 @@ def test_existing_nonordinary_binding_uses_app_memory_on_next_spawn(rig: Any) ->
         "autoMemoryDirectory": str(
             service.bot_settings_directory.parent / "bot-memory" / wid / owner
         ),
+        "autoMemoryEnabled": False,
         "claudeMdExcludes": instruction_excludes(vault),
     }
 

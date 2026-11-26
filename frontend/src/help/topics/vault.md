@@ -30,7 +30,7 @@ Archived notes move under `archive/` and can be moved back.
 Deleting a note creates a recovery copy when there's room, restorable for 30 days while that copy lasts.
 Select **Save note** to write your change.
 If the note changed elsewhere first, saving stops and your draft stays so you don't lose it.
-The `bot-memory/` folder is read-only here; Claude Code writes Bot memory. **Recovery** and **Memory** sit at the end of the page; Recovery opens by itself when a save or note operation did not finish.
+The `bot-memory/` folder is read-only here; it holds notes Bots saved with Claude Code's auto memory, which Bots don't use. **Recovery** and **Memory** sit at the end of the page; Recovery opens by itself when a save or note operation did not finish.
 
 ## A protected vault
 A vault with the **Protected** policy is never written by the app directly.

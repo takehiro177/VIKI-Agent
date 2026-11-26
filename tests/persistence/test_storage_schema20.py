@@ -53,10 +53,10 @@ def _rows(connection: sqlite3.Connection) -> dict[str, list[Any]]:
 
 def test_fresh_store_has_schema20_roots_and_byte_bound(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    assert storage.SCHEMA_VERSION == 42 and storage.JEV_SCHEMA_STEP == 19
+    assert storage.SCHEMA_VERSION == 43 and storage.JEV_SCHEMA_STEP == 19
     store.put_session_root(_root(1))
     with contextlib.closing(sqlite3.connect(store.path)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (43,)
         assert connection.execute(
             "SELECT sql FROM sqlite_schema WHERE name='session_roots'"
         ).fetchone() == (storage.ROOT_SCHEMAS_V20["session_roots"],)
@@ -86,7 +86,7 @@ def test_v19_migration_preserves_all_rows_and_a_validated_backup(tmp_path: Path)
             "SELECT sql FROM sqlite_schema WHERE name='session_roots'"
         ).fetchone() == (storage.ROOT_SCHEMAS["session_roots"],)
     with contextlib.closing(sqlite3.connect(database)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (42,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (43,)
         # Step 24 also moves v19's jev_* rows (none here) into its six decision_* tables, and
         # step 25 adds the proposal table.
         assert _rows(connection) == {
@@ -97,6 +97,7 @@ def test_v19_migration_preserves_all_rows_and_a_validated_backup(tmp_path: Path)
             "bot_thread_sessions": [],
             **dict.fromkeys(storage.BOT_CODE_SCHEMAS, []),
             **dict.fromkeys(storage.INBOX_SUGGESTION_SCHEMAS, []),
+            **dict.fromkeys(storage.BOT_LEARNING_SCHEMAS, []),
             **dict.fromkeys(storage.BOT_USAGE_SCHEMAS, []),
             "bot_deliveries": [],
             "messaging_config": [],
@@ -119,7 +120,7 @@ def test_v19_migration_preserves_all_rows_and_a_validated_backup(tmp_path: Path)
         assert saved.execute("PRAGMA user_version").fetchone() == (21,)
         assert _rows(saved) == before
     # Each step from 19 through the current schema backs up its source version.
-    assert len(list(tmp_path.glob("*backup*"))) == 23
+    assert len(list(tmp_path.glob("*backup*"))) == 24
     assert _code(lambda: _old_version_connection(store)) == "incompatible"
 
 

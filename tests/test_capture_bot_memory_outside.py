@@ -268,7 +268,8 @@ async def test_41_settings_name_an_app_folder_outside_the_working_folder_before_
     document = json.loads(settings.read_text(encoding="ascii"))
     # The memory is outside the working folder, whose instruction files are named all the same.
     assert document["claudeMdExcludes"] == instruction_excludes(root)
-    assert set(document) == {"autoMemoryDirectory", "claudeMdExcludes"}
+    assert set(document) == {"autoMemoryDirectory", "autoMemoryEnabled", "claudeMdExcludes"}
+    assert document["autoMemoryEnabled"] is False
     folder = Path(document["autoMemoryDirectory"])
     assert folder == app_memory_directory(data, folder.parent.name, folder.name)
     assert not folder.is_relative_to(root) and not data.is_relative_to(root)

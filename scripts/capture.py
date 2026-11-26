@@ -98,6 +98,7 @@ from viki_agent.drivers.claude.transport import (
 from viki_agent.llm.connections import Connection
 from viki_agent.llm.gateway import Gateway, finish_cleanup
 from viki_agent.llm.protocols import event
+from viki_agent.messaging.bot_fence import MSG_RECORDS, FenceRoots, WriteFence
 from viki_agent.messaging.bot_memory import (
     SETTINGS_FOLDER,
     app_memory_directory,
@@ -481,7 +482,12 @@ class Capture:
             tap=rec,
             append_system_prompt=launch.append_system_prompt,
         )
-        control = ClaudeControl(transport, can_use_tool)
+        # Only a Bot session that fences its writes names hooks in initialize (scenario 44).
+        control = (
+            ClaudeControl(transport, can_use_tool)
+            if launch.hooks is None
+            else ClaudeControl(transport, can_use_tool, hooks=launch.hooks)
+        )
         live = Live(launch.session_id, control, transport, inbox)
         self._open.append(live)
         self.opened.append(launch.session_id)
@@ -1704,12 +1710,13 @@ async def s36(cap: Capture, rec: Recorder) -> Obs:
 
 
 def _settings_variant(settings: str) -> str:
-    """The Bot settings file at `settings` without its `claudeMdExcludes`: the memory-only file
-    Bot sessions started with before ADR-085. Written beside it, private and hash-named the same
-    way."""
+    """The Bot settings file at `settings` without its `claudeMdExcludes` and `autoMemoryEnabled`:
+    the memory-only file Bot sessions started with before ADR-085. Written beside it, private and
+    hash-named the same way."""
     path = Path(settings)
     document = json.loads(path.read_text(encoding="ascii"))
     del document["claudeMdExcludes"]
+    del document["autoMemoryEnabled"]
     data = json.dumps(document, ensure_ascii=True, separators=(",", ":")).encode("ascii")
     return str(mcp_config.write_config(path.parent, data))
 
@@ -1777,6 +1784,67 @@ async def s37(cap: Capture, rec: Recorder) -> Obs:
             and item["success"]
             for item in observations
         ),
+        "observations": observations,
+    }
+
+
+@scenario("44", "Bot settings turn auto memory off and the write fence refuses memory writes")
+async def s44(cap: Capture, rec: Recorder) -> Obs:
+    """ADR-087 and ADR-089 in a throwaway vault: a canary in the Bot's memory folder stays
+    unread now that its settings turn auto memory off, and the fence's hook refuses a Write
+    into `memory/` before any permission card, while the write's target stays absent."""
+    owner, canary = new_id(), f"BOT_MEMORY_{uuid.uuid4().hex}"
+    data = cap.run_dir / "data"
+    protection.create_private_directory(data)
+    protection.require_private_directory(data)
+    folder = cap.root / memory_ref(owner)
+    folder.mkdir(parents=True)
+    (folder / "MEMORY.md").write_text(
+        f"# Bot memory\n\nThe synthetic auto-memory canary is {canary}.\n", encoding="utf-8"
+    )
+    settings = write_settings(data / SETTINGS_FOLDER, cap.root, owner)
+    marks: list[str] = []
+    fence = WriteFence(
+        FenceRoots(cap.root, cap.root, data / "bot-memory"),
+        tainted=lambda: False,
+        mark=marks.append,
+    )
+    probe = cap.root / "memory" / f"fence-{uuid.uuid4().hex}.md"
+    observations: dict[str, Any] = {}
+    live = await cap.open(
+        rec, Launch(new_id(), bot_memory_settings=settings, hooks=fence.hooks()), mode="acceptEdits"
+    )
+    try:
+        recall = await cap.turn(
+            live,
+            "Without using any tools, give the synthetic auto-memory canary in your loaded "
+            "memory, or say absent.",
+        )
+        write = await cap.turn(
+            live,
+            f"Use the Write tool once to create {probe.relative_to(cap.root).as_posix()} with "
+            "the text probe. Then say what happened, quoting any reason you were given.",
+        )
+    finally:
+        await cap.close(live)
+    results = [
+        str(block.get("content"))
+        for frame in write
+        if frame["type"] == "user"
+        for block in frame.get("message", {}).get("content", [])
+        if isinstance(block, dict) and block.get("type") == "tool_result"
+    ]
+    observations = {
+        "canary_recalled": canary in text_of(recall),
+        "write_refused": any(MSG_RECORDS[:40] in result for result in results),
+        "probe_absent": not probe.exists(),
+        "success": result_of(write).get("subtype") == "success",
+    }
+    return {
+        "pass": not observations["canary_recalled"]
+        and observations["write_refused"]
+        and observations["probe_absent"]
+        and observations["success"],
         "observations": observations,
     }
 
@@ -2856,6 +2924,10 @@ NAMED_ONLY: dict[str, str] = {
     "43": (
         "four paid live turns in throwaway vault folders with Bot --settings with and without "
         "claudeMdExcludes: run only on a recorded go"
+    ),
+    "44": (
+        "two paid live turns with a Bot's settings and write-fence hooks in a throwaway vault: "
+        "run only on a recorded go"
     ),
 }
 

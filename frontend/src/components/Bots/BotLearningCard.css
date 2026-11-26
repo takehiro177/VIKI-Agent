@@ -1,0 +1,45 @@
+.bot-learning-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--g1);
+}
+
+.bot-learning-card h3,
+.bot-learning-card h4,
+.bot-learning-card p {
+  margin: 0;
+}
+
+.bot-learning-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bot-learning-list > li {
+  display: grid;
+  gap: 4px;
+}
+
+.bot-learning-list small,
+.bot-learning-old {
+  color: var(--t3);
+}
+
+.bot-learning-claim {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bot-learning-auto {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}

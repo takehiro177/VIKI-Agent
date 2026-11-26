@@ -1,5 +1,6 @@
 """Native Bot memory locations and the app-generated Claude settings file a Bot session starts
-with: its memory folder, and the vault instruction files Claude Code is to skip."""
+with: its memory folder, auto memory turned off (ADR-087), and the vault instruction files Claude
+Code is to skip."""
 
 from __future__ import annotations
 
@@ -84,7 +85,7 @@ def _spellings(vault: Path) -> tuple[Path, ...]:
 def settings_bytes(
     vault: Path, bot_id: str, *, workspace_id: str | None = None, data: Path | None = None
 ) -> bytes:
-    """The settings of a Bot session that runs in `vault`: its auto memory in
+    """The settings of a Bot session that runs in `vault`: auto memory off, its folder in
     `<vault>/bot-memory/<bot>`, or, with a workspace id and the app's data folder, in
     `<data>/bot-memory/<workspace>/<bot>` outside the vault; and the vault's own instruction files
     for Claude Code to skip (`instruction_excludes`), whichever folder holds the memory. Every
@@ -108,6 +109,10 @@ def settings_bytes(
     return json.dumps(
         {
             "autoMemoryDirectory": str(levels[-1]),
+            # Bots keep no auto memory (ADR-087): what they learn is proposed and approved as
+            # memory records. The folder stays named, so a setting that turns auto memory back
+            # on still keeps each Bot's notes apart.
+            "autoMemoryEnabled": False,
             "claudeMdExcludes": instruction_excludes(*_spellings(vault)),
         },
         ensure_ascii=True,

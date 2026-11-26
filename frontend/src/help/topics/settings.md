@@ -85,7 +85,7 @@ Before starting a chat, its model menu also offers saved connections for that ch
 Inbox suggestions and Agents › Profiles chats use Claude Code's native models. In
 **Bots → Bot settings**, a Bot can pin a saved connection for its chats, task threads and
 Bot-thread turns; its routine runs use the native default. The endpoint can receive the prompts, attachments, earlier
-replies, Bot memory, project instructions, skills, tool results and files a chat reads. Changing
+replies, recalled Bot memory records, project instructions, skills, tool results and files a chat reads. Changing
 the default does not retarget saved chats or a Bot that pins a connection. When an existing terminal conversation has no saved VIKI model choice,
 select a model explicitly before sending it through a connection. A running chat keeps its
 connection; close and reopen it or start a new chat before choosing a different one.
