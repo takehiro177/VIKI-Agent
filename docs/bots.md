@@ -852,12 +852,15 @@ Code asks VIKI Agent, through a `PreToolUse` hook, before its `Write`, `Edit`, `
 `NotebookEdit` tools run. The fence refuses a write into `memory/`, `bot-memory/` or the data
 folder's Bot memory area, and, in a marked chat, also into `system/memory/`, any `.claude`
 folder, or a file named `CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `AGENTS.override.md` or
-`GEMINI.md`. On Windows, it also refuses, in every chat, a target whose raw or resolved file name
-carries a spelling NTFS would otherwise rewrite on creation: a stream name such as
-`CLAUDE.local.md::$DATA`, or a trailing dot or space such as `CLAUDE.md.`. Any other write goes
-on to Claude Code's usual permission check; the fence never allows anything by itself, and if it
-fails it refuses. It checks only those tools: a shell command still goes to its own permission
-card, so read what a Bash command writes before you allow it.
+`GEMINI.md`. On Windows, it also refuses, in every chat, a target whose raw or resolved path
+carries a spelling NTFS would otherwise rewrite on creation (a stream name such as
+`CLAUDE.local.md::$DATA`, or a trailing dot or space such as `CLAUDE.md.`), or whose raw or
+resolved drive is not a plain drive letter: a vault is always rooted at a plain drive letter, so
+a `\\?\`, `\\.\`, UNC (`\\server\share\...`) or `\\?\UNC\...` path can land inside a kept folder
+without its spelling ever matching that folder's own. Any other write goes on to Claude Code's
+usual permission check; the fence never allows anything by itself, and if it fails it refuses. It
+checks only those tools: a shell command still goes to its own permission card, so read what a
+Bash command writes before you allow it.
 
 ## Create and run routines
 

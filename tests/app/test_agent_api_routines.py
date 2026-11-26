@@ -1,7 +1,7 @@
 """The agent surface's routine operations over a real `RoutineService` (the rig of
 `test_agent_api`): add, list, test through the stub runner, and enable, which waits for the
-window's Apply. A chat adds and tests routines only for a plain profile (no MCP servers, no
-Bot), and tests only the routines its own session added."""
+window's Apply. A chat adds and tests routines only for a plain profile (no MCP servers, no Bot,
+no permission mode pinned other than plan), and tests only the routines its own session added."""
 
 from __future__ import annotations
 
@@ -16,9 +16,13 @@ from tests.automation.test_routines import _document_raw, _manual_schedule
 from tests.profiles.test_profile_document import document as profile_document
 from tests.profiles.test_profiles_api import with_server
 from viki_agent.automation.routines import record_tested, stamp
+from viki_agent.drivers.claude.control import PERMISSION_MODES
 
 NOT_ADDED_HERE = "A chat can test only a routine it added itself."
-NOT_PLAIN = "A chat can't add or test a routine for a profile with MCP servers or a Bot."
+NOT_PLAIN = (
+    "A chat can't add or test a routine for a profile with MCP servers, a Bot, or a permission "
+    "mode other than plan."
+)
 
 
 @pytest.fixture
@@ -220,12 +224,47 @@ def test_adding_a_routine_for_a_profile_with_mcp_servers_or_a_bot_is_refused(rig
     assert rig.routines.list() == []
     assert rig.journal() == []
     assert rig.scheduler.wakes == 0
-    # A plain profile, or one that is not there, carries nothing past the chat.
+    # A plain profile, or one that is not there, names and pins nothing.
     plain = ident()
     rig.profiles.create(plain, ident(), profile_document())
     for profile_id in (plain, ident()):
         _added(rig, _document_raw(profile_id=profile_id, workspace_id=ident()))
     assert len(rig.routines.list()) == 2
+
+
+def _pinned(rig: Rig, mode: str | None) -> str:
+    """A new profile whose `runtime.permission_mode` pins `mode` (None: inherits)."""
+    profile_id, document = ident(), profile_document()
+    document["runtime"]["permission_mode"] = mode
+    rig.profiles.create(profile_id, ident(), document)
+    return profile_id
+
+
+@pytest.mark.parametrize("mode", sorted(PERMISSION_MODES - {"plan"}))
+def test_adding_a_routine_for_a_profile_pinned_to_a_mode_other_than_plan_is_refused(
+    rig: Rig, mode: str
+) -> None:
+    """A test is a manual run, which runs in the profile's pinned mode, whatever the chat's."""
+    profile_id = _pinned(rig, mode)
+    _refused_with(
+        _add(rig, _document_raw(profile_id=profile_id, workspace_id=rig.workspace_id)),
+        403,
+        "profile_not_allowed",
+        NOT_PLAIN,
+    )
+    assert rig.routines.list() == []
+    assert rig.journal() == []
+
+
+def test_a_plan_pinned_profile_is_added_and_tested_until_its_pin_widens(rig: Rig) -> None:
+    profile_id = _pinned(rig, "plan")
+    routine_id = _added(rig, _document_raw(profile_id=profile_id, workspace_id=rig.workspace_id))
+    assert _run(rig, routine_id).status_code == 202
+    widened = profile_document()
+    widened["runtime"]["permission_mode"] = "acceptEdits"
+    rig.profiles.revise(profile_id, ident(), 1, widened)
+    _refused_with(_run(rig, routine_id), 403, "profile_not_allowed", NOT_PLAIN)
+    assert [call[0] for call in rig.runner.calls] == [routine_id]
 
 
 def test_enabling_a_draft_gets_409_and_holds_nothing(rig: Rig) -> None:

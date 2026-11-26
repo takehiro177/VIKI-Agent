@@ -207,6 +207,31 @@ def test_proposals_are_sealed_bound_to_their_row_and_decided_once(service: BotSe
     assert (done.state, done.proposed, done.rejected) == ("done", 2, 1)
 
 
+def test_fact_add_decisions_covers_more_than_listings_window_and_only_fact_add(
+    service: BotService,
+) -> None:
+    """Merge review: `fact_add_decisions` must not be windowed the way `listing` is (60 open,
+    20 decided across every op) - an earlier-memory import needs every `fact_add` proposal still
+    open or rejected to recognise a file it has already proposed."""
+    store = ProposalStore(service.store)
+    workspace = str(uuid.uuid4())
+    run = store.start_run(workspace, BOT, "import", "user", None, stamp(NOW))
+    facts = [_proposal(f"Fact {n}") for n in range(70)]
+    lesson = Proposal("lesson_add", _lesson("Case"), (), "why")
+    store.add(run, [*facts, lesson], stamp(NOW))
+    store.finish_run(run.run_id, reason="", episodes=0, proposed=71, rejected=0, now=stamp(NOW))
+
+    decisions = store.fact_add_decisions(BOT)
+    assert len(decisions) == 70  # every fact_add, past listing's 60-open window
+    assert {d.op for d in decisions} == {"fact_add"}  # the lesson_add is left out
+
+    store.decide(decisions[0].proposal_id, expected="open", state="rejected", now=stamp(NOW))
+    store.decide(decisions[1].proposal_id, expected="open", state="applied", now=stamp(NOW))
+    after = store.fact_add_decisions(BOT)
+    assert len(after) == 69  # the rejected one still counts; the applied one drops out
+    assert {d.state for d in after} == {"open", "rejected"}
+
+
 def test_scores_count_beside_uses(service: BotService) -> None:
     store = ProposalStore(service.store)
     workspace, lesson = str(uuid.uuid4()), str(uuid.uuid4())
@@ -367,8 +392,8 @@ async def test_more_than_forty_earlier_files_import_over_two_calls(tmp_path: Pat
 
 
 async def test_a_rejected_import_is_not_re_proposed(tmp_path: Path) -> None:
-    """F1: a file whose proposal the owner rejected stays rejected on a later import - its
-    unchanged claim still matches the one already turned down."""
+    """F1: a file whose proposal the owner rejected stays rejected on a later import - its ref
+    is noted, so the file is skipped before it can spend any of the read budget."""
     harness = _harness(tmp_path, "ordinary")
     learning = _learning(harness, tmp_path)
     folder = f"bot-memory/{BOT}"
@@ -380,8 +405,76 @@ async def test_a_rejected_import_is_not_re_proposed(tmp_path: Path) -> None:
     await learning.reject(proposal.proposal_id)
 
     again = _finished(learning, learning.import_legacy(BOT))
-    assert (again.proposed, again.rejected) == (0, 1)
+    assert (again.proposed, again.rejected) == (0, 0)  # noted and skipped for free, not re-read
     assert [s.state for s in learning.proposals.listing(BOT) if s.op == "fact_add"] == ["rejected"]
+
+
+async def test_more_than_twenty_rejected_files_all_stay_rejected(tmp_path: Path) -> None:
+    """Merge review repro: `listing`'s 20-newest-decided window missed 20 of 40 rejected
+    proposals, so a later import re-proposed them (proposed 25 instead of 5 on 45 files).
+    `ProposalStore.fact_add_decisions` is not windowed, so every rejection sticks."""
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    for n in range(45):
+        harness.write(f"{folder}/f{n:02d}.md", f"Earlier note topic{n} detail{n}\n".encode())
+
+    first = _finished(learning, learning.import_legacy(BOT))
+    assert first.proposed == MAX_IMPORT_FILES
+    first_open = [s for s in learning.proposals.listing(BOT) if s.state == "open"]
+    assert len(first_open) == MAX_IMPORT_FILES
+    for stored in first_open:
+        await learning.reject(stored.proposal_id)
+
+    second = _finished(learning, learning.import_legacy(BOT))
+    assert (second.proposed, second.rejected) == (5, 0)  # only the 5 never-proposed files are new
+    second_open = {
+        s.body["notes"][0]["note"] for s in learning.proposals.listing(BOT) if s.state == "open"
+    }
+    assert second_open == {f"{folder}/f{n:02d}.md" for n in range(40, 45)}
+
+
+async def test_more_than_sixty_open_files_are_never_duplicated(tmp_path: Path) -> None:
+    """Merge review repro: `listing`'s 60-oldest-open window missed the newest 20 of 80 open
+    proposals on a third import, which re-proposed them as 20 duplicates.
+    `ProposalStore.fact_add_decisions` is not windowed, so none of the 80 are ever duplicated."""
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    for n in range(80):
+        harness.write(f"{folder}/f{n:02d}.md", f"Earlier note topic{n} detail{n}\n".encode())
+
+    _finished(learning, learning.import_legacy(BOT))
+    _finished(learning, learning.import_legacy(BOT))
+    before = [s.body["notes"][0]["note"] for s in learning.proposals.fact_add_decisions(BOT)]
+    assert sorted(before) == sorted({f"{folder}/f{n:02d}.md" for n in range(80)})
+
+    third = _finished(learning, learning.import_legacy(BOT))
+    assert (third.proposed, third.rejected) == (0, 0)  # every file is already noted
+    after = [s.body["notes"][0]["note"] for s in learning.proposals.fact_add_decisions(BOT)]
+    assert sorted(after) == sorted(before)  # no duplicates
+
+
+async def test_file_401_becomes_reachable_once_earlier_files_are_noted(tmp_path: Path) -> None:
+    """Merge review repro: with one real fact sitting among 400 near-duplicate files, that one
+    file's read cost was paid again on every import (never noted), so file 401 was never
+    reached. Noting it instead of re-reading it frees exactly the budget needed to get past it."""
+    harness = _harness(tmp_path, "ordinary")
+    learning = _learning(harness, tmp_path)
+    folder = f"bot-memory/{BOT}"
+    for n in range(400):
+        harness.write(f"{folder}/f{n:03d}.md", b"Earlier note shared across the whole batch\n")
+    harness.write(f"{folder}/f400.md", b"Earlier note about a wholly different later topic\n")
+
+    first = _finished(learning, learning.import_legacy(BOT))
+    assert (first.proposed, first.rejected) == (1, 399)  # f400 is never reached this call
+    first_notes = {s.body["notes"][0]["note"] for s in learning.proposals.fact_add_decisions(BOT)}
+    assert first_notes == {f"{folder}/f000.md"}
+
+    second = _finished(learning, learning.import_legacy(BOT))
+    assert (second.proposed, second.rejected) == (1, 399)  # f000 is noted, not re-read
+    second_notes = {s.body["notes"][0]["note"] for s in learning.proposals.fact_add_decisions(BOT)}
+    assert second_notes == {f"{folder}/f000.md", f"{folder}/f400.md"}
 
 
 def test_a_legacy_folder_scan_is_not_blocked_by_the_whole_vaults_entry_budget(
@@ -427,10 +520,10 @@ def test_a_legacy_folder_scan_is_not_blocked_by_the_whole_vaults_entry_budget(
     assert learning._legacy_refs(harness.wid, BOT) == [f"{folder}/tea.md"]
 
 
-def test_the_legacy_count_falls_as_files_land_behind_a_proposal(tmp_path: Path) -> None:
-    """F1: the "Import earlier memory" count is the Bot's earlier files not yet behind any
-    proposal, open or decided - not a number permanently capped at MAX_IMPORT_FILES, and not one
-    that stays put once an import has offered what it can."""
+def test_the_legacy_count_is_the_number_of_earlier_memory_files(tmp_path: Path) -> None:
+    """Merge review narrowing: the "Import earlier memory ({count} files)" label is a plain file
+    count, kept cheap (the overview is read often) by never decoding a proposal's sealed body -
+    unaffected by what an import has already proposed, open, rejected or applied."""
     harness = _harness(tmp_path, "ordinary")
     learning = _learning(harness, tmp_path)
     folder = f"bot-memory/{BOT}"
@@ -442,7 +535,7 @@ def test_the_legacy_count_falls_as_files_land_behind_a_proposal(tmp_path: Path) 
 
     run = _finished(learning, learning.import_legacy(BOT))
     assert run.proposed == 3
-    assert learning.overview(BOT)["legacy_files"] == 0
+    assert learning.overview(BOT)["legacy_files"] == 3  # still every file - a plain count
 
 
 def test_a_proven_lesson_is_offered_as_an_installable_skill(tmp_path: Path) -> None:

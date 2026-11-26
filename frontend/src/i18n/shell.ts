@@ -28,6 +28,8 @@ export const catalog = defineCatalog({
     "shell.readiness.storage": "The app store is not ready; sessions cannot start.",
 
     "shell.agent_changes.region": "Changes waiting for you",
+    "shell.agent_changes.waiting_one": "1 change waits for your Apply or Reject.",
+    "shell.agent_changes.waiting_other": "{count} changes wait for your Apply or Reject.",
     "shell.agent_changes.change": "Chat “{title}” asks to change {key}.",
     "shell.agent_changes.reset": "Chat “{title}” asks to reset {key} to its default.",
     "shell.agent_changes.routine": "Chat “{title}” asks to turn on routine “{name}”.",

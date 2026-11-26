@@ -20,7 +20,7 @@ from viki_agent.messaging.bot_fence import (
     MSG_TAINTED,
     FenceRoots,
     WriteFence,
-    _windows_spelling_problem,
+    _windows_path_problem,
     fence_reason,
 )
 from viki_agent.messaging.bot_taint import join_sources, taint_source
@@ -137,8 +137,6 @@ def test_the_taint_matcher_regex_matches_every_mcp_tool_name(tool: str) -> None:
         (".", False),
         ("..", False),
         ("notes\\..\\memory\\r.md", False),
-        ("\\\\?\\C:\\notes\\a.md", False),
-        ("\\\\server\\share\\notes\\a.md", False),
         ("CLAUDE.local.md::$DATA", True),
         ("notes\\x.md::$DATA", True),
         ("notes\\x.md:stream", True),
@@ -147,13 +145,17 @@ def test_the_taint_matcher_regex_matches_every_mcp_tool_name(tool: str) -> None:
         ("bot-memory.\\x.md", True),
         ("notes\\x.md ", True),
         ("foo\\.claude.\\bar.md", True),
+        ("\\\\?\\C:\\notes\\a.md", True),
         ("\\\\?\\C:\\notes\\bad.\\x.md", True),
+        ("\\\\.\\C:\\notes\\x.md", True),
+        ("\\\\server\\share\\notes\\a.md", True),
+        ("\\\\server\\share\\x.md", True),
+        ("\\\\?\\UNC\\server\\share\\x.md", True),
+        ("\\\\localhost\\C$\\x.md", True),
     ],
 )
-def test_windows_spelling_problem_is_a_pure_function_over_the_path(
-    raw: str, expected: bool
-) -> None:
-    assert _windows_spelling_problem(raw) is expected
+def test_windows_path_problem_is_a_pure_function_over_the_path(raw: str, expected: bool) -> None:
+    assert _windows_path_problem(raw) is expected
 
 
 @pytest.mark.skipif(os.name != "nt", reason="the spelling check only runs on Windows")
@@ -179,6 +181,22 @@ def test_an_ordinary_note_write_still_passes_on_windows(roots: FenceRoots) -> No
     assert fence_reason("Write", _write(roots.vault / "notes" / "a.md"), roots, tainted=True) is (
         None
     )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the spelling check only runs on Windows")
+def test_a_backslash_backslash_question_mark_path_into_memory_is_refused_untainted(
+    roots: FenceRoots,
+) -> None:
+    target = "\\\\?\\" + str(roots.vault / "memory" / "x.md")
+    assert fence_reason("Write", _write(target), roots, tainted=False) == MSG_SPELLING
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the spelling check only runs on Windows")
+def test_a_backslash_backslash_question_mark_dotdot_path_into_memory_is_refused_untainted(
+    roots: FenceRoots,
+) -> None:
+    target = "\\\\?\\" + str(roots.vault / "notes" / ".." / "memory" / "x.md")
+    assert fence_reason("Write", _write(target), roots, tainted=False) == MSG_SPELLING
 
 
 class _Taint:

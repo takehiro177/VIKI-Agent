@@ -541,8 +541,8 @@ def test_routines_test_run_active_from_the_server_gets_the_wait_fix() -> None:
 
 def test_routines_test_refusals_name_the_owner_s_way_instead() -> None:
     """The agent surface's narrowing: a routine another chat or the owner added, and one whose
-    profile has since gained MCP servers or a Bot, each get a fix that sends the chat to the
-    owner rather than "again"."""
+    profile has since gained MCP servers, a Bot or a wider pinned mode, each get a fix that sends
+    the chat to the owner rather than "again"."""
     for refused, fix in (
         (
             "not_added_here",
@@ -551,8 +551,8 @@ def test_routines_test_refusals_name_the_owner_s_way_instead() -> None:
         ),
         (
             "profile_not_allowed",
-            "This routine's profile now has MCP servers or a Bot. "
-            "Ask the owner to run it from Routines.",
+            "This routine's profile now has MCP servers, a Bot, or a permission mode other than "
+            "plan. Ask the owner to run it from Routines.",
         ),
     ):
 
@@ -568,7 +568,7 @@ def test_routines_test_refusals_name_the_owner_s_way_instead() -> None:
         assert json.loads(out)["error"] == {"code": refused, "message": "refused", "fix": fix}
 
 
-def test_routines_add_for_a_profile_with_mcp_servers_or_a_bot_gets_its_fix() -> None:
+def test_routines_add_for_a_profile_a_chat_may_not_use_gets_its_fix() -> None:
     def send(method: str, path: str, body: dict[str, Any] | None) -> tuple[int, dict[str, Any]]:
         return 403, {"error": {"code": "profile_not_allowed", "message": "refused"}}
 
@@ -589,8 +589,8 @@ def test_routines_add_for_a_profile_with_mcp_servers_or_a_bot_gets_its_fix() -> 
     )
     assert code == 1
     assert (
-        "fix: A chat can add routines only for a profile without MCP servers or a Bot. "
-        "Ask the owner to add it in Routines.\n" in err
+        "fix: A chat can add routines only for a profile with no MCP servers, no Bot, and no "
+        "permission mode other than plan. Ask the owner to add it in Routines.\n" in err
     )
 
 

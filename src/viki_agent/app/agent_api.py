@@ -19,14 +19,16 @@ summaries' values (`_CHAT_VIEW`); only the window's Apply list shows those, whol
 setting's current and proposed value, a routine's whole prompt. A setting value longer than
 `REVIEW_CHARS` gets 422 `too_long_to_review` and is not held. A 5xx logs its code only.
 
-A run under a profile carries that profile's MCP servers and, with a Bot bound to it, the Bot's
-identity and recall, so the routine and Bot operations narrow what the window's own routes allow,
-each checked before anything is made (`plain_profile`): a chat adds or tests a routine only for a
-profile with no MCP servers and no Bot in any workspace, else 403 `profile_not_allowed`; it tests
-only a routine its own session added here since launch (`AgentChanges.made`, so a resumed chat
-keeps its own), else 403 `not_added_here`; and it creates a Bot only for a profile with no routine
-that is not archived, else 409 `profile_has_routines`. Adding a routine and creating a Bot take
-one lock, so two chats cannot slip a routine and a Bot onto one profile at once.
+A run under a profile carries that profile's MCP servers, its pinned permission mode (a test is a
+manual run, which uses the pin) and, with a Bot bound to it, the Bot's identity and recall, so the
+routine and Bot operations narrow what the window's own routes allow, each checked before anything
+is made: a chat adds or tests a routine only for a profile with no MCP servers, no Bot in any
+workspace and no permission mode pinned other than `plan` (`plain_profile`), else 403
+`profile_not_allowed`; it tests only a routine its own session added here since launch
+(`AgentChanges.made`, so a resumed chat keeps its own), else 403 `not_added_here`; and it creates
+a Bot only for a profile with no routine that is not archived, else 409 `profile_has_routines`.
+Adding a routine and creating a Bot take one lock, so two chats cannot slip a routine and a Bot
+onto one profile at once.
 """
 
 from __future__ import annotations
@@ -186,7 +188,8 @@ _REFUSALS = {
     "not_added_here": (403, "A chat can test only a routine it added itself."),
     "profile_not_allowed": (
         403,
-        "A chat can't add or test a routine for a profile with MCP servers or a Bot.",
+        "A chat can't add or test a routine for a profile with MCP servers, a Bot, or a "
+        "permission mode other than plan.",
     ),
     "profile_has_routines": (409, "A chat can't create a Bot for a profile that runs routines."),
     "too_long_to_review": (422, "The value is too long to review on the Apply card."),
@@ -319,16 +322,20 @@ def agent_routes(
     binding = asyncio.Lock()
 
     def plain_profile(profile_id: str) -> bool:
-        """Whether a run under `profile_id` reaches no further than the chat itself: the profile
-        names no MCP servers (`tools.mcp_configuration`) and no Bot, in any workspace, is bound
-        to it. A profile that is not there names none."""
+        """Whether a chat may add or test a routine under `profile_id`: the profile names no MCP
+        servers (`tools.mcp_configuration`), pins no permission mode other than `plan`
+        (`runtime.permission_mode`, which a manual run such as a test uses as pinned), and no Bot,
+        in any workspace, is bound to it. A profile that is not there names and pins nothing."""
         try:
             profile = profiles.get(profile_id)
         except ProfileError as error:
             if error.code != "not_found":
                 raise
         else:
-            if profile["document"]["tools"]["mcp_configuration"] is not None:
+            document = profile["document"]
+            if document["tools"]["mcp_configuration"] is not None:
+                return False
+            if document["runtime"]["permission_mode"] not in (None, "plan"):
                 return False
         return bots is None or all(bot["profile_id"] != profile_id for bot in bots.list())
 
@@ -568,7 +575,8 @@ def agent_routes(
             raise _refused("not_added_here")
 
         def check() -> None:
-            # Again at each test: the owner may since have given its profile MCP servers or a Bot.
+            # Again at each test: the owner may since have given its profile MCP servers, a Bot
+            # or a pinned mode other than plan.
             if not plain_profile(routines.get(routine_id)["document"]["profile_id"]):
                 raise _refused("profile_not_allowed")
 

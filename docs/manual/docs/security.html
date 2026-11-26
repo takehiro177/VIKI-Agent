@@ -114,13 +114,14 @@ value it discards), a routine&#x27;s schedule, profile, workspace and whole prom
 in its own scrolling box, with any hidden or text-reordering character written out as its code,
 for example <code>&lt;U+202E&gt;</code>. A setting value longer than <code>agent_api.py</code>&#x27;s <code>REVIEW_CHARS</code> is refused
 rather than held cut short.</div></li>
-<li><strong class="label-term">Routines and Bots</strong><div class="label-body">a routine run, a test run included, gets its profile&#x27;s MCP servers and,
-for a Bot&#x27;s profile, that Bot&#x27;s identity and recall. So a chat adds or tests a routine only for
-a profile with no MCP servers and no Bot in any vault, tests only a routine that same chat added
-since VIKI Agent last started (a resumed chat keeps its own), and creates a Bot only for a
-profile that runs no routine. Anything else is refused with a fix that sends the chat to you
-(<code>agent_api.py</code>&#x27;s <code>add_routine</code>, <code>run_routine</code> and <code>create_bot</code>). The Routines and Agents
-screens themselves are unchanged.</div></li>
+<li><strong class="label-term">Routines and Bots</strong><div class="label-body">a routine run, a test run included, gets its profile&#x27;s MCP servers, its
+pinned permission mode (a test run uses the pin) and, for a Bot&#x27;s profile, that Bot&#x27;s identity
+and recall. So a chat adds or tests a routine only for a profile that has no MCP servers, no Bot
+in any vault, and no pinned permission mode other than <strong>Plan</strong>; it tests only a routine that
+same chat added since VIKI Agent last started (a resumed chat keeps its own), and creates a Bot
+only for a profile that runs no routine. Anything else is refused with a fix that sends the
+chat to you (<code>agent_api.py</code>&#x27;s <code>plain_profile</code>, <code>add_routine</code>, <code>run_routine</code> and <code>create_bot</code>).
+The Routines and Agents screens themselves are unchanged.</div></li>
 <li><strong class="label-term">If it doesn&#x27;t answer</strong><div class="label-body">a command that times out exits with code 4, and its JSON error code
 <code>no_reply</code> means the request may already have gone through; its own guidance checks <code>status</code>
 before running anything again rather than assuming nothing happened.</div></li>
@@ -772,11 +773,14 @@ into <code>memory/</code>, <code>bot-memory/</code> or the data folder&#x27;s Bo
 Bot thread has used <code>WebFetch</code>, <code>WebSearch</code>, an MCP tool, or Claude Code&#x27;s built-in
 <code>ListMcpResourcesTool</code> or <code>ReadMcpResourceTool</code> (which also read MCP server text, without the
 <code>mcp__</code> prefix), also into <code>system/memory/</code>, any <code>.claude</code> folder or an instruction file. On
-Windows, VIKI Agent also refuses, in every session, a target whose raw or resolved file name
-carries a spelling NTFS would otherwise rewrite on creation: a stream name such as
-<code>CLAUDE.local.md::$DATA</code>, or a trailing dot or space such as <code>CLAUDE.md.</code>. It never allows a
-call by itself: everything else still meets Claude Code&#x27;s permission check, and an error
-refuses. It does not inspect shell commands.</div></li>
+Windows, VIKI Agent also refuses, in every session, a target whose raw or resolved path carries
+a spelling NTFS would otherwise rewrite on creation (a stream name such as
+<code>CLAUDE.local.md::$DATA</code>, or a trailing dot or space such as <code>CLAUDE.md.</code>), or whose raw or
+resolved drive is not a plain drive letter: a vault is always rooted at a plain drive letter, so
+a <code>\\?\</code>, <code>\\.\</code>, UNC (<code>\\server\share\...</code>) or <code>\\?\UNC\...</code> path can land inside a kept folder
+without its spelling ever matching that folder&#x27;s own. It never allows a call by itself:
+everything else still meets Claude Code&#x27;s permission check, and an error refuses. It does not
+inspect shell commands.</div></li>
 <li><strong class="label-term">Controls</strong><div class="label-body">the Bot page&#x27;s memory card contains the Ask controls (review, forget and
 change) for the earlier notes; its <strong>View memory</strong> opens the file dialog. A Bot chat&#x27;s
 <strong>Memory</strong> header button and <strong>View memory</strong> in Bot activity open the same dialog when the

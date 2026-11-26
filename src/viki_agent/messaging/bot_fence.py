@@ -1,4 +1,4 @@
-"""The write fence: PreToolUse hooks every Bot-bound session runs with (ADR-089).
+r"""The write fence: PreToolUse hooks every Bot-bound session runs with (ADR-089).
 
 Claude Code calls two hooks of the app's before a Bot session's tool runs, through the SDK's
 initialize request, so they hold in every permission mode a Bot runs in:
@@ -12,19 +12,25 @@ initialize request, so they hold in every permission mode a Bot runs in:
   `CLAUDE.local.md`, `AGENTS.md`, `AGENTS.override.md`, `GEMINI.md`) at any depth.
 
 A path is compared after resolving links and with letter case folded. On Windows, that
-comparison alone is not enough: for a file that does not yet exist, `realpath` keeps a literal
-spelling NTFS would rewrite on creation (an alternate-data-stream name such as
-`CLAUDE.local.md::$DATA`, or a trailing dot or space such as `CLAUDE.md.`), which can land on a
-rule's exact name without ever spelling it. So, on Windows, any target whose raw or resolved path
-has such a component is refused outright, rule or not. A hook that fails refuses the write rather
-than let it through. The hooks see only the file tools: a Bash command that writes a file is not
-stopped here.
+comparison alone is not enough, two ways:
+
+- For a file that does not yet exist, `realpath` keeps a literal spelling NTFS would rewrite on
+  creation (an alternate-data-stream name such as `CLAUDE.local.md::$DATA`, or a trailing dot or
+  space such as `CLAUDE.md.`), which can land on a rule's exact name without ever spelling it.
+- A vault root is always a plain drive-letter path, so a target spelled with a `\\?\`, `\\.\`,
+  UNC (`\\server\share\...`) or `\\?\UNC\...` prefix never starts with a root's own spelling,
+  however deep underneath the root `realpath` actually resolves it.
+
+So, on Windows, any target whose raw or resolved path has such a component, or such a drive, is
+refused outright, rule or not. A hook that fails refuses the write rather than let it through. The
+hooks see only the file tools: a Bash command that writes a file is not stopped here.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
@@ -58,8 +64,8 @@ MSG_TAINTED = (
     "files. Ask the owner to make this change."
 )
 MSG_SPELLING = (
-    "VIKI Agent refuses this file name spelling: a stream name, or a trailing dot or space. Use "
-    "the plain file name."
+    "VIKI Agent refuses this path spelling: a stream name, a trailing dot or space, or a "
+    "\\\\?\\, device or network path. Use the plain path."
 )
 MSG_FAILED = "VIKI Agent couldn't check this write, so it was refused. Try again."
 
@@ -88,12 +94,23 @@ def _within(path: str, root: Path) -> bool:
     return path == base or path.startswith(base + os.sep.casefold()) or path.startswith(base + "/")
 
 
-def _windows_spelling_problem(raw: str) -> bool:
-    """Whether `raw`, read as a Windows path, has a component NTFS would rewrite on creation: a
-    stream name (a colon past the drive or UNC/``\\\\?\\`` anchor) or a trailing dot or space.
-    `.` and `..` themselves are not flagged. A pure function over `PureWindowsPath`, so it can be
-    tested on every platform; `fence_reason` calls it only when `os.name == "nt"`."""
+_PLAIN_DRIVE = re.compile(r"[A-Za-z]:")
+
+
+def _windows_path_problem(raw: str) -> bool:
+    """Whether `raw`, read as a Windows path, has a spelling that could step around a rule:
+
+    - a drive that is neither empty (a relative path) nor a plain `X:` (a drive-letter or
+      drive-relative path) — a `\\\\?\\`, `\\\\.\\`, UNC (`\\\\server\\share`) or `\\\\?\\UNC\\`
+      prefix, which a vault root (always a plain drive-letter path) can never start with; or
+    - a component NTFS would rewrite on creation: a stream name (a colon past the drive) or a
+      trailing dot or space. `.` and `..` themselves are not flagged.
+
+    A pure function over `PureWindowsPath`, so it can be tested on every platform; `fence_reason`
+    calls it only when `os.name == "nt"`."""
     pure = PureWindowsPath(raw)
+    if pure.drive and not _PLAIN_DRIVE.fullmatch(pure.drive):
+        return True
     parts = pure.parts[1:] if pure.anchor else pure.parts
     return any(
         part not in (".", "..") and (":" in part or part.endswith((".", " "))) for part in parts
@@ -111,7 +128,7 @@ def fence_reason(
         return None
     path = Path(raw)
     resolved = _key(path if path.is_absolute() else roots.cwd / path)
-    if os.name == "nt" and (_windows_spelling_problem(raw) or _windows_spelling_problem(resolved)):
+    if os.name == "nt" and (_windows_path_problem(raw) or _windows_path_problem(resolved)):
         return MSG_SPELLING
     if _within(resolved, roots.vault / "bot-memory") or _within(resolved, roots.app_memory):
         return MSG_BOT_MEMORY

@@ -743,12 +743,15 @@ Code asks VIKI Agent, through a <code>PreToolUse</code> hook, before its <code>W
 <code>NotebookEdit</code> tools run. The fence refuses a write into <code>memory/</code>, <code>bot-memory/</code> or the data
 folder&#x27;s Bot memory area, and, in a marked chat, also into <code>system/memory/</code>, any <code>.claude</code>
 folder, or a file named <code>CLAUDE.md</code>, <code>CLAUDE.local.md</code>, <code>AGENTS.md</code>, <code>AGENTS.override.md</code> or
-<code>GEMINI.md</code>. On Windows, it also refuses, in every chat, a target whose raw or resolved file name
-carries a spelling NTFS would otherwise rewrite on creation: a stream name such as
-<code>CLAUDE.local.md::$DATA</code>, or a trailing dot or space such as <code>CLAUDE.md.</code>. Any other write goes
-on to Claude Code&#x27;s usual permission check; the fence never allows anything by itself, and if it
-fails it refuses. It checks only those tools: a shell command still goes to its own permission
-card, so read what a Bash command writes before you allow it.</p>
+<code>GEMINI.md</code>. On Windows, it also refuses, in every chat, a target whose raw or resolved path
+carries a spelling NTFS would otherwise rewrite on creation (a stream name such as
+<code>CLAUDE.local.md::$DATA</code>, or a trailing dot or space such as <code>CLAUDE.md.</code>), or whose raw or
+resolved drive is not a plain drive letter: a vault is always rooted at a plain drive letter, so
+a <code>\\?\</code>, <code>\\.\</code>, UNC (<code>\\server\share\...</code>) or <code>\\?\UNC\...</code> path can land inside a kept folder
+without its spelling ever matching that folder&#x27;s own. Any other write goes on to Claude Code&#x27;s
+usual permission check; the fence never allows anything by itself, and if it fails it refuses. It
+checks only those tools: a shell command still goes to its own permission card, so read what a
+Bash command writes before you allow it.</p>
 </section><section class="manual-section" aria-labelledby="create-and-run-routines"><h2 id="create-and-run-routines"><span class="section-number" aria-hidden="true">09</span>Create and run routines</h2>
 <p>A routine runs a prompt with a Bot&#x27;s profile and workspace, manually or on a daily or weekly
 schedule.</p>

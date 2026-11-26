@@ -244,6 +244,66 @@ test("Apply and Reject sit in one actions row, side by side at every width", asy
   expect(reject.parentElement).toBe(apply.parentElement);
 });
 
+test("each card reads sentence, then its value boxes, then Apply and Reject", async () => {
+  render(
+    <AgentChanges
+      api={fakeApi(vi.fn().mockResolvedValue({ seq: 1, changes: [SETTING, ROUTINE_FULL] }))}
+      titleOf={() => "Garden plan"}
+      onChanged={vi.fn()}
+    />,
+  );
+  const sentence = await screen.findByText("Chat “Garden plan” asks to change chat.default_mode.");
+  const [settingApply, routineApply] = screen.getAllByRole("button", { name: "Apply" });
+  const ordered = [
+    sentence,
+    screen.getByRole("group", { name: "Current value" }),
+    screen.getByRole("group", { name: "New value" }),
+    settingApply,
+    screen.getByText("Chat “Garden plan” asks to turn on routine “Weekly digest”."),
+    screen.getByRole("group", { name: "Prompt" }),
+    routineApply,
+  ];
+  for (const [index, node] of ordered.slice(1).entries()) {
+    const before = ordered[index];
+    expect(
+      before && node ? before.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING : 0,
+    ).toBeTruthy();
+  }
+  // The boxes keep their tab stops, ahead of the buttons that decide them.
+  for (const box of screen.getAllByRole("group")) expect(box.tabIndex).toBe(0);
+});
+
+test("the live region announces the count alone, never a value", async () => {
+  const list = vi
+    .fn()
+    .mockResolvedValueOnce({ seq: 1, changes: [ROUTINE_FULL] })
+    .mockResolvedValue({ seq: 2, changes: [ROUTINE_FULL, SETTING] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+  render(
+    <AgentChanges
+      api={fakeApi(list)}
+      titleOf={() => "Garden plan"}
+      onChanged={vi.fn()}
+      pollMs={1000}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  const status = screen.getByRole("status");
+  expect(status.textContent).toBe("1 change waits for your Apply or Reject.");
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(status.textContent).toBe("2 changes wait for your Apply or Reject.");
+  const region = screen.getByRole("region", { name: "Changes waiting for you" });
+  expect(region.hasAttribute("aria-live")).toBe(false);
+  const live = [...document.querySelectorAll("[aria-live], [role='status'], [role='alert']")];
+  expect(live).toEqual([status]);
+  for (const value of ["Summarize the week.", '"manual"', '"auto"'])
+    expect(status.textContent).not.toContain(value);
+});
+
 test("an unknown chat falls back to “Untitled chat”", async () => {
   render(
     <AgentChanges

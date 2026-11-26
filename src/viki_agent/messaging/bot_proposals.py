@@ -358,6 +358,22 @@ class ProposalStore:
             ).fetchall()
         return {row[0] for row in rows}
 
+    def fact_add_decisions(self, bot_id: str) -> list[Stored]:
+        """This Bot's `fact_add` proposals still open or already rejected, every one decoded -
+        not only the owner-facing window `listing` keeps (60 open, 20 decided across every op).
+        An earlier-memory import must recognise every file it has already proposed, however many
+        open or rejected proposals that is; narrowed to `fact_add` and bounded by the same
+        per-bot caps `add` and `decide` already enforce (at most MAX_OPEN_PER_BOT open,
+        MAX_DECIDED_PER_BOT decided), this still decodes at most a few hundred rows."""
+        with self.store._connection() as connection:
+            rows = connection.execute(
+                f"SELECT {_PROPOSAL_COLUMNS} FROM bot_proposals WHERE bot_id=? AND "
+                "op='fact_add' AND state IN ('open','rejected') ORDER BY created_at,rowid "
+                "LIMIT ?",
+                (bot_id, MAX_OPEN_PER_BOT + MAX_DECIDED_PER_BOT),
+            ).fetchall()
+        return [self._decode(tuple(row)) for row in rows]
+
     def decide(
         self,
         proposal_id: str,

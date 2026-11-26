@@ -9,15 +9,7 @@
  * value whole, a routine's whole prompt, each in a box of its own that scrolls past a few lines,
  * and every hidden or text-reordering character written out as its code (`visibleText.ts`).
  */
-import {
-  Fragment,
-  type ReactElement,
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from "react";
+import { type ReactElement, useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   type AgentChange,
   type AgentChangesApi,
@@ -243,37 +235,43 @@ export function AgentChanges({
 
   if (changes.length === 0) return null;
 
+  // The live region is the count alone: the values below run to a whole prompt, too long to have
+  // read out each time a change arrives. Each card reads sentence, values, then Apply and Reject,
+  // so the keyboard and a screen reader reach the values before the buttons that decide them.
   return (
-    <section aria-label={t("shell.agent_changes.region")} aria-live="polite">
+    <section aria-label={t("shell.agent_changes.region")}>
+      <p className="sr-only" role="status">
+        {changes.length === 1
+          ? t("shell.agent_changes.waiting_one")
+          : tf("shell.agent_changes.waiting_other", { count: changes.length })}
+      </p>
       {changes.map((change) => {
         const busy = pending.has(change.change_id);
         return (
-          <Fragment key={change.change_id}>
-            <div className="readiness-banner">
-              <span>{changeText(change, titleOf)}</span>
-              <div className="chat-only-banner-actions">
-                <button
-                  type="button"
-                  className="btn go sm"
-                  disabled={busy}
-                  onClick={() => void decide(change, "apply")}
-                >
-                  {t("common.button.apply")}
-                </button>
-                <button
-                  type="button"
-                  className="btn alt sm"
-                  disabled={busy}
-                  onClick={() => void decide(change, "reject")}
-                >
-                  {t("common.button.reject")}
-                </button>
-              </div>
-            </div>
+          <div key={change.change_id} className="readiness-banner agent-changes-card">
+            <span>{changeText(change, titleOf)}</span>
             {change.kind === "routine_enable"
               ? routineDetail(change.summary)
               : settingDetail(change.summary)}
-          </Fragment>
+            <div className="chat-only-banner-actions">
+              <button
+                type="button"
+                className="btn go sm"
+                disabled={busy}
+                onClick={() => void decide(change, "apply")}
+              >
+                {t("common.button.apply")}
+              </button>
+              <button
+                type="button"
+                className="btn alt sm"
+                disabled={busy}
+                onClick={() => void decide(change, "reject")}
+              >
+                {t("common.button.reject")}
+              </button>
+            </div>
+          </div>
         );
       })}
       {error !== null ? <p role="alert">{error}</p> : null}

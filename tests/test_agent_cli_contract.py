@@ -249,9 +249,10 @@ def test_routines_add_for_a_bot_s_profile_exits_1_with_its_fix(tmp_path: Path) -
     assert code == agent_cli.EXIT_REFUSED
     assert body["error"] == {
         "code": "profile_not_allowed",
-        "message": "A chat can't add or test a routine for a profile with MCP servers or a Bot.",
-        "fix": "A chat can add routines only for a profile without MCP servers or a Bot. "
-        "Ask the owner to add it in Routines.",
+        "message": "A chat can't add or test a routine for a profile with MCP servers, a Bot, "
+        "or a permission mode other than plan.",
+        "fix": "A chat can add routines only for a profile with no MCP servers, no Bot, and no "
+        "permission mode other than plan. Ask the owner to add it in Routines.",
     }
 
 

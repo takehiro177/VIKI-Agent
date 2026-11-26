@@ -122,13 +122,14 @@ change settings, routines and Bots.
   in its own scrolling box, with any hidden or text-reordering character written out as its code,
   for example `<U+202E>`. A setting value longer than `agent_api.py`'s `REVIEW_CHARS` is refused
   rather than held cut short.
-- **Routines and Bots:** a routine run, a test run included, gets its profile's MCP servers and,
-  for a Bot's profile, that Bot's identity and recall. So a chat adds or tests a routine only for
-  a profile with no MCP servers and no Bot in any vault, tests only a routine that same chat added
-  since VIKI Agent last started (a resumed chat keeps its own), and creates a Bot only for a
-  profile that runs no routine. Anything else is refused with a fix that sends the chat to you
-  (`agent_api.py`'s `add_routine`, `run_routine` and `create_bot`). The Routines and Agents
-  screens themselves are unchanged.
+- **Routines and Bots:** a routine run, a test run included, gets its profile's MCP servers, its
+  pinned permission mode (a test run uses the pin) and, for a Bot's profile, that Bot's identity
+  and recall. So a chat adds or tests a routine only for a profile that has no MCP servers, no Bot
+  in any vault, and no pinned permission mode other than **Plan**; it tests only a routine that
+  same chat added since VIKI Agent last started (a resumed chat keeps its own), and creates a Bot
+  only for a profile that runs no routine. Anything else is refused with a fix that sends the
+  chat to you (`agent_api.py`'s `plain_profile`, `add_routine`, `run_routine` and `create_bot`).
+  The Routines and Agents screens themselves are unchanged.
 - **If it doesn't answer:** a command that times out exits with code 4, and its JSON error code
   `no_reply` means the request may already have gone through; its own guidance checks `status`
   before running anything again rather than assuming nothing happened.
@@ -853,11 +854,14 @@ Claude Code's effective settings.
   Bot thread has used `WebFetch`, `WebSearch`, an MCP tool, or Claude Code's built-in
   `ListMcpResourcesTool` or `ReadMcpResourceTool` (which also read MCP server text, without the
   `mcp__` prefix), also into `system/memory/`, any `.claude` folder or an instruction file. On
-  Windows, VIKI Agent also refuses, in every session, a target whose raw or resolved file name
-  carries a spelling NTFS would otherwise rewrite on creation: a stream name such as
-  `CLAUDE.local.md::$DATA`, or a trailing dot or space such as `CLAUDE.md.`. It never allows a
-  call by itself: everything else still meets Claude Code's permission check, and an error
-  refuses. It does not inspect shell commands.
+  Windows, VIKI Agent also refuses, in every session, a target whose raw or resolved path carries
+  a spelling NTFS would otherwise rewrite on creation (a stream name such as
+  `CLAUDE.local.md::$DATA`, or a trailing dot or space such as `CLAUDE.md.`), or whose raw or
+  resolved drive is not a plain drive letter: a vault is always rooted at a plain drive letter, so
+  a `\\?\`, `\\.\`, UNC (`\\server\share\...`) or `\\?\UNC\...` path can land inside a kept folder
+  without its spelling ever matching that folder's own. It never allows a call by itself:
+  everything else still meets Claude Code's permission check, and an error refuses. It does not
+  inspect shell commands.
 - **Controls:** the Bot page's memory card contains the Ask controls (review, forget and
   change) for the earlier notes; its **View memory** opens the file dialog. A Bot chat's
   **Memory** header button and **View memory** in Bot activity open the same dialog when the

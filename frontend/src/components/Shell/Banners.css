@@ -39,13 +39,18 @@
   width: auto;
 }
 
-/* Below an AgentChanges sentence: a routine's schedule, profile and workspace, then each value the
-   chat wrote, whole, in a box that scrolls past 160px so the card keeps a sensible height, wrapped
-   anywhere (a JSON value has no spaces to break at) rather than widening the banner. */
+/* An AgentChanges card reads sentence, values, then Apply and Reject, in DOM order, so the values
+   wrap onto a full row of their own between the sentence and the actions row. The values: a
+   routine's schedule, profile and workspace, then each value the chat wrote, whole, in a box that
+   scrolls past 160px so the card keeps a sensible height, wrapped anywhere (a JSON value has no
+   spaces to break at) rather than widening the banner. */
+.agent-changes-card {
+  flex-wrap: wrap;
+}
+
 .agent-changes-detail {
-  padding: 0 28px 9px;
-  font-size: 13px;
-  color: var(--t2);
+  flex: 1 0 100%;
+  min-width: 0;
 }
 
 .agent-changes-detail p {
@@ -78,9 +83,5 @@
   .readiness-banner button {
     margin-left: 0;
     width: 100%;
-  }
-
-  .agent-changes-detail {
-    padding: 0 16px 9px;
   }
 }

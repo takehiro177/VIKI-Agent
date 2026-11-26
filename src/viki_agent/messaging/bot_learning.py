@@ -22,7 +22,7 @@ import logging
 import stat
 import threading
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -212,20 +212,19 @@ class BotLearning:
                     "last_used_at": stat.last_used_at if stat else None,
                 }
             )
-        proposed = self.proposals.listing(bot_id)
         return {
             "bot_id": bot_id,
             "workspace_id": workspace_id,
             "records_readable": records_readable,
             "runs": [run.__dict__ for run in self.proposals.runs(bot_id)],
-            "proposals": [summary(stored) for stored in proposed],
+            "proposals": [summary(stored) for stored in self.proposals.listing(bot_id)],
             "records": lessons,
             "tainted_sessions": self.episodes.tainted_sessions(bot_id),
             "episodes": {
                 "unreflected": self.episodes.count(bot_id, after=None, reflected=False),
                 "last_finished_at": self.episodes.last_finished(bot_id),
             },
-            "legacy_files": self._legacy_count(workspace_id, bot_id, proposed),
+            "legacy_files": self._legacy_count(workspace_id, bot_id),
         }
 
     # --- decisions
@@ -419,30 +418,26 @@ class BotLearning:
         )
         return [f"{prefix}{name}" for name in names]
 
-    def _legacy_count(self, workspace_id: str, bot_id: str, proposed: Sequence[Stored]) -> int:
-        """How many of this Bot's earlier memory files are not already behind a proposal, open
-        or decided (`proposed`: the same bounded listing `overview` already reads, so this adds
-        no query of its own). What the "Import earlier memory" button promises. A file an import
-        would skip as a duplicate of a kept record never becomes a proposal, so it can still
-        count here though a click would not offer it."""
+    def _legacy_count(self, workspace_id: str, bot_id: str) -> int:
+        """How many of this Bot's earlier memory files exist in its folder: what the "Import
+        earlier memory ({count} files)" label names. Cheap, since the overview reads this often
+        - never decodes a proposal's sealed body, only lists the folder `_legacy_refs` already
+        lists cheaply. A later import that finds nothing new among them still finishes as
+        `nothing_new`, so this is a plain file count, not a prediction of what a click offers."""
         try:
             self.admission(workspace_id)
         except LearningError:
             return 0
-        noted = {
-            note.get("note")
-            for stored in proposed
-            for note in stored.body.get("notes", [])
-            if isinstance(note, dict)
-        }
-        return sum(1 for ref in self._legacy_refs(workspace_id, bot_id) if ref not in noted)
+        return len(self._legacy_refs(workspace_id, bot_id))
 
     def import_legacy(self, bot_id: str, trigger: str = "user") -> Run:
         """Blocks. Up to MAX_IMPORT_FILES new `fact_add` proposals, one per earlier memory file
         of this Bot (its body, without frontmatter), reading at most MAX_IMPORT_READS of them in
-        sorted order so a Bot with many earlier files is imported over several calls. Skips a
-        file whose claim repeats one already kept (and not retired), already open, or already
-        rejected."""
+        sorted order so a Bot with many earlier files is imported over several calls. A ref
+        already behind an open or rejected proposal (`ProposalStore.fact_add_decisions`, every
+        one, not the owner-facing window `listing` keeps) is skipped before it can spend any of
+        that read budget. Among the rest, skips a file whose claim repeats one already kept (and
+        not retired), open, or rejected."""
         bot = self.bot(bot_id)
         workspace_id = bot["workspace_id"]
         self.admission(workspace_id)
@@ -454,16 +449,22 @@ class BotLearning:
         except MemoryServiceError as error:
             raise LearningError(error.code) from None
         seen = [match_tokens(item.claim) for item in items if item.state != "retired"]
-        for stored in self.proposals.listing(bot_id):
-            if stored.state not in ("open", "rejected"):
-                continue
+        noted: set[str] = set()
+        for stored in self.proposals.fact_add_decisions(bot_id):
             claim = stored.body.get("claim", "")
             if claim:
                 seen.append(match_tokens(claim))
+            for note in stored.body.get("notes", []):
+                if isinstance(note, dict) and isinstance(note.get("note"), str):
+                    noted.add(note["note"])
         proposals: list[Proposal] = []
         read = 0
         for ref in refs:
-            if read >= MAX_IMPORT_READS or len(proposals) >= MAX_IMPORT_FILES:
+            if len(proposals) >= MAX_IMPORT_FILES:
+                break
+            if ref in noted:
+                continue  # already proposed: skip for free, never spending the read budget
+            if read >= MAX_IMPORT_READS:
                 break
             read += 1
             try:
