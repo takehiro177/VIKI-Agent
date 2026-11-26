@@ -434,10 +434,12 @@ class BotLearning:
         """Blocks. Up to MAX_IMPORT_FILES new `fact_add` proposals, one per earlier memory file
         of this Bot (its body, without frontmatter), reading at most MAX_IMPORT_READS of them in
         sorted order so a Bot with many earlier files is imported over several calls. A ref
-        already behind an open or rejected proposal (`ProposalStore.fact_add_decisions`, every
-        one, not the owner-facing window `listing` keeps) is skipped before it can spend any of
-        that read budget. Among the rest, skips a file whose claim repeats one already kept (and
-        not retired), open, or rejected."""
+        already behind an open, rejected or applied proposal (`ProposalStore.fact_add_notes`,
+        every one, not the owner-facing window `listing` keeps) is skipped before it can spend
+        any of that read budget - an approved file must not keep paying to be re-discovered as a
+        duplicate of the kept record it became, which would starve the files behind it. Among
+        the rest, skips a file whose claim repeats one already kept (and not retired), open, or
+        rejected."""
         bot = self.bot(bot_id)
         workspace_id = bot["workspace_id"]
         self.admission(workspace_id)
@@ -450,7 +452,7 @@ class BotLearning:
             raise LearningError(error.code) from None
         seen = [match_tokens(item.claim) for item in items if item.state != "retired"]
         noted: set[str] = set()
-        for stored in self.proposals.fact_add_decisions(bot_id):
+        for stored in self.proposals.fact_add_notes(bot_id):
             claim = stored.body.get("claim", "")
             if claim:
                 seen.append(match_tokens(claim))

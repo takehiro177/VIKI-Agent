@@ -462,8 +462,8 @@ request: **status**, **settings**, **routines** and **bots**.
   finish before enabling it. Still a draft once the run has ended means the test failed.
 - **What a chat can't do here:** test a routine it didn't add itself since VIKI Agent last
   started; add or test a routine for a profile that has MCP servers, a Bot, or a pinned
-  permission mode other than **Plan**; or create a Bot for a profile that already runs routines.
-  Do those from **Routines** or **Agents** yourself.
+  permission mode that skips asking (**Accept edits** or **Auto**); or create a Bot for a profile
+  that already runs routines. Do those from **Routines** or **Agents** yourself.
 - **Which chats can do this:** a chat you opened in the window. A chat VIKI starts and runs on
   its own — a Decision mission, an inbox suggestion run, a messaging bridge's conversation — gets
   none of its own while VIKI runs it, but behaves like any other chat you opened once you reopen

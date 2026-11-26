@@ -250,9 +250,10 @@ def test_routines_add_for_a_bot_s_profile_exits_1_with_its_fix(tmp_path: Path) -
     assert body["error"] == {
         "code": "profile_not_allowed",
         "message": "A chat can't add or test a routine for a profile with MCP servers, a Bot, "
-        "or a permission mode other than plan.",
+        "or a permission mode that skips asking (Accept edits or Auto).",
         "fix": "A chat can add routines only for a profile with no MCP servers, no Bot, and no "
-        "permission mode other than plan. Ask the owner to add it in Routines.",
+        "permission mode that skips asking (Accept edits or Auto). "
+        "Ask the owner to add it in Routines.",
     }
 
 

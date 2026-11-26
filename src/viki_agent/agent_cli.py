@@ -63,7 +63,8 @@ _FIX_BY_CODE = {
     ),
     "profile_not_allowed": (
         "A chat can add routines only for a profile with no MCP servers, no Bot, and no "
-        "permission mode other than plan. Ask the owner to add it in Routines."
+        "permission mode that skips asking (Accept edits or Auto). "
+        "Ask the owner to add it in Routines."
     ),
     "profile_has_routines": (
         "That profile already runs routines. Ask the owner to create this Bot in Agents."
@@ -605,8 +606,8 @@ def _cmd_routines_test(
         if code == "profile_not_allowed":
             # This chat added it, so the profile has changed since.
             return (
-                "This routine's profile now has MCP servers, a Bot, or a permission mode other "
-                "than plan. Ask the owner to run it from Routines."
+                "This routine's profile now has MCP servers, a Bot, or a permission mode that "
+                "skips asking (Accept edits or Auto). Ask the owner to run it from Routines."
             )
         return None
 

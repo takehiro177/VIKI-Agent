@@ -73,7 +73,7 @@ function shown(change: AgentChange) {
   );
 }
 
-test("renders nothing while the list is empty", async () => {
+test("renders only its empty status line while the list is empty", async () => {
   const { container } = render(
     <AgentChanges
       api={fakeApi(vi.fn().mockResolvedValue({ seq: 1, changes: [] }))}
@@ -82,7 +82,39 @@ test("renders nothing while the list is empty", async () => {
     />,
   );
   await settled();
-  expect(container.firstChild).toBeNull();
+  const status = screen.getByRole("status");
+  expect([...container.childNodes]).toEqual([status]);
+  expect(status.className).toBe("sr-only");
+  expect(status.textContent).toBe("");
+  expect(screen.queryByRole("region")).toBeNull();
+  expect(screen.queryByRole("button")).toBeNull();
+});
+
+test("the first change's count lands in the status line already mounted", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+  const list = vi
+    .fn()
+    .mockResolvedValueOnce({ seq: 1, changes: [] })
+    .mockResolvedValue({ seq: 2, changes: [SETTING] });
+  render(
+    <AgentChanges
+      api={fakeApi(list)}
+      titleOf={() => "Garden plan"}
+      onChanged={vi.fn()}
+      pollMs={1000}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  const status = screen.getByRole("status");
+  expect(status.textContent).toBe("");
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(screen.getByRole("status")).toBe(status);
+  expect(status.textContent).toBe("1 change waits for your Apply or Reject.");
+  expect(screen.getByRole("region", { name: "Changes waiting for you" })).toBeTruthy();
 });
 
 test("a setting change's sentence, then its current and new value in their own boxes", async () => {

@@ -125,11 +125,13 @@ change settings, routines and Bots.
 - **Routines and Bots:** a routine run, a test run included, gets its profile's MCP servers, its
   pinned permission mode (a test run uses the pin) and, for a Bot's profile, that Bot's identity
   and recall. So a chat adds or tests a routine only for a profile that has no MCP servers, no Bot
-  in any vault, and no pinned permission mode other than **Plan**; it tests only a routine that
-  same chat added since VIKI Agent last started (a resumed chat keeps its own), and creates a Bot
-  only for a profile that runs no routine. Anything else is refused with a fix that sends the
-  chat to you (`agent_api.py`'s `plain_profile`, `add_routine`, `run_routine` and `create_bot`).
-  The Routines and Agents screens themselves are unchanged.
+  in any vault, and no pinned permission mode that skips asking (**Accept edits** or **Auto**;
+  **Default**, **Manual** and **Plan** are allowed, and a profile with no pin runs in the
+  **Default mode** setting, as a new chat does); it tests only a routine that same chat added
+  since VIKI Agent last started (a resumed chat keeps its own), and creates a Bot only for a
+  profile that runs no routine. Anything else is refused with a fix that sends the chat to you
+  (`agent_api.py`'s `plain_profile`, `add_routine`, `run_routine` and `create_bot`). The
+  Routines and Agents screens themselves are unchanged.
 - **If it doesn't answer:** a command that times out exits with code 4, and its JSON error code
   `no_reply` means the request may already have gone through; its own guidance checks `status`
   before running anything again rather than assuming nothing happened.

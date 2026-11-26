@@ -1,9 +1,9 @@
 /**
  * The Apply card: pending settings or routine changes a chat's agent CLI asked the window to
  * make, awaiting Apply or Reject. Lists on mount and polls every `pollMs` while the document is
- * visible; a `not_found` from the surface (it is gone) stops polling for good. Renders nothing
- * while there is nothing pending -- including right after a poll failure, since there is then
- * nothing of substance to show.
+ * visible; a `not_found` from the surface (it is gone) stops polling for good. Renders only its
+ * empty, unseen status line while there is nothing pending -- including right after a poll
+ * failure, since there is then nothing of substance to show.
  *
  * The chat wrote what it asks for, so the card shows all of it: a setting's current and new
  * value whole, a routine's whole prompt, each in a box of its own that scrolls past a few lines,
@@ -153,7 +153,7 @@ export function AgentChanges({
   titleOf,
   onChanged,
   pollMs = 2000,
-}: AgentChangesProps): ReactElement | null {
+}: AgentChangesProps): ReactElement {
   const [changes, setChanges] = useState<readonly AgentChange[]>([]);
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -233,48 +233,56 @@ export function AgentChanges({
     }
   }
 
-  if (changes.length === 0) return null;
-
   // The live region is the count alone: the values below run to a whole prompt, too long to have
-  // read out each time a change arrives. Each card reads sentence, values, then Apply and Reject,
-  // so the keyboard and a screen reader reach the values before the buttons that decide them.
+  // read out each time a change arrives. It stays mounted, empty, while nothing waits, since many
+  // screen readers skip text in a live region inserted along with it. Each card reads sentence,
+  // values, then Apply and Reject, so the keyboard and a screen reader reach the values before the
+  // buttons that decide them.
+  const waiting =
+    changes.length === 0
+      ? ""
+      : changes.length === 1
+        ? t("shell.agent_changes.waiting_one")
+        : tf("shell.agent_changes.waiting_other", { count: changes.length });
   return (
-    <section aria-label={t("shell.agent_changes.region")}>
+    <>
       <p className="sr-only" role="status">
-        {changes.length === 1
-          ? t("shell.agent_changes.waiting_one")
-          : tf("shell.agent_changes.waiting_other", { count: changes.length })}
+        {waiting}
       </p>
-      {changes.map((change) => {
-        const busy = pending.has(change.change_id);
-        return (
-          <div key={change.change_id} className="readiness-banner agent-changes-card">
-            <span>{changeText(change, titleOf)}</span>
-            {change.kind === "routine_enable"
-              ? routineDetail(change.summary)
-              : settingDetail(change.summary)}
-            <div className="chat-only-banner-actions">
-              <button
-                type="button"
-                className="btn go sm"
-                disabled={busy}
-                onClick={() => void decide(change, "apply")}
-              >
-                {t("common.button.apply")}
-              </button>
-              <button
-                type="button"
-                className="btn alt sm"
-                disabled={busy}
-                onClick={() => void decide(change, "reject")}
-              >
-                {t("common.button.reject")}
-              </button>
-            </div>
-          </div>
-        );
-      })}
-      {error !== null ? <p role="alert">{error}</p> : null}
-    </section>
+      {changes.length === 0 ? null : (
+        <section aria-label={t("shell.agent_changes.region")}>
+          {changes.map((change) => {
+            const busy = pending.has(change.change_id);
+            return (
+              <div key={change.change_id} className="readiness-banner agent-changes-card">
+                <span>{changeText(change, titleOf)}</span>
+                {change.kind === "routine_enable"
+                  ? routineDetail(change.summary)
+                  : settingDetail(change.summary)}
+                <div className="chat-only-banner-actions">
+                  <button
+                    type="button"
+                    className="btn go sm"
+                    disabled={busy}
+                    onClick={() => void decide(change, "apply")}
+                  >
+                    {t("common.button.apply")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn alt sm"
+                    disabled={busy}
+                    onClick={() => void decide(change, "reject")}
+                  >
+                    {t("common.button.reject")}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {error !== null ? <p role="alert">{error}</p> : null}
+        </section>
+      )}
+    </>
   );
 }

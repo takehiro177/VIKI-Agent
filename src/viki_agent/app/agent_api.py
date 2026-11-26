@@ -23,7 +23,7 @@ A run under a profile carries that profile's MCP servers, its pinned permission 
 manual run, which uses the pin) and, with a Bot bound to it, the Bot's identity and recall, so the
 routine and Bot operations narrow what the window's own routes allow, each checked before anything
 is made: a chat adds or tests a routine only for a profile with no MCP servers, no Bot in any
-workspace and no permission mode pinned other than `plan` (`plain_profile`), else 403
+workspace and no pinned permission mode that skips asking (`plain_profile`), else 403
 `profile_not_allowed`; it tests only a routine its own session added here since launch
 (`AgentChanges.made`, so a resumed chat keeps its own), else 403 `not_added_here`; and it creates
 a Bot only for a profile with no routine that is not archived, else 409 `profile_has_routines`.
@@ -88,6 +88,10 @@ MAX_IN_FLIGHT = 4
 # held cut. No key a hold can name gets near it (the longest, `layout.panes`, takes 8,192), and a
 # routine's prompt is at most 32,768 UTF-8 bytes (`routines._prompt`), so a card shows it whole.
 REVIEW_CHARS = 64 << 10
+# The pinned permission modes a chat may add or test a routine under: each asks before every
+# tool (`default` and `manual`, the CLI 2.1.259 name for it) or plans without acting (`plan`).
+# Any other pin, today `acceptEdits` and `auto` of `control.PERMISSION_MODES`, skips asking.
+ASKING_MODES = frozenset({"default", "manual", "plan"})
 # A hold's kind -> the summary fields its chat sees in `status`. Never a value: a routine's prompt
 # is sealed from chats, and a setting's `from` and `to` are for the window's Apply card.
 _CHAT_VIEW = {"setting": ("key",), "routine_enable": ("routine_id", "name")}
@@ -189,7 +193,7 @@ _REFUSALS = {
     "profile_not_allowed": (
         403,
         "A chat can't add or test a routine for a profile with MCP servers, a Bot, or a "
-        "permission mode other than plan.",
+        "permission mode that skips asking (Accept edits or Auto).",
     ),
     "profile_has_routines": (409, "A chat can't create a Bot for a profile that runs routines."),
     "too_long_to_review": (422, "The value is too long to review on the Apply card."),
@@ -323,9 +327,11 @@ def agent_routes(
 
     def plain_profile(profile_id: str) -> bool:
         """Whether a chat may add or test a routine under `profile_id`: the profile names no MCP
-        servers (`tools.mcp_configuration`), pins no permission mode other than `plan`
+        servers (`tools.mcp_configuration`), pins no permission mode outside `ASKING_MODES`
         (`runtime.permission_mode`, which a manual run such as a test uses as pinned), and no Bot,
-        in any workspace, is bound to it. A profile that is not there names and pins nothing."""
+        in any workspace, is bound to it. A profile that is not there names and pins nothing. An
+        unpinned profile runs in the app's default chat mode (`chat.default_mode`), as a new chat
+        does; that is left as is here (an open item)."""
         try:
             profile = profiles.get(profile_id)
         except ProfileError as error:
@@ -335,7 +341,8 @@ def agent_routes(
             document = profile["document"]
             if document["tools"]["mcp_configuration"] is not None:
                 return False
-            if document["runtime"]["permission_mode"] not in (None, "plan"):
+            mode = document["runtime"]["permission_mode"]
+            if mode is not None and mode not in ASKING_MODES:
                 return False
         return bots is None or all(bot["profile_id"] != profile_id for bot in bots.list())
 
@@ -576,7 +583,7 @@ def agent_routes(
 
         def check() -> None:
             # Again at each test: the owner may since have given its profile MCP servers, a Bot
-            # or a pinned mode other than plan.
+            # or a pinned mode that skips asking.
             if not plain_profile(routines.get(routine_id)["document"]["profile_id"]):
                 raise _refused("profile_not_allowed")
 

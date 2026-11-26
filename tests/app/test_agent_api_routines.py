@@ -1,7 +1,8 @@
 """The agent surface's routine operations over a real `RoutineService` (the rig of
 `test_agent_api`): add, list, test through the stub runner, and enable, which waits for the
 window's Apply. A chat adds and tests routines only for a plain profile (no MCP servers, no Bot,
-no permission mode pinned other than plan), and tests only the routines its own session added."""
+no pinned permission mode that skips asking), and tests only the routines its own session
+added."""
 
 from __future__ import annotations
 
@@ -15,13 +16,14 @@ from tests.app.test_agent_api import NOW, SESSION, Rig, code, ident
 from tests.automation.test_routines import _document_raw, _manual_schedule
 from tests.profiles.test_profile_document import document as profile_document
 from tests.profiles.test_profiles_api import with_server
+from viki_agent.app.agent_api import ASKING_MODES
 from viki_agent.automation.routines import record_tested, stamp
 from viki_agent.drivers.claude.control import PERMISSION_MODES
 
 NOT_ADDED_HERE = "A chat can test only a routine it added itself."
 NOT_PLAIN = (
     "A chat can't add or test a routine for a profile with MCP servers, a Bot, or a permission "
-    "mode other than plan."
+    "mode that skips asking (Accept edits or Auto)."
 )
 
 
@@ -240,8 +242,13 @@ def _pinned(rig: Rig, mode: str | None) -> str:
     return profile_id
 
 
-@pytest.mark.parametrize("mode", sorted(PERMISSION_MODES - {"plan"}))
-def test_adding_a_routine_for_a_profile_pinned_to_a_mode_other_than_plan_is_refused(
+def test_the_modes_that_skip_asking_are_accept_edits_and_auto() -> None:
+    """What the refusal and the docs name: every pinnable mode outside `ASKING_MODES`."""
+    assert {"acceptEdits", "auto"} == PERMISSION_MODES - ASKING_MODES
+
+
+@pytest.mark.parametrize("mode", sorted(PERMISSION_MODES - ASKING_MODES))
+def test_adding_a_routine_for_a_profile_pinned_to_a_mode_that_skips_asking_is_refused(
     rig: Rig, mode: str
 ) -> None:
     """A test is a manual run, which runs in the profile's pinned mode, whatever the chat's."""
@@ -256,8 +263,13 @@ def test_adding_a_routine_for_a_profile_pinned_to_a_mode_other_than_plan_is_refu
     assert rig.journal() == []
 
 
-def test_a_plan_pinned_profile_is_added_and_tested_until_its_pin_widens(rig: Rig) -> None:
-    profile_id = _pinned(rig, "plan")
+@pytest.mark.parametrize("mode", ["default", "manual", "plan", None])
+def test_a_profile_that_asks_or_plans_is_added_and_tested_until_its_pin_skips_asking(
+    rig: Rig, mode: str | None
+) -> None:
+    """`default` and `manual` ask before every tool, `plan` acts on nothing, and no pin follows
+    the app's default chat mode, as a new chat does."""
+    profile_id = _pinned(rig, mode)
     routine_id = _added(rig, _document_raw(profile_id=profile_id, workspace_id=rig.workspace_id))
     assert _run(rig, routine_id).status_code == 202
     widened = profile_document()
