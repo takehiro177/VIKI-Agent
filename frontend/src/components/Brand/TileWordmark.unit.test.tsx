@@ -1,3 +1,7 @@
+// @ts-expect-error no @types/node in this browser-focused tsconfig; see ../../testing/css.ts
+import { readFileSync } from "node:fs";
+// @ts-expect-error see above
+import { fileURLToPath } from "node:url";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, expect, test } from "vitest";
 import { LARGE_TILES, SMALL_TILES, TileWordmark } from "./TileWordmark";
@@ -45,4 +49,23 @@ test.each(["small", "large"] as const)("the %s lettering is one decorative path"
   expect(svg?.textContent).toBe("");
   const path = svg?.querySelector("path")?.getAttribute("d") ?? "";
   expect(path.split("M").length - 1).toBe(tileCount(rows));
+});
+
+// The public guide (docs/) is static HTML, so it carries the lettering as SVG files; they must
+// draw exactly the tiles the app draws.
+test.each(["small", "large"] as const)("docs/assets/wordmark-%s.svg matches the app", (size) => {
+  const { container } = render(<TileWordmark size={size} />);
+  const app = container.querySelector("svg");
+  // A variable, not `import.meta.url` inline: Vite would turn `new URL(…)` into an asset import.
+  const here = import.meta.url;
+  const file = readFileSync(
+    fileURLToPath(new URL(`../../../../docs/assets/wordmark-${size}.svg`, here)),
+    "utf8",
+  );
+  const docs = new DOMParser().parseFromString(file, "image/svg+xml").documentElement;
+  expect(docs.getAttribute("viewBox")).toBe(app?.getAttribute("viewBox"));
+  expect(docs.querySelector("path")?.getAttribute("d")).toBe(
+    app?.querySelector("path")?.getAttribute("d"),
+  );
+  expect(docs.querySelector("title")?.textContent).toBe("VIKI Agent");
 });
