@@ -2800,10 +2800,12 @@ test("an empty Kanban opens Chief's desk without creating or storing anything", 
   expect(bots.create).not.toHaveBeenCalled();
 });
 
-test("Refresh Kanban re-checks the kanban skill", async () => {
+test("opening Kanban checks the Kanban skill again", async () => {
   const missing = kanbanCatalog("missing");
   const ready = kanbanCatalog("ready");
-  const catalog = vi.fn().mockImplementationOnce(missing.catalog).mockImplementation(ready.catalog);
+  // Forwards to missing.catalog until the mock is swapped below, whether the first open causes
+  // one check or several: every one of them sees "missing" until the test says otherwise.
+  const catalog = vi.fn(missing.catalog);
   setup({
     vaultApi: emptyKanbanVault(),
     nativeAssetsApi: { sources: missing.sources, catalog },
@@ -2811,12 +2813,44 @@ test("Refresh Kanban re-checks the kanban skill", async () => {
   await settled();
   await openKanban();
   expect(await screen.findByText(READINESS_TEXT.missing)).toBeTruthy();
+  catalog.mockImplementation(ready.catalog);
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Refresh Kanban" }));
+    fireEvent.click(sidebar().getByRole("button", { name: "Chat" }));
   });
   await settled();
+  await openKanban(); // opening Kanban again, not a button, re-checks the skill
   expect(await screen.findByRole("button", { name: "Open Chief" })).toBeTruthy();
   expect(screen.queryByText(READINESS_TEXT.missing)).toBeNull();
+});
+
+test("a kanban.changed frame for the active vault reads the vault again; one naming another id does not", async () => {
+  const vaultApi = emptyKanbanVault();
+  const { socket } = setup({ vaultApi, nativeAssetsApi: kanbanCatalog() });
+  await settled();
+  await openKanban();
+  const opened = vi.mocked(vaultApi.entries).mock.calls.length;
+  socket.receive({
+    v: 2,
+    type: "kanban.changed",
+    session_id: "",
+    generation: GENERATION,
+    request_id: "",
+    seq: 1,
+    data: { workspace_id: FAKE_WORKSPACE_ID },
+  });
+  await settled();
+  expect(vi.mocked(vaultApi.entries).mock.calls.length).toBe(opened + 1);
+  socket.receive({
+    v: 2,
+    type: "kanban.changed",
+    session_id: "",
+    generation: GENERATION,
+    request_id: "",
+    seq: 2,
+    data: { workspace_id: SECOND },
+  });
+  await settled();
+  expect(vi.mocked(vaultApi.entries).mock.calls.length).toBe(opened + 1);
 });
 
 // P4: the whole App on a protected, migrated vault with bootstrap none — a vault VIKI Agent

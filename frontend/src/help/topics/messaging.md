@@ -62,7 +62,8 @@ then check for work at the saved times. For pickup between those times, turn on
 **Proactive VIKI** and choose **Start Bots' work** in **Decision**: **Ask first** offers
 **Start** in the launcher; **Allowed** can start an eligible routine under its limits and holds.
 
-Open **Kanban** in the left sidebar for a Kanban view of the notes directly in `kanban/`. Each
+Open **Kanban** in the left sidebar for a Kanban view of the notes directly in `kanban/`; it updates
+on its own as cards change. Each
 status has its own lane, color and glyph: **To do**, **Working**, **Blocked**, **Ready for review**
 and **Done**, plus **Cancelled** once a card is cancelled. A card shows its owner's face and name,
 when it last changed, and **Stopped moving** after a day in Working or three days in To do. A

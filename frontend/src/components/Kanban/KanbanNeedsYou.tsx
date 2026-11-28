@@ -26,7 +26,7 @@ export interface NeedsYouItem {
 /** Message mode's per-item state (present only when `KanbanView` has no `write`): the one open
  * draft, if its ref and read sha match this item, and the refs already sent this visit, keyed by
  * the read sha256 and the Bot name they were sent to. `botName` on each is the target's name
- * fixed at compose/send time, never the item's own current one, which a Refresh or a re-seat can
+ * fixed at compose/send time, never the item's own current one, which a re-read or a re-seat can
  * move to a different Bot underneath an open draft. */
 export interface CardMessageView {
   draft: { ref: string; sha256: string; botName: string; text: string } | null;
@@ -336,7 +336,7 @@ function NeedsYouArticle({
   /** Message mode's per-item ladder, first match wins: no Bot, already sent on this read, an open
    * draft for this read, else the write-mode actions with the message hint. The preview's label
    * and the sent line name the draft's/sent entry's own Bot (fixed when it was composed or sent),
-   * never `ownerBotName` (the item's current one, which a Refresh or a re-seat can move). */
+   * never `ownerBotName` (the item's current one, which a re-read or a re-seat can move). */
   function messageBody(msg: CardMessageView, cardRead: CardRead): ReactNode {
     if (ownerBotName === null) {
       return <p className="kanban-needs-unread">{t("kanban.needs.no_bot_card")}</p>;

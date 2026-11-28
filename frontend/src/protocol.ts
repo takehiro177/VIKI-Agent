@@ -354,6 +354,9 @@ export interface VaultSessionsData {
   others: OtherSession[];
   live: string[];
 }
+export interface KanbanChangedData {
+  workspace_id: string;
+}
 export interface TurnDoneData {
   status: TurnStatus;
   usage: Usage;
@@ -394,6 +397,7 @@ export interface EventMap {
   compacted: CompactedData;
   rate_limit: RateLimitData;
   "vault.sessions": VaultSessionsData;
+  "kanban.changed": KanbanChangedData;
   "turn.done": TurnDoneData;
   error: ErrorData;
 }

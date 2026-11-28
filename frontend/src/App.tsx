@@ -1819,8 +1819,8 @@ export function App({
   );
   const selectedBotRef = useRef(selectedBot);
   const [botsSection, setBotsSection] = useState<"team" | "profiles" | "usage">("team");
-  // Refresh Bots re-reads Kanban; a strip seat and Edit profile hand one selection to the
-  // view they open, never stored.
+  // Refresh Bots and opening Kanban check the Kanban skill again; a strip seat and Edit profile
+  // hand one selection to the view they open, never stored.
   const [teamCheck, setTeamCheck] = useState(0);
   const [seatRequest, setSeatRequest] = useState<SeatId | null>(null);
   const [profileFocus, setProfileFocus] = useState<string | null>(null);
@@ -3548,6 +3548,9 @@ export function App({
     botThreads.setVisible(nav.view === "bot_threads");
     return () => botThreads.setVisible(false);
   }, [botThreads, nav.view]);
+  useEffect(() => {
+    if (nav.view === "kanban") setTeamCheck((check) => check + 1);
+  }, [nav.view]);
   const teamLive: TeamLive = {
     online,
     sessions: appSnapshot.sessions,
@@ -6355,7 +6358,8 @@ export function App({
               onOpenSeat={(seat) => {
                 if (showBot(null)) setSeatRequest(seat);
               }}
-              onRefresh={() => setTeamCheck((check) => check + 1)}
+              changes={appSnapshot.kanban?.[activeVault.workspace_id] ?? 0}
+              online={online}
               {...(writeScope ? { write: { api: vaultApi, ...writeScope } } : {})}
               {...(botsApi ? { onWake: wakeBot } : {})}
             />

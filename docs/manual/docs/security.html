@@ -940,6 +940,10 @@ record does not bring the file back; if another program wrote it, that version s
 its starter files under <code>.claude/</code> and <code>_templates/</code>, <code>AGENTS.md</code>, <code>CLAUDE.md</code> and
 <code>system/starter-updates.md</code>, without following links. VIKI Agent writes none of them: the chat you send makes each change
 under your own hooks and permissions, and an AGENTS.md change waits for your Save.</div></li>
+<li><strong class="label-term">Kanban updates</strong><div class="label-body">while VIKI Agent runs, it lists the notes directly in the active vault&#x27;s
+<code>kanban/</code> folder about once a second and compares their names, sizes, change times and file IDs.
+It reads no note text, does not follow a link or junction in place of that folder, and tells its
+windows only which vault changed.</div></li>
 <li><strong class="label-term">Saves at the same moment, off Windows</strong><div class="label-body">off Windows, a file cannot be locked against other
 programs, so the app checks each step before and after it runs. When another program saves the
 note at the same moment, that version is kept and your save stops as a conflict. A new note&#x27;s

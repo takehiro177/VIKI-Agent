@@ -267,6 +267,10 @@ export function createViki(options: VikiOptions): Viki {
       for (const id of live) if (!closing.has(id)) trackSession(id);
       return;
     }
+    if (message.type === "kanban.changed") {
+      store.dispatch(message);
+      return;
+    }
     if (!tracked.has(message.session_id)) return;
     const id = message.session_id;
     if (message.type === "history.page") {

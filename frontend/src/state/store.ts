@@ -26,6 +26,7 @@ export interface AppSnapshot {
   status: SocketStatus;
   live?: LiveReport;
   maxLiveSessions?: number;
+  kanban?: Readonly<Record<string, number>>;
 }
 
 export class AppStore {
@@ -33,6 +34,8 @@ export class AppStore {
   private readonly listeners = new Set<() => void>();
   private globalGeneration: string | null = null;
   private globalSeq = -1;
+  private kanbanGeneration: string | null = null;
+  private kanbanSeq = -1;
 
   getSnapshot = (): AppSnapshot => this.snapshot;
 
@@ -53,6 +56,22 @@ export class AppStore {
         ...this.snapshot,
         others: message.data.others,
         live: { ids: new Set(message.data.live), startedSince: new Set() },
+      });
+      return;
+    }
+    if (message.type === "kanban.changed") {
+      if (this.kanbanGeneration !== null && message.generation !== this.kanbanGeneration) return;
+      if (message.generation === this.kanbanGeneration && message.seq <= this.kanbanSeq) return;
+      this.kanbanGeneration = message.generation;
+      this.kanbanSeq = message.seq;
+      const workspaceId = message.data.workspace_id;
+      if (typeof workspaceId !== "string") return;
+      this.commit({
+        ...this.snapshot,
+        kanban: {
+          ...this.snapshot.kanban,
+          [workspaceId]: (this.snapshot.kanban?.[workspaceId] ?? 0) + 1,
+        },
       });
       return;
     }
@@ -123,6 +142,8 @@ export class AppStore {
     if (status === "connecting" || status === "reconnecting") {
       this.globalGeneration = null;
       this.globalSeq = -1;
+      this.kanbanGeneration = null;
+      this.kanbanSeq = -1;
     }
     if (status !== this.snapshot.status) this.commit({ ...this.snapshot, status });
   }

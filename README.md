@@ -142,13 +142,13 @@ reports PASS with evidence, or the thread needs you.
 ### Bots and Kanban
 
 Bots work the Kanban cards tagged for them, and Checker checks finished work against its Done when
-items. Approve the result or send it back.
+items. Kanban updates as cards change; approve the result or send it back.
 
 [Bots guide →](docs/bots.md)
 
 </td>
 <td width="50%">
-  <a href="docs/bots.md"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/readme-features/kanban.poster.jpg"><source srcset="docs/assets/readme-features/kanban.webp" type="image/webp"><img src="docs/assets/readme-features/kanban.poster.jpg" alt="The Kanban view; after a refresh, the card Validate checkout quantities is ready for review with Checker passed and 4 of 4 done, and the user approves it" width="100%" /></picture></a>
+  <a href="docs/bots.md"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/readme-features/kanban.poster.jpg"><source srcset="docs/assets/readme-features/kanban.webp" type="image/webp"><img src="docs/assets/readme-features/kanban.poster.jpg" alt="The Kanban view: the card Validate checkout quantities moves to Ready for review on its own, with Checker passed and 4 of 4 done, and the user approves it" width="100%" /></picture></a>
 </td>
 </tr>
 <tr>

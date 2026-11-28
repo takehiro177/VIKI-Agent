@@ -478,3 +478,17 @@ test("reconnect and replay retain the limit while stale snapshots cannot change 
     vi.useRealTimers();
   }
 });
+
+test("kanban.changed reaches the store even with no tracked session (routed before the tracked check)", () => {
+  const { viki, socket } = connected();
+  socket.receive({
+    v: 2,
+    type: "kanban.changed",
+    session_id: "",
+    generation: GENERATION,
+    request_id: "",
+    seq: 1,
+    data: { workspace_id: "w1" },
+  });
+  expect(viki.store.getSnapshot().kanban).toEqual({ w1: 1 });
+});

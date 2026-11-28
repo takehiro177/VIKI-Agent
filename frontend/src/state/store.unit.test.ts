@@ -224,3 +224,65 @@ test.each([
   store.dispatch(invalid);
   expect(store.getSnapshot().maxLiveSessions).toBe(3);
 });
+
+function kanbanChanged(
+  workspaceId: unknown,
+  seq: number,
+  generation = "11111111-1111-4111-8111-111111111111",
+): Envelope {
+  return {
+    v: 2,
+    generation,
+    request_id: "",
+    type: "kanban.changed",
+    session_id: "",
+    seq,
+    data: { workspace_id: workspaceId },
+  } as unknown as Envelope;
+}
+
+test("kanban.changed commits kanban[id] = prev + 1, counted per workspace", () => {
+  const store = new AppStore();
+  store.dispatch(kanbanChanged("w1", 1));
+  expect(store.getSnapshot().kanban).toEqual({ w1: 1 });
+  store.dispatch(kanbanChanged("w1", 2));
+  expect(store.getSnapshot().kanban).toEqual({ w1: 2 });
+  store.dispatch(kanbanChanged("w2", 3));
+  expect(store.getSnapshot().kanban).toEqual({ w1: 2, w2: 1 });
+});
+
+test("kanban.changed drops a frame from another generation, and one whose seq is not ahead", () => {
+  const store = new AppStore();
+  store.dispatch(kanbanChanged("w1", 1, "11111111-1111-4111-8111-111111111111"));
+  store.dispatch(kanbanChanged("w1", 2, "33333333-3333-4333-8333-333333333333")); // wrong generation
+  expect(store.getSnapshot().kanban).toEqual({ w1: 1 });
+  store.dispatch(kanbanChanged("w1", 1, "11111111-1111-4111-8111-111111111111")); // seq <= last
+  expect(store.getSnapshot().kanban).toEqual({ w1: 1 });
+});
+
+test("setStatus resets kanban's generation/seq, so reconnect's first frame is accepted above seq 1", () => {
+  const store = new AppStore();
+  store.dispatch(kanbanChanged("w1", 1, "11111111-1111-4111-8111-111111111111"));
+  store.setStatus("reconnecting");
+  store.dispatch(kanbanChanged("w1", 5, "33333333-3333-4333-8333-333333333333"));
+  expect(store.getSnapshot().kanban).toEqual({ w1: 2 });
+});
+
+test("kanban.changed with a non-string workspace_id commits nothing and notifies nobody", () => {
+  const store = new AppStore();
+  const listener = vi.fn();
+  store.subscribe(listener);
+  store.dispatch(kanbanChanged(42, 1));
+  expect(store.getSnapshot().kanban).toBeUndefined();
+  expect(listener).not.toHaveBeenCalled();
+});
+
+test("kanban's generation/seq tracking stays apart from vault.sessions's", () => {
+  const store = new AppStore();
+  store.dispatch(vaultSessions(["a"], 5));
+  store.dispatch(kanbanChanged("w1", 1)); // its own seq starts at 1 regardless of vault.sessions's
+  expect(store.getSnapshot().kanban).toEqual({ w1: 1 });
+  store.dispatch(vaultSessions(["a"], 6));
+  store.dispatch(kanbanChanged("w1", 2));
+  expect(store.getSnapshot().kanban).toEqual({ w1: 2 });
+});

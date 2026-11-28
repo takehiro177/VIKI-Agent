@@ -1026,6 +1026,10 @@ chat image in the vault.
   its starter files under `.claude/` and `_templates/`, `AGENTS.md`, `CLAUDE.md` and
   `system/starter-updates.md`, without following links. VIKI Agent writes none of them: the chat you send makes each change
   under your own hooks and permissions, and an AGENTS.md change waits for your Save.
+- **Kanban updates:** while VIKI Agent runs, it lists the notes directly in the active vault's
+  `kanban/` folder about once a second and compares their names, sizes, change times and file IDs.
+  It reads no note text, does not follow a link or junction in place of that folder, and tells its
+  windows only which vault changed.
 - **Saves at the same moment, off Windows:** off Windows, a file cannot be locked against other
   programs, so the app checks each step before and after it runs. When another program saves the
   note at the same moment, that version is kept and your save stops as a conflict. A new note's

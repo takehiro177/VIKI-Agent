@@ -2,7 +2,7 @@ import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import type { BotRow, BotsApi } from "../../clients/messaging/botsApi";
 import type { Key } from "../../i18n";
 import { t, tf } from "../../i18n/t";
-import type { VaultApi, VaultMetadataItem } from "../../state/vaultApi";
+import type { VaultApi } from "../../state/vaultApi";
 import { BotTag, type ThreadBot } from "../Bots/BotThreadParts";
 import { botName, type SeatId, seatFace, teamRoster } from "../Bots/team";
 import { READINESS_TEXT, type TeamReadiness } from "../Bots/teamReadiness";
@@ -10,25 +10,22 @@ import { Icon, type IconName } from "../Icon/Icon";
 import { Loading } from "../Loading/Loading";
 import "./Kanban.css";
 import { KanbanNeedsYou, type NeedsYouItem, updatedText } from "./KanbanNeedsYou";
-import { type CardRead, cardDate, readCard } from "./kanbanBody";
+import { cardDate, readCard } from "./kanbanBody";
 import {
-  KANBAN_BATCH,
   KANBAN_READ_CAP,
   type KanbanCard,
   type KanbanLaneId,
   type KanbanListing,
   type KanbanNotice,
   kanbanAttention,
-  kanbanBodyRefs,
   kanbanLanes,
-  kanbanListing,
   kanbanNeedsYou,
-  kanbanReadRefs,
   type UnreadCode,
   wakeTarget,
 } from "./kanbanCards";
 import { cardMessage } from "./kanbanMessage";
 import { type KanbanWrite, useCardAnswer, type WakeResult } from "./useCardAnswer";
+import { useKanbanRead } from "./useKanbanRead";
 
 export interface KanbanViewProps {
   api: Pick<VaultApi, "entries" | "metadata"> & Partial<Pick<VaultApi, "note">>;
@@ -37,28 +34,16 @@ export interface KanbanViewProps {
   botsApi?: Pick<BotsApi, "list">;
   readiness: TeamReadiness;
   onOpenSeat(seat: SeatId): void;
-  onRefresh(): void;
+  changes: number;
+  online: boolean;
   write?: KanbanWrite;
   onWake?: (bot: BotRow, text: string) => Promise<WakeResult>;
   nowMs?: number;
 }
 
-type State =
-  | { phase: "loading" }
-  | { phase: "error" }
-  | {
-      phase: "ready";
-      workspaceId: string;
-      listing: KanbanListing;
-      items: ReadonlyMap<string, VaultMetadataItem>;
-      refreshing: boolean;
-      bodies: ReadonlyMap<string, CardRead>;
-      reading: boolean;
-    };
-
 /** Message mode's one open draft (P3): composed from a tile, previewed, and sent only by the
  * Send button. `bot`/`botName` are the exact target `onWake` is called with and its name, both
- * fixed at compose time: a Refresh or a Bot re-seating the card must not let the preview's label
+ * fixed at compose time: a re-read or a Bot re-seating the card must not let the preview's label
  * or Send drift onto a different Bot than the one shown. `title` carries the card's display
  * title through to a notice, the same way `useCardAnswer`'s own `OpenWindow` does. */
 interface MessageDraft {
@@ -165,15 +150,21 @@ export function KanbanView({
   botsApi,
   readiness,
   onOpenSeat,
-  onRefresh,
+  changes,
+  online,
   write,
   onWake,
   nowMs,
 }: KanbanViewProps) {
   const id = useId();
-  const [requested, setRequested] = useState(0);
-  const [state, setState] = useState<State>({ phase: "loading" });
-  const [bots, setBots] = useState<BotRow[]>([]);
+  const { state, bots, request } = useKanbanRead({
+    api,
+    workspaceId,
+    ...(botsApi === undefined ? {} : { botsApi }),
+    changes,
+    online,
+    ...(nowMs === undefined ? {} : { nowMs }),
+  });
   // Message mode (P3): one open draft, one send at a time, kept only in this component — a
   // workspace switch remounts KanbanView (App's `key`) and drops all of it with the rest of state.
   const [draft, setDraft] = useState<MessageDraft | null>(null);
@@ -199,102 +190,21 @@ export function KanbanView({
           // owner's voice — the fixed text says only that an answer is waiting.
           wake: (bot: BotRow) => onWake(bot, t("kanban.wake.message")),
         }),
-    onSettled: () => setRequested((n) => n + 1),
+    onSettled: () => request(),
     ...(nowMs === undefined ? {} : { nowMs }),
   });
-  // biome-ignore lint/correctness/useExhaustiveDependencies: requested is an explicit read request
+  // A save conflict (useCardAnswer's "changed" notice) never calls onSettled — the save never
+  // opened an undo window — so without this, Kanban would show the conflict notice and then sit
+  // on the stale read that caused it until something else happened to ask for a new one.
   useEffect(() => {
-    const controller = new AbortController();
-    const { signal } = controller;
-    // A re-read of the same workspace keeps its lanes; another workspace starts empty.
-    setState((now) =>
-      now.phase === "ready" && now.workspaceId === workspaceId
-        ? { ...now, refreshing: true }
-        : { phase: "loading" },
-    );
-    (async () => {
-      let listing: KanbanListing;
-      try {
-        listing = kanbanListing(await api.entries(workspaceId, undefined, signal));
-      } catch {
-        if (!signal.aborted) setState({ phase: "error" });
-        return;
-      }
-      const items = new Map<string, VaultMetadataItem>();
-      const refs = kanbanReadRefs(listing.refs);
-      try {
-        for (
-          let from = 0;
-          api.metadata && !signal.aborted && from < refs.length;
-          from += KANBAN_BATCH
-        ) {
-          const batch = await api.metadata(
-            workspaceId,
-            refs.slice(from, from + KANBAN_BATCH),
-            signal,
-          );
-          for (const item of batch.items) items.set(item.ref, item);
-        }
-      } catch {
-        // A failed batch stops the reads; kanbanLanes labels the unread cards.
-      }
-      if (signal.aborted) return;
-      const lanes = kanbanLanes(listing, items, nowMs ?? Date.now());
-      setState((now) => ({
-        phase: "ready",
-        workspaceId,
-        listing,
-        items,
-        refreshing: false,
-        // A same-workspace refresh keeps what was already read; a new workspace starts empty.
-        bodies: now.phase === "ready" && now.workspaceId === workspaceId ? now.bodies : new Map(),
-        reading: api.note !== undefined,
-      }));
-      const note = api.note;
-      if (!note) return;
-      // One body at a time, needs-you first (kanbanBodyRefs' order and KANBAN_BODY_CAP): a
-      // throw or an unparseable body stops the rest, so a stuck or bad read never spins forever.
-      for (const ref of kanbanBodyRefs(lanes, listing)) {
-        if (signal.aborted) return;
-        let raw: Record<string, unknown>;
-        try {
-          raw = await note(workspaceId, ref, signal);
-        } catch {
-          break;
-        }
-        const read = readCard(raw);
-        if (read === null) break;
-        if (signal.aborted) return;
-        setState((now) =>
-          now.phase === "ready" ? { ...now, bodies: new Map(now.bodies).set(ref, read) } : now,
-        );
-      }
-      if (!signal.aborted)
-        setState((now) => (now.phase === "ready" ? { ...now, reading: false } : now));
-    })();
-    return () => controller.abort();
-  }, [api, workspaceId, requested]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: requested is an explicit read request
-  useEffect(() => {
-    if (!botsApi) return;
-    const controller = new AbortController();
-    const { signal } = controller;
-    botsApi.list(signal).then(
-      (list) => {
-        if (!signal.aborted) setBots(list.bots);
-      },
-      () => {
-        if (!signal.aborted) setBots([]);
-      },
-    );
-    return () => controller.abort();
-  }, [botsApi, requested]);
+    if (notice?.kind === "changed") request();
+  }, [notice, request]);
 
   const ready = state.phase === "ready" && state.workspaceId === workspaceId ? state : null;
   const lanes = ready ? kanbanLanes(ready.listing, ready.items, nowMs ?? Date.now()) : [];
   const counts = ready ? kanbanAttention(ready.listing, lanes) : null;
   const needsYouItems: NeedsYouItem[] = ready
-    ? kanbanNeedsYou(lanes, ready.listing).map((card) => {
+    ? kanbanNeedsYou(lanes, { ...ready.listing, modified: ready.waitingSince }).map((card) => {
         const target = wakeTarget(card.owners, bots, workspaceId);
         return {
           card,
@@ -316,12 +226,26 @@ export function KanbanView({
   }
   const draftLive = draft !== null && liveWakeBot(draft.ref)?.bot_id === draft.bot.bot_id;
 
+  // A later read can bring a different sha for the open draft's card while its owners (and so
+  // draftLive) stay the same, which would otherwise leave the preview showing stale text. Close
+  // it the same way sendDraft's own pre-send re-read does — but never while sendDraft is already
+  // mid its own re-read and resolution for this same draft, so the two never race to settle it.
+  useEffect(() => {
+    if (!draft || sendingRef.current) return;
+    const draftSha = ready?.bodies.get(draft.ref)?.sha256;
+    if (draftSha !== undefined && draftSha !== draft.sha256) {
+      setDraft(null);
+      setMessageNotice({ kind: "message_changed", title: draft.title });
+      request();
+    }
+  }, [draft, ready, request]);
+
   /** Message mode's Send (P3): the only `onWake` call on this path — no effect, timer or unmount
    * sends (contrast `useCardAnswer`'s wake-on-unmount, see its module doc). F11: the preview the
    * owner already read is the exact text this sends. A card can change between the preview
    * opening and Send, so this re-reads it first and only ever sends for the sha the preview was
    * composed from; a card that changed or can't be read sends nothing, and Kanban reads the cards
-   * again. A Refresh or a Bot re-seating the card before Send (`draftLive` false) hides the preview
+   * again. A re-read or a Bot re-seating the card before Send (`draftLive` false) hides the preview
    * and sends nothing; one that lands during the re-read still sends to the Bot the preview
    * named. */
   async function sendDraft(): Promise<void> {
@@ -338,7 +262,7 @@ export function KanbanView({
       if (mountedRef.current) {
         setSending(false);
         setMessageNotice({ kind: "message_unread", title: draft.title });
-        setRequested((n) => n + 1);
+        request();
       }
       return;
     }
@@ -351,7 +275,7 @@ export function KanbanView({
       sendingRef.current = false;
       setSending(false);
       setMessageNotice({ kind: "message_unread", title: draft.title });
-      setRequested((n) => n + 1);
+      request();
       return;
     }
     if (read.sha256 !== draft.sha256) {
@@ -359,7 +283,7 @@ export function KanbanView({
       setSending(false);
       setDraft(null);
       setMessageNotice({ kind: "message_changed", title: draft.title });
-      setRequested((n) => n + 1);
+      request();
       return;
     }
     let result: WakeResult;
@@ -401,18 +325,6 @@ export function KanbanView({
           {t("kanban.title")}
         </h1>
         <p className="page-intro">{t("kanban.intro")}</p>
-        <div className="page-actions">
-          <button
-            type="button"
-            className="btn alt"
-            onClick={() => {
-              onRefresh();
-              setRequested((value) => value + 1);
-            }}
-          >
-            {t("kanban.refresh")}
-          </button>
-        </div>
       </header>
       {state.phase === "loading" || (state.phase === "ready" && !ready) ? (
         <Loading>{t("kanban.loading")}</Loading>
@@ -421,7 +333,8 @@ export function KanbanView({
       {ready ? (
         <>
           {ready.listing.partial ? <p role="status">{coverageText(ready.listing)}</p> : null}
-          <div inert={ready.refreshing}>
+          {ready.stale ? <p role="status">{t("kanban.error")}</p> : null}
+          <div>
             <KanbanNeedsYou
               items={needsYouItems}
               counts={counts}
@@ -434,7 +347,7 @@ export function KanbanView({
                 ? {
                     message: {
                       // A draft whose Bot no longer matches the card's current wakeTarget (a
-                      // Refresh or a re-seat) is not shown — the actions return instead.
+                      // re-read or a re-seat) is not shown — the actions return instead.
                       draft: draftLive ? draft : null,
                       sent,
                       onSend: () => {
@@ -494,7 +407,7 @@ export function KanbanView({
               ) : null}
             </div>
           ) : null}
-          <div className="kanban-lanes" inert={ready.refreshing} aria-busy={ready.refreshing}>
+          <div className="kanban-lanes">
             {lanes.map((lane) => {
               const name = t(LANE_NAME[lane.id]);
               return (

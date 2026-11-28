@@ -677,6 +677,63 @@ class VaultService:
                     )
                 )
 
+    def folder_stamp(
+        self, workspace_id: str, folder: str
+    ) -> tuple[tuple[str, int, int, int, int, int, int], ...]:
+        """The notes directly in one top-level folder as they stand on disk, for a watch to
+        compare pass by pass: per name `_counts_as_note` accepts, sorted, its inode, mode, link
+        count, size, modification time in ns and file attributes (0 off Windows).
+
+        The folder is opened through the vault's own root chain, as a note read opens its parent
+        folders, so a missing or linked one raises `unsafe_path`; each child is an lstat, so no
+        note is read and no link followed. At most `MAX_VISITED_ITEMS` entries are examined, and a
+        child whose lstat fails is left out. Any other `OSError` raises `unreadable`."""
+        parts = safe_ref(folder)
+        if len(parts) != 1:
+            raise VaultError("invalid_ref")
+        root = self._root(workspace_id)
+        rows: list[tuple[str, int, int, int, int, int, int]] = []
+        try:
+            with ExitStack() as stack:
+                if sys.platform == "win32":
+                    path = stack.enter_context(_open_ancestor_chain(root, parts))
+
+                    def lstat(name: str) -> os.stat_result:
+                        return (path / name).lstat()
+
+                    listing = stack.enter_context(os.scandir(path))
+                else:
+                    fd = _open_dir_at(stack.enter_context(_open_root_fd(root)), folder)
+                    stack.callback(os.close, fd)
+
+                    def lstat(name: str) -> os.stat_result:
+                        return os.stat(name, dir_fd=fd, follow_symlinks=False)
+
+                    listing = stack.enter_context(os.scandir(fd))
+                for item in itertools.islice(listing, MAX_VISITED_ITEMS):
+                    if not _counts_as_note(item.name):
+                        continue
+                    try:
+                        info = lstat(item.name)
+                    except OSError:
+                        continue  # gone since it was listed
+                    rows.append(
+                        (
+                            item.name,
+                            info.st_ino,
+                            info.st_mode,
+                            info.st_nlink,
+                            info.st_size,
+                            info.st_mtime_ns,
+                            getattr(info, "st_file_attributes", 0),
+                        )
+                    )
+        except VaultError:
+            raise
+        except OSError as exc:
+            raise VaultError("unreadable") from exc
+        return tuple(sorted(rows))
+
     def read(self, workspace_id: str, ref: str) -> Note:
         return self._read_root(self._root(workspace_id), ref)
 

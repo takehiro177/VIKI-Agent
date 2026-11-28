@@ -951,7 +951,8 @@ do in a copy.
 
 ### Kanban
 
-The sidebar's **Kanban** is a Kanban view of notes directly in `kanban/`. Select a card to open its
+The sidebar's **Kanban** is a Kanban view of notes directly in `kanban/`, and it updates on its own
+as cards change. Select a card to open its
 note. Edit the note or ask a Bot to change it.
 
 Automatic pickup requires a separately tested and enabled routine and the appropriate start

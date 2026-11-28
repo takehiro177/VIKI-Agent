@@ -75,7 +75,7 @@ from viki_agent.app.settings import SettingsError, SettingsService
 from viki_agent.app.settings_api import settings_routes
 from viki_agent.app.workspace_api import workspace_routes
 from viki_agent.automation.folder_changes import notes_changed
-from viki_agent.automation.kanban import card_waiting
+from viki_agent.automation.kanban import KANBAN_FOLDER, card_waiting
 from viki_agent.automation.routines import RoutineService, stamp
 from viki_agent.automation.routines_api import routine_routes
 from viki_agent.automation.scheduler import Clock, Scheduler, SystemClock
@@ -230,7 +230,7 @@ from viki_agent.vaults.proposals import ProposalService
 from viki_agent.vaults.skill_proposal_api import skill_proposal_routes
 from viki_agent.vaults.skill_proposals import SkillProposalService
 from viki_agent.vaults.suggestion_memory import SuggestionMemory
-from viki_agent.vaults.vault import VaultService
+from viki_agent.vaults.vault import VaultError, VaultService
 from viki_agent.vaults.vault_api import vault_routes
 from viki_agent.vaults.vault_attachments import VaultAttachmentService
 from viki_agent.vaults.vault_backup import VaultBackupService
@@ -281,6 +281,7 @@ UNAUTHORIZED = 4401  # WebSocket close code for a missing or wrong token; the cl
 POLICY_VIOLATION = 1008  # WebSocket close code for a foreign Host/Origin, refused before accept
 AUTH_TIMEOUT_S = 5.0
 VAULT_POLL_S = 5.0
+KANBAN_POLL_S = 1.0
 ASSET_POLL_S = 3600.0
 WS_MAX_SIZE = 1 << 20  # bytes; given to uvicorn as ws_max_size
 PROTOCOL_MISMATCH = 4406
@@ -615,19 +616,23 @@ def _history_data(page: HistoryPage, *, expects_transcript: bool) -> dict[str, A
     return data
 
 
-# --- the vault.sessions poller ------------------------------------------------------------------
+# --- the vault.sessions poller and the kanban.changed watch -------------------------------------
 
 
 class _VaultHub:
     """The single vault.sessions poller's current view, and every socket listening for
     changes to it. `live` (this app's own live sessions) is read fresh for every snapshot, so
-    a reloaded page sees them at once; changes to either list go out at the next poll."""
+    a reloaded page sees them at once; changes to either list go out at the next poll.
+
+    The same sockets get kanban.changed from the Kanban watch, under the same generation and
+    numbered by its own `kanban_seq`; a socket that connects gets no kanban.changed of its own."""
 
     def __init__(self, live: Callable[[], list[str]]) -> None:
         self.others: list[OtherSession] = []
         self._live = live
         self.generation = str(uuid.uuid4())
         self.seq = 0
+        self.kanban_seq = 0
         self._last: Envelope = self.snapshot()
         self._broadcast = self._last
         self._subscribers: set[Callable[[Envelope], None]] = set()
@@ -663,6 +668,17 @@ class _VaultHub:
         for subscriber in list(self._subscribers):
             subscriber(envelope)
 
+    def kanban_changed(self, workspace_id: str) -> None:
+        self.kanban_seq += 1
+        envelope = {
+            **events.KanbanChanged(workspace_id=workspace_id).envelope(
+                "", self.kanban_seq, self.generation
+            ),
+            "request_id": "",
+        }
+        for subscriber in list(self._subscribers):
+            subscriber(envelope)
+
 
 async def _poll_vault_once(hub: _VaultHub, manager: SessionManager) -> None:
     others = await asyncio.to_thread(manager.others_in_vault)
@@ -676,6 +692,30 @@ async def _poll_vault_loop(hub: _VaultHub, manager: SessionManager, poll_s: floa
             await _poll_vault_once(hub, manager)
         except Exception:  # a bad registry file must not end the poller
             logger.warning("vault session poll failed")
+
+
+async def _watch_kanban_loop(
+    hub: _VaultHub, reader: VaultService, workspace_id: str, poll_s: float
+) -> None:
+    """Stamp the vault's `kanban/` folder, passes `poll_s` apart, and send kanban.changed when the
+    stamp differs from the last pass's; the first pass only records it. A folder the reader refuses
+    (missing, linked or unreadable) or a vault it cannot resolve has no stamp, so its coming or
+    going is one change. Any other failure keeps the last stamp and logs one warning a streak."""
+    last, seen, failing = None, False, False
+    while True:
+        try:
+            try:
+                current = await asyncio.to_thread(reader.folder_stamp, workspace_id, KANBAN_FOLDER)
+            except VaultError:
+                current = None
+            if seen and current != last:
+                hub.kanban_changed(workspace_id)
+            last, seen, failing = current, True, False
+        except Exception:  # an unexpected failure must not end the watch
+            if not failing:
+                logger.warning("kanban watch failed")
+            failing = True
+        await asyncio.sleep(poll_s)
 
 
 # --- app -----------------------------------------------------------------------------------------
@@ -718,6 +758,7 @@ def create_app(
     opener: Callable[[str], None] = winproc.open_external,
     auth_timeout_s: float = AUTH_TIMEOUT_S,
     vault_poll_s: float = VAULT_POLL_S,
+    kanban_poll_s: float = KANBAN_POLL_S,
     asset_poll_s: float = ASSET_POLL_S,
     worktree_sweep_s: float = SWEEP_INTERVAL_S,
     windows: WindowManager | None = None,
@@ -829,6 +870,7 @@ def create_app(
     decision_missions: MissionService | None = None
     decision_engine: DecisionLoopEngine | None = None
     inbox_host: SuggestionHost | None = None
+    kanban_watch: tuple[VaultService, str] | None = None  # the reader and the vault it watches
     scope = draft_scope(vault)
     assets = AssetService(config.data_dir / "assets", manager.app_state.store, scope)
     avatars = AvatarService(config.data_dir / "assets" / "avatars", manager.app_state.store, assets)
@@ -2222,6 +2264,11 @@ def create_app(
         except Exception:  # a bad registry file must not stop the app from starting
             logger.warning("vault session poll failed")
         poll_task = asyncio.create_task(_poll_vault_loop(hub, manager, vault_poll_s))
+        kanban_task = (
+            asyncio.create_task(_watch_kanban_loop(hub, *kanban_watch, kanban_poll_s))
+            if kanban_watch is not None
+            else None
+        )
 
         async def collect_assets() -> None:
             services: dict[str, AssetService] = {}
@@ -2305,6 +2352,10 @@ def create_app(
                     await preview_windows.close_all()
                 poll_task.cancel()
                 asset_collection_task.cancel()
+                if kanban_task is not None:
+                    kanban_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await kanban_task
                 with contextlib.suppress(asyncio.CancelledError):
                     await poll_task
                 with contextlib.suppress(asyncio.CancelledError):
@@ -2627,6 +2678,11 @@ def create_app(
         # Bound once, here: the active workspace is resolved once per launch and a session reads
         # the pair when it is created, so without this every turn with excerpt parts is refused.
         manager.bind_excerpts(reader, workspaces.resolve_active().workspace.workspace_id)
+        # The Kanban watch follows the same once-per-launch active workspace: a registered vault
+        # only, since the reader resolves no other.
+        watched = workspaces.resolve_active().workspace
+        if watched.kind == "vault" and watched.persistent:
+            kanban_watch = (reader, watched.workspace_id)
         # The proposals come first: the decision inbox lists the vault and skill proposals they
         # produce.
         proposals = ProposalService(workspaces, manager.app_state.store, reader)

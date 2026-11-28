@@ -38,8 +38,8 @@ require a card. Neither opening Chief nor creating a card sets up a routine for 
    rule and the Bot rules go to Claude Code as part of its system prompt. Opening the
    conversation alone sends nothing.
 4. Check the result:
-   - **With Kanban installed:** review Chief's reply, which names the card and its owner. Select
-     **Kanban → Refresh Kanban** to read the cards again, then open the card to check its
+   - **With Kanban installed:** review Chief's reply, which names the card and its owner. Open
+     **Kanban**, where the card shows once Chief writes it, then open the card to check its
      outcome, owner and Done when checklist.
    - **Without Kanban:** review the task brief in the chat.
 
@@ -996,10 +996,14 @@ Open the Bot or the individual run in VIKI Agent to continue its conversation.
 Open **Kanban** in the left sidebar for the active vault's Kanban view. It lists the notes directly
 in the vault's `kanban/` folder, lowercase and one level deep. With no cards, Kanban says so and
 names the `kanban/` folder, then offers **Open Chief** when the vault has the Kanban skill (it
-opens Chief in Bots and sends nothing) or says the vault has no Kanban skill. **Refresh Kanban**
-reads the cards, the Bots and the Kanban skill again, and the lanes stay in place until the read
-ends. Kanban saves a card only when you answer it under **Needs you**; otherwise Bots move cards
-with `/kanban`, and you can open a card from Kanban, or ask a Bot, to change it another way.
+opens Chief in Bots and sends nothing) or says the vault has no Kanban skill. Kanban updates on its
+own: VIKI Agent checks the folder about once a second, and when a note directly in it is added,
+changed, renamed or removed, Kanban reads the cards and the Bots again. It also reads them again
+when the window reconnects. While it reads, the lanes, **Needs you**, an answer you are typing and
+the control you are on stay where they are. Kanban checks for the Kanban skill each time you open
+it, and **Refresh Bots** in **Bots** checks too. Kanban saves a card only when you answer it under
+**Needs you**; otherwise Bots move cards with `/kanban`, and you can open a card from Kanban, or ask
+a Bot, to change it another way.
 
 Cards kept in another folder do not appear. Move them into `kanban/` yourself or ask a chat in that
 vault to, then update the folder your vault's `AGENTS.md` and its `/kanban` skill name, and your
@@ -1038,20 +1042,23 @@ their state, such as "Done when · 3 of 5 done" or "Check · PASS"; its title, S
 show as before.
 
 Atop the lanes, a **Needs you** section lists every Blocked and Ready for review card, oldest
-changed first; its heading adds a count, "Needs you · N", and a one-line summary once Kanban has
+changed first, as Kanban first saw it waiting, so a card that changes while Kanban is open keeps its
+place; its heading adds a count, "Needs you · N", and a one-line summary once Kanban has
 read the whole folder without gaps, in place of the count Kanban showed there before. Each item
 shows its title, lane, owners and update time at once, from the listing already read; its done
 count, checker verdict, `What:` and `Now:` lines, and its question wait for Kanban to also read the
 card's own text. While that read is still running the item shows no actions yet, and if that read
 stops before reaching it, the item says Kanban couldn't read the card and points you to open it
-instead. A Blocked card shows a tile per lettered option — its label, **Recommended.** for the one
+instead. Kanban tries that read again on its own. A Blocked card shows a tile per lettered option —
+its label, **Recommended.** for the one
 recommended, and its effect — or **Reply in your own words…** when it has none; a section whose
 options don't all read as `- A. <label>: <what happens>` shows its question as free text with the
 reply box open instead. A Ready for review card offers **Approve** or **Send back…** instead.
 
 In a vault that takes saves from VIKI Agent, choosing an option, or **Send answer** after a typed
 reply, **Approve**, or **Send back** after a note, saves the card at once, with the same checks as a
-note save: when the card changed since Kanban read it, the click saves nothing and Kanban says so. A
+note save: when the card changed since Kanban read it, the click saves nothing, Kanban says so and
+reads the card again. A
 save changes only the front matter's `status` and `modified` lines, the **Needs you** section's text
 and the top of **Handoff**; every other byte stays. It then offers **Undo** for 10 seconds; undoing
 writes the previous text back and wakes nobody. Once the 10 seconds pass, or you leave Kanban or
@@ -1072,8 +1079,9 @@ chat as your message; **Cancel**, leaving Kanban or switching workspace sends no
 message** turns on a moment after the message appears, so the click that opened the message can't
 send it, and a double click never does. Just before it sends, Kanban reads the card again: if the
 card changed since Kanban showed the message, or can't be read, nothing is sent and Kanban reads the
-cards again. A message whose card now belongs to another Bot closes, and the card's actions come
-back. A busy Bot, or one Kanban can't reach, gets nothing, and the message stays open to send again.
+cards again. A message closes, and the card's actions come back, when its card now belongs to
+another Bot, or when its card changes while the message is open, which Kanban also says. A busy Bot,
+or one Kanban can't reach, gets nothing, and the message stays open to send again.
 After a send, the card says so and offers no actions until its text changes or you leave Kanban.
 Kanban doesn't build the message when the card's name or the chosen option is over 200 characters,
 or when the message would hold a character it can't show, such as a bidi control or a zero-width
@@ -1082,11 +1090,15 @@ space.
 While Proactive VIKI and **Kanban** are on, VIKI's launcher lists the cards that need you and
 reports cards that stopped moving; see the [Decision guide's Items](decision-engine.md#items).
 
-Kanban reads the vault listing and the front matter of up to 128 cards when Kanban opens and on
-**Refresh Kanban**. It then reads the text of up to 48 of the `todo`, `working`, `blocked` and
-`review` cards — Blocked and Ready for review first, then Working, then To do — one at a time; a
-failed or unreadable read stops the rest for that pass. An incomplete listing is stated, and cards
-may be missing.
+Kanban reads the vault listing and the front matter of up to 128 cards when Kanban opens and each
+time it updates. It then reads the text of up to 48 of the `todo`, `working`, `blocked` and
+`review` cards — Blocked and Ready for review first, then Working, then To do — one at a time: a
+Blocked or Ready for review card's text on every read, another card's text only when its file time
+changed. A failed or unreadable read stops the rest for that pass. Kanban tries a failed read, or a
+card it couldn't read yet, again on its own: after 1 second, then after twice the wait each time up
+to 30 seconds, and at the next change. When reading the cards again fails twice in a row, Kanban
+keeps the lanes it last read and says it is trying again. An incomplete listing is stated, and
+cards may be missing.
 
 ### Card front matter
 

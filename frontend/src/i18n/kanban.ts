@@ -9,9 +9,8 @@ export const catalog = defineCatalog({
     "kanban.title": "Kanban",
     "kanban.intro":
       "Cards from this vault's kanban/ folder, by status. Answer what needs you on top; Bots move cards with /kanban. Select a card to open its note.",
-    "kanban.refresh": "Refresh Kanban",
     "kanban.loading": "Loading Kanban…",
-    "kanban.error": "Kanban could not be read. Refresh Kanban to try again.",
+    "kanban.error": "Kanban couldn't read the cards. It tries again on its own.",
     "kanban.coverage": "The vault listing may be incomplete, so some cards may be missing.",
     "kanban.coverage.detail":
       "The vault listing may be incomplete ({detail}), so some cards may be missing.",
@@ -45,7 +44,7 @@ export const catalog = defineCatalog({
     "kanban.unread.changed": "The note changed while it was read.",
     "kanban.unread.unreadable": "The note could not be read ({reason}).",
     "kanban.unread.stopped": "The read stopped early ({reason}).",
-    "kanban.unread.retry": "Not read. Refresh Kanban to try again.",
+    "kanban.unread.retry": "Not read yet. Kanban tries again on its own.",
     "kanban.unread.name": "Not read: Kanban cannot read this name.",
     "kanban.unread.cap": "Not read: Kanban reads at most {cap} cards.",
     "kanban.no_vault": "Open a vault to view Kanban.",
@@ -75,7 +74,7 @@ export const catalog = defineCatalog({
     "kanban.notice.saved": "Saved your answer on {title}.",
     "kanban.notice.undo": "Undo",
     "kanban.notice.changed":
-      "{title} changed since Kanban read it, so nothing was saved. Refresh Kanban and try again.",
+      "{title} changed since Kanban read it, so nothing was saved. Kanban is reading it again.",
     "kanban.notice.failed":
       "Kanban couldn't save {title}, so nothing changed. Open the card to answer there.",
     "kanban.notice.undone": "Undone: {title} is back as it was.",

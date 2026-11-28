@@ -570,6 +570,15 @@ class VaultSessions(Event):
     live: list[str] = field(default_factory=list)  # session ids with a process in this app
 
 
+@dataclass(frozen=True, kw_only=True)
+class KanbanChanged(Event):
+    """Global; names only the workspace. The notes directly in its `kanban/` folder changed on
+    disk, or the folder came or went."""
+
+    TYPE: ClassVar[str] = "kanban.changed"
+    workspace_id: str
+
+
 # --- end of turn ----------------------------------------------------------------------------------
 
 

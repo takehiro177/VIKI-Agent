@@ -17,6 +17,7 @@ import type { CardAnswer } from "./kanbanBody";
 import { KANBAN_BODY_CAP } from "./kanbanCards";
 import { cardMessage } from "./kanbanMessage";
 import type { KanbanWrite, WakeResult } from "./useCardAnswer";
+import { KANBAN_RETRY_MS } from "./useKanbanRead";
 
 afterEach(() => {
   cleanup();
@@ -91,7 +92,8 @@ function setup(api: Api, over: Partial<KanbanViewProps> = {}) {
     onOpenNote,
     readiness: "unknown",
     onOpenSeat: vi.fn(),
-    onRefresh: vi.fn(),
+    changes: 0,
+    online: true,
     ...over,
   };
   const view = render(<KanbanView {...props} />);
@@ -277,6 +279,36 @@ describe("KanbanView", () => {
     expect(within(cardOf("kanban/a.md")).getByText("Updated 2 days ago")).toBeTruthy();
     expect(within(cardOf("kanban/a.md")).getByText("Stopped moving")).toBeTruthy();
     expect(within(cardOf("kanban/c.md")).getByText("Updated yesterday")).toBeTruthy();
+  });
+
+  it("keeps a needs-you card's place after its time becomes newer than the one after it", async () => {
+    const seconds = (ms: number) => ms / 1000;
+    const listingAt = (aModified: number, bModified: number) => ({
+      entries: [
+        { ref: "kanban/a.md", modified: seconds(aModified) },
+        { ref: "kanban/b.md", modified: seconds(bModified) },
+      ],
+      partial: false,
+      partial_reasons: [],
+    });
+    const entries = vi
+      .fn<Api["entries"]>()
+      .mockResolvedValueOnce(listingAt(at(1, 0), at(5, 0)))
+      .mockResolvedValueOnce(listingAt(at(9, 0), at(5, 0)));
+    const api: Api = {
+      entries,
+      metadata: async (_id, asked) => batchOf(asked.map((ref) => item(ref, { status: "blocked" }))),
+    };
+    const { container, rerender, props } = setup(api, { nowMs: at(10, 0) });
+    const needsYouTitles = () =>
+      [...container.querySelectorAll(".kanban-needs-item h3")].map((h) => h.textContent);
+    await waitFor(() => expect(needsYouTitles()).toEqual(["a", "b"]));
+    expect(within(cardOf("kanban/a.md")).getByText("Updated 9 days ago")).toBeTruthy();
+    rerender(<KanbanView {...props} changes={props.changes + 1} />);
+    await waitFor(() =>
+      expect(within(cardOf("kanban/a.md")).getByText("Updated yesterday")).toBeTruthy(),
+    );
+    expect(needsYouTitles()).toEqual(["a", "b"]);
   });
 
   it("reads bodies one at a time, needs-you first, then working, then todo, never for done or cancelled", async () => {
@@ -468,6 +500,23 @@ describe("KanbanView", () => {
     expect(onWake.mock.calls[0]?.[1]).not.toContain(hostileRef);
   });
 
+  it("re-reads the cards when answering hits a save conflict", async () => {
+    const entries = vi.fn<Api["entries"]>().mockResolvedValue(listingOf(["kanban/b.md"]));
+    const saveNote = vi.fn<VaultApi["saveNote"]>().mockResolvedValue(saveOutcome("conflict"));
+    const api: Api = {
+      entries,
+      metadata: async () => batchOf([item("kanban/b.md", { status: "blocked" })]),
+      note: async () => rawNote(cardSource("blocked")),
+    };
+    setup(api, { write: writeOf(saveNote) });
+    const tile = await screen.findByRole("button", { name: /A · Ship/ });
+    await waitFor(() => expect(entries).toHaveBeenCalledTimes(1));
+    fireEvent.click(tile);
+    await waitFor(() => expect(saveNote).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(tf("kanban.notice.changed", { title: "b" }))).toBeTruthy();
+    await waitFor(() => expect(entries).toHaveBeenCalledTimes(2));
+  });
+
   it("explains an empty Kanban by the skill check", async () => {
     const empty: Api = { entries: async () => listingOf([]) };
     const onOpenSeat = vi.fn();
@@ -489,38 +538,39 @@ describe("KanbanView", () => {
     expect(screen.queryByRole("button", { name: "Open Chief" })).toBeNull();
   });
 
-  it("keeps the cards inert while Refresh re-reads in place", async () => {
+  it("keeps the lanes without inert or aria-busy, and a focused reply draft intact, while a later read runs", async () => {
     const listings: Deferred<Record<string, unknown>>[] = [];
     const entries = vi.fn<Api["entries"]>(() => {
       const call = deferred<Record<string, unknown>>();
       listings.push(call);
       return call.promise;
     });
-    const list = vi.fn<Bots["list"]>().mockResolvedValue({ bots: [], scheduler });
-    const onRefresh = vi.fn();
-    const refs = ["kanban/a.md", "kanban/b.md"];
+    const refs = ["kanban/b.md"];
     const api: Api = {
       entries,
-      metadata: async (_id, asked) => batchOf(asked.map((ref) => item(ref))),
+      metadata: async (_id, asked) => batchOf(asked.map((ref) => item(ref, { status: "blocked" }))),
+      note: async () => rawNote(cardSource("blocked")),
     };
-    const { container } = setup(api, { botsApi: { list }, onRefresh });
+    const { container, rerender, props } = setup(api, {
+      write: writeOf(vi.fn<VaultApi["saveNote"]>()),
+    });
     await act(async () => listings[0]?.resolve(listingOf(refs)));
-    await screen.findByRole("button", { name: "a" });
-    const lanes = container.querySelector(".kanban-lanes") as HTMLElement;
-    const refresh = screen.getByRole("button", { name: "Refresh Kanban" });
-    refresh.focus();
-    fireEvent.click(refresh);
+    await screen.findByRole("button", { name: /A · Ship/ });
+    fireEvent.click(screen.getByRole("button", { name: t("kanban.needs.reply_open") }));
+    const textarea = screen.getByLabelText(t("kanban.needs.reply_label")) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "still thinking" } });
+    textarea.focus();
+    rerender(<KanbanView {...props} changes={props.changes + 1} />);
     await waitFor(() => expect(listings).toHaveLength(2));
-    expect(lanes.hasAttribute("inert")).toBe(true);
-    expect(lanes.getAttribute("aria-busy")).toBe("true");
-    expect([...container.querySelectorAll(".kanban-card-ref")].map((n) => n.textContent)).toEqual(
-      refs,
-    );
-    expect(document.activeElement).toBe(refresh);
-    expect(onRefresh).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    const lanes = container.querySelector(".kanban-lanes") as HTMLElement;
+    expect(lanes.hasAttribute("inert")).toBe(false);
+    expect(lanes.hasAttribute("aria-busy")).toBe(false);
+    expect(screen.queryByText(t("kanban.loading"))).toBeNull();
+    expect(document.activeElement).toBe(textarea);
+    expect(textarea.value).toBe("still thinking");
     await act(async () => listings[1]?.resolve(listingOf(refs)));
-    await waitFor(() => expect(lanes.hasAttribute("inert")).toBe(false));
+    expect(document.activeElement).toBe(textarea);
+    expect(textarea.value).toBe("still thinking");
   });
 
   it("names an unknown status in the Other lane", async () => {
@@ -540,7 +590,8 @@ describe("KanbanView", () => {
     const head = container.querySelector("header.page-head");
     expect(head?.querySelector("h1.page-title")?.textContent).toBe("Kanban");
     expect(head?.querySelector("p.page-intro")?.textContent).toContain("kanban/ folder");
-    expect(head?.querySelector("div.page-actions .btn.alt")?.textContent).toBe("Refresh Kanban");
+    expect(head?.querySelector("div.page-actions")).toBeNull();
+    expect(screen.queryByRole("button", { name: /refresh/i })).toBeNull();
     expect(container.querySelector("p.bots-note")).toBeNull();
     await screen.findByText(/No cards yet/);
   });
@@ -607,7 +658,7 @@ describe("KanbanView", () => {
     expect(await screen.findByRole("heading", { name: "To do (32)" })).toBeTruthy();
     expect(metadata).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("heading", { name: "Couldn't read (38)" })).toBeTruthy();
-    expect(screen.getAllByText("Not read. Refresh Kanban to try again.")).toHaveLength(38);
+    expect(screen.getAllByText("Not read yet. Kanban tries again on its own.")).toHaveLength(38);
   });
 
   it("covers an incomplete listing, an empty Kanban and a failed listing", async () => {
@@ -638,11 +689,44 @@ describe("KanbanView", () => {
       },
     });
     expect((await screen.findByRole("alert")).textContent).toBe(
-      "Kanban could not be read. Refresh Kanban to try again.",
+      "Kanban couldn't read the cards. It tries again on its own.",
     );
   });
 
-  it("aborts on a workspace change and re-reads on refresh", async () => {
+  it("shows the status line after two failed later reads, cleared by a success", async () => {
+    const entries = vi
+      .fn<Api["entries"]>()
+      .mockResolvedValueOnce(listingOf(["kanban/a.md"]))
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce(listingOf(["kanban/a.md"]));
+    const api: Api = {
+      entries,
+      metadata: async (_id, asked) => batchOf(asked.map((ref) => item(ref))),
+    };
+    const { props, rerender } = setup(api);
+    await screen.findByRole("button", { name: "a" });
+    expect(screen.queryByText(t("kanban.error"))).toBeNull();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    // A re-read (here, a `changes` bump) that fails once does not mark the state stale on its own.
+    rerender(<KanbanView {...props} changes={props.changes + 1} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.queryByText(t("kanban.error"))).toBeNull();
+    // KANBAN_RETRY_MS later, the retried pass also fails: two hard failures in a row mark it stale.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(KANBAN_RETRY_MS);
+    });
+    expect(screen.getByText(t("kanban.error"))).toBeTruthy();
+    // The backoff doubles; that retry succeeds and clears it.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(KANBAN_RETRY_MS * 2);
+    });
+    expect(screen.queryByText(t("kanban.error"))).toBeNull();
+  });
+
+  it("aborts on a workspace change and coalesces a re-read requested mid-pass", async () => {
     const listings: { signal: AbortSignal | undefined; call: Deferred<Record<string, unknown>> }[] =
       [];
     const entries = vi.fn<Api["entries"]>((_id, _q, signal) => {
@@ -655,10 +739,13 @@ describe("KanbanView", () => {
       metadata: async (_id, asked) => batchOf(asked.map((r) => item(r))),
     };
     const view = setup(api);
-    const rerenderAt = (workspaceId: string) =>
-      view.rerender(<KanbanView {...view.props} workspaceId={workspaceId} />);
+    let current = view.props;
+    const update = (over: Partial<KanbanViewProps>) => {
+      current = { ...current, ...over };
+      view.rerender(<KanbanView {...current} />);
+    };
     await waitFor(() => expect(listings).toHaveLength(1));
-    rerenderAt("w2");
+    update({ workspaceId: "w2" });
     await waitFor(() => expect(listings).toHaveLength(2));
     expect(listings[0]?.signal?.aborted).toBe(true);
     expect(entries.mock.calls.map((call) => call[0])).toEqual(["w1", "w2"]);
@@ -666,18 +753,21 @@ describe("KanbanView", () => {
     expect(await screen.findByRole("button", { name: "two" })).toBeTruthy();
     await act(async () => listings[0]?.call.resolve(listingOf(["kanban/one.md"])));
     expect(screen.queryByRole("button", { name: "one" })).toBeNull();
-    const refresh = screen.getByRole("button", { name: "Refresh Kanban" });
-    fireEvent.click(refresh);
+
+    // A re-read requested while one is already running (useKanbanRead's coalescing) queues
+    // exactly one more pass instead of aborting the one in flight.
+    update({ changes: 1 });
     await waitFor(() => expect(listings).toHaveLength(3));
-    expect(listings[1]?.signal?.aborted).toBe(true);
-    fireEvent.click(refresh);
+    update({ changes: 2 });
+    expect(listings[2]?.signal?.aborted).toBeFalsy();
+    await act(async () => listings[2]?.call.resolve(listingOf(["kanban/two.md"])));
     await waitFor(() => expect(listings).toHaveLength(4));
-    expect(listings[2]?.signal?.aborted).toBe(true);
-    await act(async () => listings[2]?.call.reject(new DOMException("aborted", "AbortError")));
+    expect(listings[2]?.signal?.aborted).toBeFalsy();
+    await act(async () => listings[3]?.call.resolve(listingOf(["kanban/two.md"])));
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByText("kanban/two.md")).toBeTruthy();
-    expect(view.container.querySelector(".kanban-lanes")?.getAttribute("aria-busy")).toBe("true");
-    expect(screen.queryByText("Loading Kanban…")).toBeNull();
+    expect(view.container.querySelector(".kanban-lanes")?.hasAttribute("aria-busy")).toBe(false);
+    expect(screen.queryByText(t("kanban.loading"))).toBeNull();
   });
 
   it("starts at loading when the workspace changes after a ready read", async () => {
@@ -717,7 +807,7 @@ describe("KanbanView composing and sending an answer (message mode, no write)", 
     const onWake = vi
       .fn<(bot: BotRow, text: string) => Promise<WakeResult>>()
       .mockResolvedValue("sent");
-    setup(blockedApi("kanban/b.md"), {
+    const view = setup(blockedApi("kanban/b.md"), {
       botsApi: botsOf([engineer]),
       onWake,
       nowMs,
@@ -747,7 +837,7 @@ describe("KanbanView composing and sending an answer (message mode, no write)", 
     expect(await screen.findByText(tf("kanban.notice.woke", { bot: "Engineer" }))).toBeTruthy();
     expect(await screen.findByText(tf("kanban.needs.sent", { bot: "Engineer" }))).toBeTruthy();
     expect(screen.queryByRole("button", { name: /A · Ship/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: t("kanban.refresh") }));
+    view.rerender(<KanbanView {...view.props} changes={view.props.changes + 1} />);
     await waitFor(() =>
       expect(screen.getByText(tf("kanban.needs.sent", { bot: "Engineer" }))).toBeTruthy(),
     );
@@ -947,27 +1037,30 @@ describe("KanbanView composing and sending an answer (message mode, no write)", 
     expect(notice.textContent).toContain("over 200 characters");
   });
 
-  it("drops a stale preview when Refresh reads a new sha for the same card", async () => {
+  it("drops a stale preview when a later read gets a new sha for the same card", async () => {
     const engineer = botNamed("Engineer", seatProfileId("engineer"));
     const onWake = vi.fn<(bot: BotRow, text: string) => Promise<WakeResult>>();
     const note = vi
       .fn<NonNullable<Api["note"]>>()
       .mockResolvedValueOnce(rawNote(cardSource("blocked")))
-      .mockResolvedValueOnce(rawNote(cardSource("blocked"), "b".repeat(64)));
+      .mockResolvedValue(rawNote(cardSource("blocked"), "b".repeat(64)));
     const api: Api = {
       entries: async () => listingOf(["kanban/b.md"]),
       metadata: async () =>
         batchOf([item("kanban/b.md", { status: "blocked", tags: ["owner/engineer"] })]),
       note,
     };
-    setup(api, { botsApi: botsOf([engineer]), onWake, nowMs });
+    const view = setup(api, { botsApi: botsOf([engineer]), onWake, nowMs });
     await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
     fireEvent.click(await screen.findByRole("button", { name: /A · Ship/ }));
     await screen.findByRole("button", { name: t("kanban.needs.preview_send") });
-    fireEvent.click(screen.getByRole("button", { name: t("kanban.refresh") }));
+    view.rerender(<KanbanView {...view.props} changes={view.props.changes + 1} />);
     await waitFor(() => expect(note).toHaveBeenCalledTimes(2));
     expect(document.querySelector(".kanban-needs-preview")).toBeNull();
     expect(await screen.findByRole("button", { name: /A · Ship/ })).toBeTruthy();
+    expect(
+      await screen.findByText(tf("kanban.notice.message_changed", { title: "b" })),
+    ).toBeTruthy();
     expect(onWake).not.toHaveBeenCalled();
   });
 
@@ -1034,7 +1127,7 @@ describe("KanbanView composing and sending an answer (message mode, no write)", 
     expect(onWake).not.toHaveBeenCalled();
   });
 
-  it("drops the preview and brings the actions back when a Refresh re-seats the card's owner to a different Bot", async () => {
+  it("drops the preview and brings the actions back when a later read re-seats the card's owner to a different Bot", async () => {
     const engineer = botNamed("Engineer", seatProfileId("engineer"));
     const standIn = botNamed("Stand-in", seatProfileId("engineer"));
     const onWake = vi.fn<(bot: BotRow, text: string) => Promise<WakeResult>>();
@@ -1042,7 +1135,7 @@ describe("KanbanView composing and sending an answer (message mode, no write)", 
       .fn<Bots["list"]>()
       .mockResolvedValueOnce({ bots: [engineer], scheduler })
       .mockResolvedValue({ bots: [standIn], scheduler });
-    setup(blockedApi("kanban/b.md"), { botsApi: { list }, onWake, nowMs });
+    const view = setup(blockedApi("kanban/b.md"), { botsApi: { list }, onWake, nowMs });
     await waitFor(() => expect(screen.getAllByText("Engineer").length).toBeGreaterThan(0));
     const tile = await screen.findByRole("button", { name: /A · Ship/ });
     vi.useFakeTimers({
@@ -1051,7 +1144,7 @@ describe("KanbanView composing and sending an answer (message mode, no write)", 
     fireEvent.click(tile);
     await armPreview();
     expect(screen.getByText(tf("kanban.needs.preview_label", { bot: "Engineer" }))).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: t("kanban.refresh") }));
+    view.rerender(<KanbanView {...view.props} changes={view.props.changes + 1} />);
     await waitFor(() => expect(screen.getAllByText("Stand-in").length).toBeGreaterThan(0));
     expect(document.querySelector(".kanban-needs-preview")).toBeNull();
     expect(await screen.findByRole("button", { name: /A · Ship/ })).toBeTruthy();
