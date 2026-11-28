@@ -44,7 +44,7 @@ function fixture(t) {
   for (const name of [
     "brand-icon.ico",
     "brand-mark.png",
-    "wordmark-small.svg",
+    "wordmark.svg",
     "guide.css",
     "manual.css",
     "doc-search.js",
