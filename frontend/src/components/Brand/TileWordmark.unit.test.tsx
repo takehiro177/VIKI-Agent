@@ -51,15 +51,15 @@ test.each(["small", "large"] as const)("the %s lettering is one decorative path"
   expect(path.split("M").length - 1).toBe(tileCount(rows));
 });
 
-// The public guide (docs/) is static HTML, so it carries the lettering as SVG files; they must
-// draw exactly the tiles the app draws.
-test.each(["small", "large"] as const)("docs/assets/wordmark-%s.svg matches the app", (size) => {
-  const { container } = render(<TileWordmark size={size} />);
+// The public guide (docs/) is static HTML, so it carries the chat screen's lettering as an SVG
+// file; it must draw exactly the tiles the app draws.
+test("docs/assets/wordmark.svg matches the app's large lettering", () => {
+  const { container } = render(<TileWordmark size="large" />);
   const app = container.querySelector("svg");
   // A variable, not `import.meta.url` inline: Vite would turn `new URL(…)` into an asset import.
   const here = import.meta.url;
   const file = readFileSync(
-    fileURLToPath(new URL(`../../../../docs/assets/wordmark-${size}.svg`, here)),
+    fileURLToPath(new URL("../../../../docs/assets/wordmark.svg", here)),
     "utf8",
   );
   const docs = new DOMParser().parseFromString(file, "image/svg+xml").documentElement;
