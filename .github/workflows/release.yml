@@ -66,18 +66,12 @@ jobs:
           if ((Get-FileHash -Algorithm SHA256 $zip).Hash -ne '2f75a0db2c3530b6b3c24434dc38137f61ff1f4e5f2d7b4ddc5bcd142cf58b65') { throw 'uv checksum mismatch' }
           Expand-Archive -Path $zip -DestinationPath $dir
           $dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - name: Install CPython 3.14.7 (python-build-standalone 20260807), checked against its release's SHA-256
-        shell: pwsh
+      - name: Install CPython 3.14.7 from the pinned download list, checked against its SHA-256
         run: |
-          $archive = Join-Path $env:RUNNER_TEMP 'cpython.tar.gz'
-          $dir = Join-Path $env:RUNNER_TEMP 'cpython'
-          Invoke-WebRequest -OutFile $archive -Uri 'https://github.com/astral-sh/python-build-standalone/releases/download/20260807/cpython-3.14.7%2B20260807-x86_64-pc-windows-msvc-install_only_stripped.tar.gz'
-          if ((Get-FileHash -Algorithm SHA256 $archive).Hash -ne '840e368318d1630bd8efbd3f7de8fab32cb4bbd735baef733f9034f2676c6a92') { throw 'CPython checksum mismatch' }
-          New-Item -ItemType Directory -Path $dir | Out-Null
-          & "$env:SystemRoot\System32\tar.exe" -xzf $archive -C $dir
-          if ($LASTEXITCODE -ne 0) { throw 'CPython extraction failed' }
-          "UV_PYTHON=$dir\python\python.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          'UV_PYTHON_DOWNLOADS=never' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          uv python install 3.14.7 --python-downloads-json-url scripts/release-python.json
+          echo "UV_PYTHON=3.14.7" >> "$GITHUB_ENV"
+          echo "UV_PYTHON_PREFERENCE=only-managed" >> "$GITHUB_ENV"
+          echo "UV_PYTHON_DOWNLOADS=never" >> "$GITHUB_ENV"
       - run: uv sync --locked --no-dev --no-editable --group build
       - run: npm --prefix frontend ci --no-audit --no-fund
       - run: npm --prefix frontend run build
@@ -116,13 +110,11 @@ jobs:
           echo "3a185bf8f46a7b7c8b910d111825907b1638d0ae503cb3c333ae205772354046  $RUNNER_TEMP/uv.tar.gz" | shasum -a 256 -c
           tar -xzf "$RUNNER_TEMP/uv.tar.gz" -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/uv-aarch64-apple-darwin" >> "$GITHUB_PATH"
-      - name: Install CPython 3.14.7 (python-build-standalone 20260807), checked against its release's SHA-256
+      - name: Install CPython 3.14.7 from the pinned download list, checked against its SHA-256
         run: |
-          curl -fsSLo "$RUNNER_TEMP/cpython.tar.gz" https://github.com/astral-sh/python-build-standalone/releases/download/20260807/cpython-3.14.7%2B20260807-aarch64-apple-darwin-install_only_stripped.tar.gz
-          echo "532645be202d3df8510ab318ca5faed92060a694c8327144e14fa81f31af0f6d  $RUNNER_TEMP/cpython.tar.gz" | shasum -a 256 -c
-          mkdir "$RUNNER_TEMP/cpython"
-          tar -xzf "$RUNNER_TEMP/cpython.tar.gz" -C "$RUNNER_TEMP/cpython"
-          echo "UV_PYTHON=$RUNNER_TEMP/cpython/python/bin/python3.14" >> "$GITHUB_ENV"
+          uv python install 3.14.7 --python-downloads-json-url scripts/release-python.json
+          echo "UV_PYTHON=3.14.7" >> "$GITHUB_ENV"
+          echo "UV_PYTHON_PREFERENCE=only-managed" >> "$GITHUB_ENV"
           echo "UV_PYTHON_DOWNLOADS=never" >> "$GITHUB_ENV"
       - run: uv sync --locked --no-dev --no-editable --group build
       - run: npm --prefix frontend ci --no-audit --no-fund
