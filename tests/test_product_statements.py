@@ -1,7 +1,7 @@
 """Pins which `src/` modules may reach the network and which `DATA_FLOWS` row tells the user
 about each, that the desktop window has no network code and reaches an updater only through
-`desktop/updates.mjs` with no feed until GO (ADR-055), and that product text never calls VIKI
-Agent a "companion".
+`desktop/updates.mjs`, whose one feed is the public GitHub release (ADR-055), and that product
+text never calls VIKI Agent a "companion".
 
 A module reaches the network in one of three seen ways: it imports a network client
 (`ALLOWED`), it subclasses or constructs the shared `FixedJsonHttp` client (`HTTPS_HOSTS`), or it
@@ -310,10 +310,9 @@ def test_desktop_hits_detects_planted_network_modules() -> None:
 def test_desktop_top_level_modules_have_no_network_or_updater() -> None:
     """Each top-level `desktop/*.mjs` has no network module, request helper or updater call.
 
-    The updater is allowed only through `desktop/updates.mjs`, gated on a feed file that no
-    build ships until GO (ADR-055); `test_no_update_feed_until_go` keeps `DATA_FLOWS` row 2
-    ("No VIKI account, payment, usage reporting or update check. Nothing goes to VIKI Agent's
-    maker.") true until then.
+    The updater is allowed only through `desktop/updates.mjs`.
+    `test_update_feed_is_the_public_release` keeps it pointed at the public, draft-only GitHub
+    release feed `build.publish` names, matching the "Update check" `DATA_FLOWS` row.
     """
     modules = sorted(DESKTOP.glob("*.mjs"))
     assert modules
@@ -352,16 +351,21 @@ def _feed_files() -> list[Path]:
     return found
 
 
-def test_no_update_feed_until_go() -> None:
-    """No build ships an update feed before ADR-055's GO switch.
+def test_update_feed_is_the_public_release() -> None:
+    """`build.publish` is the public, draft-only GitHub release feed (ADR-055).
 
-    `build.publish` is the only `"publish"` key anywhere inside `build`, and it is `null`; no
-    `app-update.yml` or `dev-app-update.yml` feed file is committed under `desktop/`; and among
-    the top-level `desktop/*.mjs` files, only `updates.mjs` names `electron-updater`.
+    It is the only `"publish"` key anywhere inside `build`; no `app-update.yml` or
+    `dev-app-update.yml` feed file is committed under `desktop/`; and among the top-level
+    `desktop/*.mjs` files, only `updates.mjs` names `electron-updater`.
     """
     build = json.loads((DESKTOP / "package.json").read_text(encoding="utf-8"))["build"]
     assert publish_paths(build, "build") == ["build.publish"]
-    assert build["publish"] is None
+    assert build["publish"] == {
+        "provider": "github",
+        "owner": "take" + "hiro177",
+        "repo": "VIKI-Agent",
+        "releaseType": "draft",
+    }
 
     assert _feed_files() == []
 

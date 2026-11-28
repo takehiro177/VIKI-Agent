@@ -579,4 +579,5 @@ export type ClientMessage =
   | { type: "open.vault"; path: string }
   | { type: "open.code"; workspace_id: string; path: string; line?: number }
   | { type: "open.bot_memory"; workspace_id: string; path: string }
-  | { type: "open.transcript"; session_id: string };
+  | { type: "open.transcript"; session_id: string }
+  | { type: "updates.check"; ui: string };

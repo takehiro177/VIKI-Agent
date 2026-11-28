@@ -15,6 +15,7 @@ import { Loading } from "../Loading/Loading";
 import "./Settings.css";
 import { openHelp, useHelpAvailable } from "../Help/helpStore";
 import { JsonTree } from "./JsonTree";
+import { UpdatesCard, type UpdatesCardProps } from "./UpdatesCard";
 
 /** No `onCommand`: this page issues no command a dispatcher needs to see. `onNavigate` stays —
  * the paths note's "Open Privacy settings" button uses it directly, never `settings.open`'s own
@@ -33,6 +34,9 @@ export interface DiagnosticsPageProps {
         attention: number | null;
       }
     | undefined;
+  /** Present only when the window hosts an update check (`capabilities.features.updates`);
+   * absent, the Updates card does not render at all. */
+  updates?: UpdatesCardProps | undefined;
 }
 
 /** The reason a disabled control is off (the same pattern as `ProvidersPage` and
@@ -82,6 +86,7 @@ export function DiagnosticsPage({
   snapshot,
   onNavigate,
   approvalsRead,
+  updates,
 }: DiagnosticsPageProps) {
   const [read, setRead] = useState<{
     api: ShellApi | null;
@@ -190,6 +195,8 @@ export function DiagnosticsPage({
           {t("workspaces.about.whats_new")}
         </button>
       </section>
+
+      {updates !== undefined ? <UpdatesCard {...updates} /> : null}
 
       <section aria-labelledby="data-flows-title" className="settings-card">
         <div className="settings-card-head">

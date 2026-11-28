@@ -89,13 +89,15 @@ const PAGE_OF_KEY: Readonly<Record<string, SettingsPage>> = {
  * the Bot hue assigner's own store (botHues.ts) and Bots' own Bot color field, so no settings
  * page shows it either. `bots.icons` is the Bot icon assigner's own store, so no settings page
  * shows it either. `bots.auto_reflect` and `bots.auto_dream` are switched on a Bot's Learning
- * card, so no settings page shows them either. */
+ * card, so no settings page shows them either. `updates.check` is switched on Diagnostics and
+ * About's Updates card, so no settings page shows it either. */
 export const HIDDEN_KEYS: ReadonlySet<string> = new Set([
   "chat.llm_connections",
   "bots.hues",
   "bots.icons",
   "bots.auto_reflect",
   "bots.auto_dream",
+  "updates.check",
   "layout.left_rail_width",
   "layout.right_rail_width",
   "layout.panes",

@@ -1,0 +1,205 @@
+# Builds VIKI Agent's installers from a `v*` tag and leaves them, with their update feeds,
+# checksums, notices and SBOMs, in a draft GitHub release for a maintainer to publish. A manual
+# run (workflow_dispatch) builds and stages the same assets as a dry run, with no release.
+# Every action is pinned to the commit of its release tag (named in the comment). Only the
+# release job, on a tag push, may write to the repository, and it checks out no code.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency: release-${{ github.ref }}
+
+env:
+  PYTHONUTF8: '1'
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - id: version
+        name: Check the tag against the three version fields
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            version="$(python scripts/release_assets.py version --tag "$GITHUB_REF_NAME")"
+          else
+            version="$(python scripts/release_assets.py version)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
+    runs-on: windows-2025
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+      - name: Install uv 0.11.11, checked against its release's SHA-256
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'uv.zip'
+          $dir = Join-Path $env:RUNNER_TEMP 'uv'
+          Invoke-WebRequest -OutFile $zip -Uri 'https://github.com/astral-sh/uv/releases/download/0.11.11/uv-x86_64-pc-windows-msvc.zip'
+          if ((Get-FileHash -Algorithm SHA256 $zip).Hash -ne '2f75a0db2c3530b6b3c24434dc38137f61ff1f4e5f2d7b4ddc5bcd142cf58b65') { throw 'uv checksum mismatch' }
+          Expand-Archive -Path $zip -DestinationPath $dir
+          $dir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - run: uv python install 3.14.4
+      - run: uv sync --locked --no-dev --no-editable --group build
+      - run: npm --prefix frontend ci --no-audit --no-fund
+      - run: npm --prefix frontend run build
+      - run: uv run --no-sync python scripts/prepare_magpie.py
+      - run: uv run --no-sync python scripts/compile.py
+      - run: npm --prefix desktop ci --no-audit --no-fund
+      - run: npm --prefix desktop run dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-windows
+          path: |
+            dist/desktop/viki-agent-*
+            dist/desktop/latest*.yml
+            dist/desktop/SHA256SUMS-*.txt
+            dist/desktop/THIRD-PARTY-NOTICES-*.txt
+            dist/desktop/sbom-*.cdx.json
+          if-no-files-found: error
+          retention-days: 7
+
+  macos:
+    needs: version
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+      - name: Install uv 0.11.11, checked against its release's SHA-256
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/uv.tar.gz" https://github.com/astral-sh/uv/releases/download/0.11.11/uv-aarch64-apple-darwin.tar.gz
+          echo "3a185bf8f46a7b7c8b910d111825907b1638d0ae503cb3c333ae205772354046  $RUNNER_TEMP/uv.tar.gz" | shasum -a 256 -c
+          tar -xzf "$RUNNER_TEMP/uv.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/uv-aarch64-apple-darwin" >> "$GITHUB_PATH"
+      - run: uv python install 3.14.4
+      - run: uv sync --locked --no-dev --no-editable --group build
+      - run: npm --prefix frontend ci --no-audit --no-fund
+      - run: npm --prefix frontend run build
+      - run: uv run --no-sync python scripts/prepare_magpie.py
+      - run: uv run --no-sync python scripts/compile.py
+      - run: npm --prefix desktop ci --no-audit --no-fund
+      - run: npm --prefix desktop run dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-macos
+          path: |
+            dist/desktop/viki-agent-*
+            dist/desktop/latest*.yml
+            dist/desktop/SHA256SUMS-*.txt
+            dist/desktop/THIRD-PARTY-NOTICES-*.txt
+            dist/desktop/sbom-*.cdx.json
+          if-no-files-found: error
+          retention-days: 7
+
+  linux:
+    needs: version
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sh scripts/linux/release.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-linux
+          path: |
+            dist/desktop/viki-agent-*
+            dist/desktop/latest*.yml
+            dist/desktop/SHA256SUMS-*.txt
+            dist/desktop/THIRD-PARTY-NOTICES-*.txt
+            dist/desktop/sbom-*.cdx.json
+          if-no-files-found: error
+          retention-days: 7
+
+  stage:
+    needs: [version, windows, macos, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-windows
+          path: built/windows
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-macos
+          path: built/macos
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-linux
+          path: built/linux
+      - name: Stage exactly the release allowlist
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: >-
+          python scripts/release_assets.py stage --version "$VERSION"
+          --windows built/windows --macos built/macos --linux built/linux --out release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-staged
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    if: github.event_name == 'push'
+    needs: [version, stage]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-staged
+          path: release
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" release/* --draft --verify-tag
+          --title "VIKI Agent $VERSION" --notes "Write the release notes, then publish."

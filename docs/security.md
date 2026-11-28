@@ -1116,8 +1116,12 @@ An installed app:
 - encrypts its cookies.
 
 On Windows and macOS, it also checks at startup that its packaged files have not been altered,
-and ends itself if they have. Linux has no such check. An installed build does not check for
-updates.
+and ends itself if they have. Linux has no such check. An installed build asks GitHub whether a
+newer release exists a minute after it starts and every 6 hours while **Settings › Diagnostics
+and About**'s **Check for updates automatically** is on, and when you choose that page's **Check
+now**. Each check is a request for the release's update file (`latest*.yml`): GitHub gets that
+request's IP address and user agent, and counts it as a download of that file. **Download**
+opens the release page in your browser; the app downloads and installs nothing itself.
 
 ## Sharing diagnostics and backups
 

@@ -41,6 +41,33 @@ through either route:
   Custom connections need a tool-calling model and support Chat Completions, Responses API and
   Anthropic Messages.
 
+## Install the released app
+
+Skip the source build below and install a prebuilt release instead. The repository's README
+links each installer under **Download**:
+
+- **Windows:** run the downloaded setup. It adds Start menu and desktop shortcuts.
+- **macOS:** drag VIKI Agent to Applications.
+- **Linux:** `sudo apt install ./viki-agent-linux-amd64.deb`, then open VIKI Agent from the app
+  menu.
+
+These builds are unsigned. See
+[Known issues](known-issues.md#viki-agents-own-window-and-installers) for the steps Windows and
+macOS ask for on first open.
+
+Check a downloaded installer against the checksums published beside it on the same release, with
+`sha256sum -c SHA256SUMS-linux.txt` or `shasum -a 256 -c SHA256SUMS-macos.txt`. On Windows, use
+PowerShell's `Get-FileHash`.
+
+### Update the released app
+
+The installed app asks GitHub whether a newer release exists a minute after it starts and every
+6 hours, while **Settings → Diagnostics and About**'s **Check for updates automatically** is on,
+and whenever you choose that page's **Check now**. A ready update shows a notice: choose
+**Download** to open the releases page in your browser, quit VIKI Agent, then run the new
+installer. Your settings and chats are kept: on Windows, the installer's uninstall step does not
+delete the app data folder (`deleteAppDataOnUninstall` is off).
+
 ## Install and start
 
 Clone VIKI Agent's GitHub repository (the [visual guide](index.html#start) links to it), then run
@@ -81,6 +108,10 @@ Send a message in a new conversation to start chatting.
 
 Closing the last app window gives running chats up to 300 seconds to finish. Waiting permission
 requests are denied while no window is open.
+
+Installed from a release instead of a source checkout? See
+[Update the released app](#update-the-released-app) above; the steps below are for a source
+checkout.
 
 To update:
 
@@ -191,7 +222,9 @@ electron-builder. `npm run dist` needs `npm ci` in both `frontend/` (the install
 `desktop/`.
 
 Build on the OS and architecture you intend to install on. The installer command refuses
-cross-platform and cross-architecture targets; Linux builds use the host's x64 or arm64 architecture:
+cross-platform and cross-architecture targets; Linux builds use the host's x64 or arm64
+architecture (`viki-agent-linux-amd64.deb` or `viki-agent-linux-arm64.deb`), and releases carry
+the x64 one:
 
 ```sh
 npm --prefix desktop ci
@@ -201,9 +234,11 @@ npm --prefix desktop run dist
 The result lands in `dist/desktop/`:
 
 - the installers
+- `latest*.yml`, the update feed for that OS (`latest.yml` on Windows, `latest-mac.yml` on
+  macOS, `latest-linux.yml` on Linux)
 - `SHA256SUMS-<os>.txt`
-- three software-bill-of-materials files: `sbom-python.cdx.json`, `sbom-frontend.cdx.json` and
-  `sbom-desktop.cdx.json`
+- four software-bill-of-materials files: `sbom-python.cdx.json`, `sbom-frontend.cdx.json`,
+  `sbom-desktop.cdx.json` and `sbom-magpie.cdx.json`
 - `THIRD-PARTY-NOTICES-<os>.txt`
 
 These builds are unsigned. [Known issues](known-issues.md) lists what Windows and macOS ask when

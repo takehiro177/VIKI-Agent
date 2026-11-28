@@ -190,6 +190,9 @@ KEYS: Mapping[str, SettingSpec] = {
     ),
     "onboarding.completed": _spec("onboarding.completed", "bool", None, False, "now", False),
     "routines.paused": _spec("routines.paused", "bool", None, False, "now", False),
+    # Read before each automatic update check (`window_host.run_update_checks`, through
+    # `SettingsService.flag`); a window's own check does not read it.
+    "updates.check": _spec("updates.check", "bool", None, True, "now", False),
     "notifications.enabled": _spec("notifications.enabled", "bool", None, False, "now", False),
     "notifications.quiet_start": _spec(
         "notifications.quiet_start", "enum", QUIET_TIMES, None, "now", False

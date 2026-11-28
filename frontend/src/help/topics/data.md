@@ -8,7 +8,8 @@ See where VIKI keeps your data, export or back up your vault, and reset the app 
 
 - Chats, routines and Bots: What you send, attach or let a tool read goes to your own Claude Code, which sends it to the selected model provider under your account. Its tools, such as web fetch and MCP servers, can reach other sites under your permission rules.
 - Model connections: For a saved model connection, VIKI Agent forwards Claude Code's model requests to the endpoint you chose, using the key you entered. Test connection sends a short prompt. List models requests model IDs.
-- VIKI Agent itself: No VIKI account, payment, usage reporting or update check. Nothing goes to VIKI Agent's maker.
+- VIKI Agent itself: No VIKI account, payment or usage reporting. Nothing goes to VIKI Agent's maker.
+- Update check: The installed app asks GitHub whether a newer VIKI Agent release exists, a minute after it starts and every 6 hours while Check for updates automatically is on, and when you choose Check now. GitHub counts each check as a download of the release's update file. Download opens the release page in your web browser; the app downloads and installs nothing itself.
 - Speech: Dictation, read aloud with system voices, and your own Voicebox app run on this computer. The browser's online voices are not used.
 - Natural voices: Off until you install them. Installing downloads pinned files from GitHub and Hugging Face; speech then runs on this computer.
 - Messaging: Off until you set it up. Slack, Discord or Mattermost then carries your bridge messages, VIKI's final replies, its permission and question requests, and questions from your other chats once you send !viki questions on.

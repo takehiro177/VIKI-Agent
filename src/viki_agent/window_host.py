@@ -5,6 +5,8 @@ One JSON object per line each way. Server to app, stdout: `{"type":"open","id":N
 The server shows and hides Magpie with `{"type":"magpie","id":N,"url":U}` and
 `{"type":"magpie_close","id":N}`. Its external links come back as
 `{"type":"magpie_open_url","id":N,"url":U}` and open through `winproc`.
+`{"type":"update_check","id":N,"manual":B}` asks the app to check for an update in window N:
+`manual` is true when the window asked (`updates.check`), false for `run_update_checks`.
 End of stdin: the app is gone.
 `U` = `http://127.0.0.1:8765/?ui=<32 hex>#token=<token>[&session=<uuid>]`.
 
@@ -42,6 +44,8 @@ log = logging.getLogger(__name__)
 
 MAX_LINE = 4096  # bytes in one line from the app, its newline included
 IGNORED = "ignored a message the desktop app sent"
+UPDATE_FIRST_S = 60.0  # from the server's start to the first automatic update check
+UPDATE_EVERY_S = 21600.0  # six hours between automatic update checks
 
 
 def _app_gone() -> OSError:
@@ -245,6 +249,26 @@ class WindowHost:
         self._magpie_views.pop(window_id, None)
         self._send(message)
 
+    def ask_update_check(self, ui: str | None, *, manual: bool) -> bool:
+        """Ask the app to check for an update in the window whose ui nonce is `ui`, or in the
+        newest window when `ui` is None. False, with nothing sent, when the link has ended, no
+        such window is open, or the app cannot take the message."""
+        if self._ended:
+            return False
+        if ui is None:
+            window_id = max(self._windows, default=None)
+        elif self.has_ui(ui):
+            window_id = self._ui_window(ui)
+        else:
+            return False
+        if window_id is None:
+            return False
+        try:
+            self._send({"type": "update_check", "id": window_id, "manual": manual})
+        except OSError:
+            return False
+        return True
+
     def _magpie_open_url(self, window_id: int, url: str) -> None:
         if self._ended or window_id not in self._windows:
             return
@@ -324,3 +348,19 @@ class WindowHost:
         """On the loop, once: the app closed its end of the link."""
         self._ended = True
         _call(self._gone)
+
+
+async def run_update_checks(
+    host: WindowHost, allowed: Callable[[], bool | None], *, first_s: float, every_s: float
+) -> None:
+    """The automatic update check, until cancelled: after `first_s`, then every `every_s`, ask
+    the newest window while `allowed()`, run off the loop, is True. None (an unreadable
+    setting) asks nothing; a failure is logged with fixed text and the next turn runs."""
+    await asyncio.sleep(first_s)
+    while True:
+        try:
+            if await asyncio.to_thread(allowed) is True:
+                host.ask_update_check(None, manual=False)
+        except Exception:
+            log.warning("update check unavailable")
+        await asyncio.sleep(every_s)

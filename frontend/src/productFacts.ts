@@ -31,7 +31,11 @@ export const DATA_FLOWS: readonly DataFlow[] = [
   },
   {
     label: "VIKI Agent itself",
-    fact: "No VIKI account, payment, usage reporting or update check. Nothing goes to VIKI Agent's maker.",
+    fact: "No VIKI account, payment or usage reporting. Nothing goes to VIKI Agent's maker.",
+  },
+  {
+    label: "Update check",
+    fact: "The installed app asks GitHub whether a newer VIKI Agent release exists, a minute after it starts and every 6 hours while Check for updates automatically is on, and when you choose Check now. GitHub counts each check as a download of the release's update file. Download opens the release page in your web browser; the app downloads and installs nothing itself.",
   },
   {
     label: "Speech",

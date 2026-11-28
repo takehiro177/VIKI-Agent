@@ -6,15 +6,16 @@
  * quits it.
  */
 
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, dialog, session } from "electron";
+import { app, dialog, session, shell } from "electron";
 
 import { createMagpiePanel } from "./magpie.mjs";
 import { APP_ID, APP_ORIGIN, isAppUrl, sandboxOff, spellcheckOn } from "./policy.mjs";
 import { serverCommand, startServer } from "./server.mjs";
-import { startUpdates } from "./updates.mjs";
+import { createUpdateChecker } from "./updates.mjs";
 import { createWindow, hardenSession, installMenu } from "./window.mjs";
 
 // First, before any page loads (the imports above load none): Electron reports a failed page
@@ -105,6 +106,15 @@ function host() {
         resourcesPath: process.resourcesPath,
         platform: process.platform,
       });
+      const checker = createUpdateChecker({
+        packaged: app.isPackaged,
+        platform: process.platform,
+        feedFile: join(process.resourcesPath, "app-update.yml"),
+        version: app.getVersion(),
+        homepage: createRequire(import.meta.url)("./package.json").homepage,
+        openUrl: (url) =>
+          shell.openExternal(url).catch(() => console.warn("opening the releases page failed")),
+      });
       server = startServer({
         command,
         cwd: app.isPackaged ? dirname(command[0]) : REPO,
@@ -130,6 +140,31 @@ function host() {
         },
         onClose(id) {
           windows.get(id)?.destroy();
+        },
+        onUpdateCheck(id, manual) {
+          if (quitting) {
+            return;
+          }
+          const win = windows.get(id);
+          // A rejected dialog must not become an unhandled rejection in the main process.
+          checker
+            .check({
+              manual,
+              ask: ({ message, detail, buttons }) =>
+                dialog
+                  .showMessageBox(win && !win.isDestroyed() ? win : undefined, {
+                    type: "info",
+                    title: "VIKI Agent",
+                    message,
+                    detail,
+                    buttons,
+                    defaultId: 0,
+                    cancelId: buttons.length - 1,
+                    noLink: true,
+                  })
+                  .then((r) => r.response),
+            })
+            .catch(() => console.warn("update check failed"));
         },
         onMagpie(id, url, view) {
           const win = windows.get(id);
@@ -171,13 +206,6 @@ function host() {
         onExit: serverExited,
       });
       running = true;
-      // Fire-and-forget: startUpdates decides on its own whether a check makes sense at all
-      // (packaged, win32/darwin, a feed file present) and never throws.
-      void startUpdates({
-        packaged: app.isPackaged,
-        platform: process.platform,
-        feedFile: join(process.resourcesPath, "app-update.yml"),
-      });
     } catch (error) {
       // spawn() throws, rather than reporting, for a command it refuses (a .cmd on Windows).
       serverExited({ code: null, signal: null, error });

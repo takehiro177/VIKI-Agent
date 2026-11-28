@@ -2,7 +2,8 @@
  * Runs the VIKI Agent server as a child process and speaks the window-host
  * protocol with it over its stdio: one JSON object per line each way.
  *
- * Server to app: open/close for a VIKI window, magpie/magpie_close for its dashboard view.
+ * Server to app: open/close for a VIKI window, magpie/magpie_close for its dashboard view,
+ * update_check to ask it to check for an update in a window.
  * App to server: closed/wake for windows, magpie_open_url for a dashboard's browser link.
  * End of stdin tells the server the app is gone.
  */
@@ -45,7 +46,8 @@ export function serverCommand({
  * @param {string} line one line of the server's stdout, without its newline
  * @returns {{ type: "open" | "magpie", id: number, url: string, view?: import("./policy.mjs").MagpieView } |
  *   { type: "magpie_view", id: number, view: import("./policy.mjs").MagpieView } |
- *   { type: "close" | "magpie_close", id: number, view_id?: string } | null}
+ *   { type: "close" | "magpie_close", id: number, view_id?: string } |
+ *   { type: "update_check", id: number, manual: boolean } | null}
  */
 export function parseServerLine(line) {
   let message;
@@ -57,7 +59,7 @@ export function parseServerLine(line) {
   if (message === null || typeof message !== "object") {
     return null;
   }
-  const { type, id, url } = message;
+  const { type, id, url, manual } = message;
   if (!Number.isSafeInteger(id) || id < 1) {
     return null;
   }
@@ -66,6 +68,9 @@ export function parseServerLine(line) {
   }
   if (type === "close") {
     return { type: "close", id };
+  }
+  if (type === "update_check" && typeof manual === "boolean" && Object.keys(message).length === 3) {
+    return { type: "update_check", id, manual };
   }
   if (type === "magpie" && magpieOrigin(url) !== null) {
     if (Object.keys(message).length === 3) return { type: "magpie", id, url };
@@ -97,6 +102,7 @@ export function parseServerLine(line) {
  *   env: NodeJS.ProcessEnv,
  *   onOpen: (id: number, url: string) => void,
  *   onClose: (id: number) => void,
+ *   onUpdateCheck?: (id: number, manual: boolean) => void,
  *   onMagpie?: (id: number, url: string, view?: import("./policy.mjs").MagpieView) => void,
  *   onMagpieView?: (id: number, view: import("./policy.mjs").MagpieView) => void,
  *   onMagpieClose?: (id: number, viewId?: string) => void,
@@ -112,6 +118,7 @@ export function startServer({
   env,
   onOpen,
   onClose,
+  onUpdateCheck = () => {},
   onMagpie = () => {},
   onMagpieView = () => {},
   onMagpieClose = () => {},
@@ -165,6 +172,8 @@ export function startServer({
       onMagpieView(message.id, message.view);
     } else if (message.type === "magpie_close") {
       onMagpieClose(message.id, message.view_id);
+    } else if (message.type === "update_check") {
+      onUpdateCheck(message.id, message.manual);
     } else {
       onClose(message.id);
     }

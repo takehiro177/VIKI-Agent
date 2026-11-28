@@ -6142,6 +6142,17 @@ export function App({
               workspaceId: attention.workspaceId,
               attention: attention.items?.filter((item) => item.attention).length ?? null,
             }}
+            {...(shellSnapshot.capabilities?.features.updates === true
+              ? {
+                  updates: {
+                    auto: effectiveSettings?.["updates.check"] !== false,
+                    onAutoChange: async (value: boolean) => {
+                      await shellStore.patch({ "updates.check": value });
+                    },
+                    onCheckNow: () => viki.actions.checkForUpdates(),
+                  },
+                }
+              : {})}
           />
         );
       default:

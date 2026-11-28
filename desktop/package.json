@@ -5,7 +5,7 @@
   "private": true,
   "description": "A local chat for your notes vault that runs your own Claude Code.",
   "author": "VIKI Agent",
-  "homepage": "https://viki-agent.invalid",
+  "homepage": "https://github.com/takehiro177/VIKI-Agent",
   "main": "main.mjs",
   "scripts": {
     "start": "electron .",
@@ -61,7 +61,12 @@
     ],
     "asar": true,
     "npmRebuild": false,
-    "publish": null,
+    "publish": {
+      "provider": "github",
+      "owner": "takehiro177",
+      "repo": "VIKI-Agent",
+      "releaseType": "draft"
+    },
     "extraResources": [
       {
         "from": "../dist/compiled/viki-agent.dist",
@@ -100,7 +105,8 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "viki-agent-windows-x64-setup.${ext}"
     },
     "mac": {
       "target": [
@@ -118,6 +124,7 @@
         }
       ],
       "icon": "../frontend/public/brand/mark.png",
+      "artifactName": "viki-agent-macos-arm64.${ext}",
       "category": "public.app-category.productivity",
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
@@ -140,10 +147,11 @@
       "icon": "../frontend/public/brand/mark.png",
       "executableName": "viki-agent",
       "category": "Office",
-      "maintainer": "VIKI Agent <support@viki-agent.invalid>",
+      "maintainer": "VIKI Agent <50972410+takehiro177@users.noreply.github.com>",
       "description": "A local chat for your notes vault that runs your own Claude Code."
     },
     "deb": {
+      "artifactName": "viki-agent-linux-${arch}.${ext}",
       "depends": [
         "libgtk-3-0",
         "libnotify4",
