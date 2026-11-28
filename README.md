@@ -42,6 +42,147 @@ tracking each task. [Read the transcript](docs/assets/videos/viki-agent-cinemati
 **[Open the showcase page](https://takehiro177.github.io/VIKI-Agent/showcase/)**: VIKI Agent on
 one page, opening with white tiles that assemble the VIKI Agent mark.
 
+## Features
+
+Each clip shows the app working through a scripted example with sample data.
+
+<table>
+<tr>
+<td width="50%" valign="middle">
+
+### Decision
+
+VIKI notices work worth doing, such as a task due today, and shows you why now. Draft a plan with
+one click. VIKI starts work on its own only within the limits you set.
+
+[Decision guide →](docs/decision-engine.md)
+
+</td>
+<td width="50%">
+  <a href="docs/decision-engine.md"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/readme-features/decision.poster.jpg"><source srcset="docs/assets/readme-features/decision.webp" type="image/webp"><img src="docs/assets/readme-features/decision.poster.jpg" alt="VIKI's launcher opens a suggestion to review checkout validation, due today and linked to the release goal; Draft a plan puts the request in the message box" width="100%" /></picture></a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Chat with Claude Code
+
+Work through a task in a chat. When Claude Code asks to change a file or run a command, you answer
+on a card in the conversation.
+
+[Chat and approve work →](docs/using-the-app.md#chat-and-approve-work)
+
+</td>
+<td width="50%">
+  <a href="docs/using-the-app.md#chat-and-approve-work"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/readme-features/chat.poster.jpg"><source srcset="docs/assets/readme-features/chat.webp" type="image/webp"><img src="docs/assets/readme-features/chat.poster.jpg" alt="A chat asks Claude Code to reject zero and negative quantities at checkout; the user allows a file edit and a test run on two permission cards, and the reply reports three passing tests" width="100%" /></picture></a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Tabs and panes
+
+Keep chats open as tabs and show up to four side by side: drag a tab onto a pane's edge to split
+it. Each pane keeps its own draft and Stop, and a file from the Code panel opens beside the chat.
+
+[Tabs and panes →](docs/using-the-app.md#tabs-and-panes)
+
+</td>
+<td width="50%">
+  <a href="docs/using-the-app.md#tabs-and-panes"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/readme-features/panes.poster.jpg"><source srcset="docs/assets/readme-features/panes.webp" type="image/webp"><img src="docs/assets/readme-features/panes.poster.jpg" alt="Three chats open as tabs; the user asks one to add the guard to the release notes, drags that tab into a second pane where the reply keeps streaming, and opens checkout.py from the Code panel below it" width="100%" /></picture></a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Vault knowledge
+
+Browse your Markdown vault's knowledge notes, sources and maps, and read any note. In a chat,
+Claude Code reads the notes it needs, and the reply lists them as its sources.
+
+[The Vault view →](docs/using-the-app.md#the-vault-view)
+
+</td>
+<td width="50%">
+  <a href="docs/using-the-app.md#the-vault-view"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/readme-features/vault.poster.jpg"><source srcset="docs/assets/readme-features/vault.webp" type="image/webp"><img src="docs/assets/readme-features/vault.poster.jpg" alt="The Vault front page with seven knowledge notes; the user opens the note A zero-quantity cart must be rejected before payment, then asks a chat what the notes say about zero-quantity carts, and the reply reads that note and lists it as its source" width="100%" /></picture></a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Code view
+
+Open a code folder in the Code workbench: browse files, see what changed and read each diff.
+
+[The Code workbench →](docs/using-the-app.md#the-code-workbench)
+
+</td>
+<td width="50%">
+  <a href="docs/using-the-app.md#the-code-workbench"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/readme-features/code.poster.jpg"><source srcset="docs/assets/readme-features/code.webp" type="image/webp"><img src="docs/assets/readme-features/code.poster.jpg" alt="The Code workbench's Changes tab lists src/shop/checkout.py; opening it shows a diff that adds a guard rejecting quantities below 1" width="100%" /></picture></a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Bot thread with Chief
+
+Give Chief one outcome in a shared Bot thread. Bots hand the work to one another until Checker
+reports PASS with evidence, or the thread needs you.
+
+[Shared Bot threads →](docs/bots.md#shared-bot-threads)
+
+</td>
+<td width="50%">
+  <a href="docs/bots.md#shared-bot-threads"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/readme-features/botthread.poster.jpg"><source srcset="docs/assets/readme-features/botthread.webp" type="image/webp"><img src="docs/assets/readme-features/botthread.poster.jpg" alt="A Bot thread with Chief, Engineer and Checker: the user asks Chief to ship the checkout quantity fix, Chief hands the guard to Engineer, Engineer hands the result to Checker, and Checker's PASS finishes the thread" width="100%" /></picture></a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Bots and Kanban
+
+Bots work the Kanban cards tagged for them, and Checker checks finished work against its Done when
+items. Approve the result or send it back.
+
+[Bots guide →](docs/bots.md)
+
+</td>
+<td width="50%">
+  <a href="docs/bots.md"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/readme-features/kanban.poster.jpg"><source srcset="docs/assets/readme-features/kanban.webp" type="image/webp"><img src="docs/assets/readme-features/kanban.poster.jpg" alt="The Kanban view; after a refresh, the card Validate checkout quantities is ready for review with Checker passed and 4 of 4 done, and the user approves it" width="100%" /></picture></a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Routines
+
+Save a prompt as a routine with its workspace and profile. Test it, then enable its schedule.
+Routines run while VIKI Agent is open.
+
+[Routines →](docs/using-the-app.md#routines)
+
+</td>
+<td width="50%">
+  <a href="docs/using-the-app.md#routines"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/readme-features/routines.poster.jpg"><source srcset="docs/assets/readme-features/routines.webp" type="image/webp"><img src="docs/assets/readme-features/routines.poster.jpg" alt="The routine Checkout check shows its profile, workspace, first message and next runs; Test run comes back Tested with a Done run in its history, and Enable puts it on the schedule" width="100%" /></picture></a>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Choose the model
+
+Use your Claude plan, or pick another tool-calling model for a chat: one routed through Magpie, or
+a local or cloud endpoint you connect directly.
+
+[Using your own model →](docs/using-the-app.md#using-your-own-model)
+
+</td>
+<td width="50%">
+  <a href="docs/using-the-app.md#using-your-own-model"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/readme-features/models.poster.jpg"><source srcset="docs/assets/readme-features/models.webp" type="image/webp"><img src="docs/assets/readme-features/models.poster.jpg" alt="The message box's model menu lists a Magpie model, a local Llama server and a cloud API; after choosing the local server, the reply says the chat runs on llama3.1-70b-instruct" width="100%" /></picture></a>
+</td>
+</tr>
+</table>
+
 **Bring your own model.** VIKI Agent runs Claude Code, Anthropic's unmodified `claude`
 executable, with the instructions, skills, hooks and permissions Claude Code applies in that
 folder. Choose the model behind it:
