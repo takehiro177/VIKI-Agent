@@ -215,7 +215,9 @@ PACKAGE_JSON_HOMEPAGE_LINE = '"homepage": "' + PUBLIC_REPO_URL + '",'
 PACKAGE_JSON_OWNER_LINE = '"owner": "' + "take" + 'hiro177",'
 PACKAGE_JSON_MAINTAINER_EMAIL = "50972410+" + "take" + "hiro177" + "@users.noreply.github.com"
 PACKAGE_JSON_MAINTAINER_LINE = '"maintainer": "VIKI Agent <' + PACKAGE_JSON_MAINTAINER_EMAIL + '>",'
-# README alone also links the latest release's three installers and the Issues page.
+# README and the guide's front page also link the latest release's three installers and the
+# Issues page.
+RELEASE_LINK_PAGES = frozenset({"README.md", "docs/index.html"})
 README_REPO_URL_TAIL = (
     r"(?:/releases/latest(?:/download/viki-agent-"
     r"(?:windows-x64-setup\.exe|macos-arm64\.dmg|linux-amd64\.deb))?|/issues)?"
@@ -239,7 +241,7 @@ def _without_exact_url(content: str, url: str, tail: str = "") -> str:
 def _public_document_text(name: str, content: str) -> str:
     if name in SPONSOR_URL_PAGES:
         content = _without_exact_url(content, SPONSOR_URL)
-    if name == "README.md":
+    if name in RELEASE_LINK_PAGES:
         content = _without_exact_url(content, PUBLIC_REPO_URL, README_REPO_URL_TAIL)
     elif name in REPO_URL_PAGES:
         content = _without_exact_url(content, PUBLIC_REPO_URL)
@@ -604,13 +606,14 @@ def test_public_pages_exempt_only_their_exact_links(
         "/issues",
     ],
 )
+@pytest.mark.parametrize("page", sorted(RELEASE_LINK_PAGES))
 def test_readme_repo_url_tail_exempts_only_the_release_and_issues_links(
-    tail: str, monkeypatch: pytest.MonkeyPatch
+    page: str, tail: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(scrub_fixture, "OWNER", "take" + "hiro")
     url = PUBLIC_REPO_URL + tail
-    assert _owner_data_problems("README.md", url) == set()
-    assert _file_owner_problems("README.md", url.encode()) == set()
+    assert _owner_data_problems(page, url) == set()
+    assert _file_owner_problems(page, url.encode()) == set()
     assert _owner_data_problems("AGENTS.md", url)
 
 
@@ -622,13 +625,14 @@ def test_readme_repo_url_tail_exempts_only_the_release_and_issues_links(
         "/issues/1",
     ],
 )
+@pytest.mark.parametrize("page", sorted(RELEASE_LINK_PAGES))
 def test_readme_repo_url_tail_rejects_other_release_and_issue_paths(
-    tail: str, monkeypatch: pytest.MonkeyPatch
+    page: str, tail: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(scrub_fixture, "OWNER", "take" + "hiro")
     url = PUBLIC_REPO_URL + tail
-    assert _owner_data_problems("README.md", url)
-    assert _file_owner_problems("README.md", url.encode())
+    assert _owner_data_problems(page, url)
+    assert _file_owner_problems(page, url.encode())
     assert _owner_data_problems("AGENTS.md", url)
 
 

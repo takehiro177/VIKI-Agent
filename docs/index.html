@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="VIKI Agent is a proactive coding workspace that connects Decision, Claude Code and a Markdown vault. Learn the workflow, install from source and understand the controls.">
+  <meta name="description" content="VIKI Agent is a proactive coding workspace that connects Decision, Claude Code and a Markdown vault. Learn the workflow, download or install from source and understand the controls.">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0b0b0b">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self' data:; font-src 'self'; media-src 'self' data:; base-uri 'none'; form-action 'self'; frame-src 'none'">
@@ -128,7 +128,15 @@
       </section>
 
       <section class="chapter" id="start" aria-labelledby="start-title">
-        <div class="section-heading"><p class="eyebrow"><span class="eyebrow-num">02</span>Set up</p><h2 id="start-title">Install and launch</h2><p class="lead">Clone the <a href="https://github.com/takehiro177/VIKI-Agent">VIKI Agent repository on GitHub</a>, then run four commands from its root.</p></div>
+        <div class="section-heading"><p class="eyebrow"><span class="eyebrow-num">02</span>Set up</p><h2 id="start-title">Install and launch</h2><p class="lead">Download the installer for your desktop, or clone the <a href="https://github.com/takehiro177/VIKI-Agent">VIKI Agent repository on GitHub</a> and run four commands from its root.</p></div>
+        <h3 class="mini-title">Download</h3>
+        <ul class="need-list more-kinds">
+          <li><span class="icon-chip"><span class="icon icon-download" aria-hidden="true"></span></span><div><strong><a href="https://github.com/takehiro177/VIKI-Agent/releases/latest/download/viki-agent-windows-x64-setup.exe">Windows 11 x64</a></strong><span>Run the setup. It adds Start menu and desktop shortcuts.</span></div></li>
+          <li><span class="icon-chip"><span class="icon icon-download" aria-hidden="true"></span></span><div><strong><a href="https://github.com/takehiro177/VIKI-Agent/releases/latest/download/viki-agent-macos-arm64.dmg">macOS, Apple silicon</a></strong><span>Open the disk image and drag VIKI Agent to Applications.</span></div></li>
+          <li><span class="icon-chip"><span class="icon icon-download" aria-hidden="true"></span></span><div><strong><a href="https://github.com/takehiro177/VIKI-Agent/releases/latest/download/viki-agent-linux-amd64.deb">Linux x64 (.deb), glibc 2.28+</a></strong><span>Run <code>sudo apt install ./viki-agent-linux-amd64.deb</code>, then open VIKI Agent from the app menu.</span></div></li>
+        </ul>
+        <p class="callout"><span class="icon icon-alert" aria-hidden="true"></span><span>These builds are unsigned: <a href="manual/docs/known-issues.html#viki-agents-own-window-and-installers">Known issues</a> has the steps Windows and macOS ask for on first open. The app tells you when a newer release is ready. On Linux aarch64, build from source below.</span></p>
+        <h3 class="mini-title then-title">Or build from source</h3>
         <div class="setup-grid">
           <div class="needs">
             <h3 class="mini-title">You’ll need</h3>
@@ -159,7 +167,7 @@ uv run viki-agent</code></pre><p><span class="icon icon-alert" aria-hidden="true
 
         <div class="fold-stack">
           <details><summary>Platform extras and the Electron window</summary><div class="details-body"><ul class="tight"><li><strong>Linux</strong> also needs git, xdg-open and Secret Service via secret-tool.</li><li><strong>macOS</strong> keeps the app’s sealing key in the login Keychain.</li><li><strong>Browser discovery:</strong> Edge on Windows; Edge, Chrome or Chromium on macOS; non-confined Edge, Chrome or Chromium on Linux (snap and Flatpak launchers are skipped).</li><li><strong>No browser?</strong> After building, <code>npm --prefix desktop ci</code> then <code>npm --prefix desktop start</code> opens the Electron window. On Linux, Electron’s sandbox helper must belong to root first; <a href="manual/docs/known-issues.html#viki-agents-own-window-and-installers">Known issues</a> has the two commands.</li></ul><a href="manual/docs/getting-started.html">Full prerequisites and checks ↗</a></div></details>
-          <details><summary>Upgrade the app</summary><div class="details-body"><p>Close VIKI Agent and wait for its process to exit, update your checkout (<code>git pull</code>), then repeat the install and build commands. Back up VIKI Agent’s data first: an older version refuses to open app data that a newer version has updated.</p><a href="manual/docs/getting-started.html">Upgrade details ↗</a></div></details>
+          <details><summary>Upgrade the app</summary><div class="details-body"><p><strong>Installed from a download:</strong> VIKI Agent checks GitHub a minute after it starts and every 6 hours while <strong>Settings › Diagnostics and About › Updates › Check for updates automatically</strong> is on, and when you choose <strong>Check now</strong>. When a newer release is ready, choose <strong>Download</strong>, quit VIKI Agent, then run the new installer. Your settings and chats are kept. The app never downloads or installs an update itself.</p><p><strong>Built from source:</strong> close VIKI Agent and wait for its process to exit, update your checkout (<code>git pull</code>), then repeat the install and build commands. Back up VIKI Agent’s data first: an older version refuses to open app data that a newer version has updated.</p><a href="manual/docs/getting-started.html#update-the-released-app">Upgrade details ↗</a></div></details>
           <details><summary>Close the app or stop work</summary><div class="details-body"><ul class="tight"><li>Closing the last window gives running chats up to 300 seconds to finish.</li><li>Waiting permission requests are denied while no window is open.</li><li>To end work on purpose, use the chat’s <strong>Stop</strong> first.</li><li>On macOS, quit the app browser with <kbd>⌘</kbd><kbd>Q</kbd> if it stays open.</li></ul><p><a href="manual/docs/getting-started.html">Shutdown details</a> · <a href="manual/docs/using-the-app.html#decision">Chats VIKI starts</a></p></div></details>
         </div>
       </section>
