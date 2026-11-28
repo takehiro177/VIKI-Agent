@@ -782,7 +782,13 @@ export function createSite({ root, entry = "docs/index.html", diagrams = docDiag
                 width: 42,
                 height: 42,
               }),
-              h("span", null, "VIKI ", h("b", null, "Agent")),
+              h("img", {
+                className: "wordmark wordmark-small",
+                src: local("docs/assets/wordmark-small.svg"),
+                alt: "VIKI Agent",
+                width: 258,
+                height: 21,
+              }),
             ),
             h("span", { className: "edition" }, "Guide"),
             h(
@@ -811,9 +817,13 @@ export function createSite({ root, entry = "docs/index.html", diagrams = docDiag
               h("button", { type: "submit" }, "Search"),
             ),
             h(
-              "a",
-              { className: "header-link", href: `${sourceLink("docs/index.html")}#library` },
-              "Documentation ↗",
+              "nav",
+              { className: "header-links", "aria-label": "Site" },
+              h(
+                "a",
+                { className: "header-link", href: `${sourceLink("docs/index.html")}#library` },
+                "Documentation ↗",
+              ),
             ),
           ),
           h(
