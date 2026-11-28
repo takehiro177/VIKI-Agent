@@ -67,9 +67,9 @@ test("the real table loads with loadTable and loadTexts", () => {
 
 // -- the two per-platform CPython rows and the Linux CPython texts -------------------------------
 
-test("the two CPython rows are scoped to their own platform", () => {
+test("the two CPython rows are scoped to their own platforms", () => {
   const table = loadTable(TABLE_FILE);
-  assert.deepEqual(table.components["python:cpython@3.14.7"].platforms, ["win32"]);
+  assert.deepEqual(table.components["python:cpython@3.14.7"].platforms, ["win32", "darwin"]);
   assert.deepEqual(table.components["python:cpython@3.14.4"].platforms, ["linux"]);
 });
 

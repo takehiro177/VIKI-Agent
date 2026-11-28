@@ -151,10 +151,40 @@ export function mitText(copyright) {
 // -- loadTable --------------------------------------------------------------------------------
 
 /**
+ * Whether a row's optional `by_platform` is well formed: an object with exactly one entry per
+ * platform in the row's own `platforms` (so a misspelt or missing platform cannot quietly fall
+ * back to the row's own texts), each entry an object holding only `texts` (an array of strings)
+ * and/or `note` (a string).
+ * @param {{platforms?: unknown, by_platform?: unknown}} row
+ * @returns {boolean}
+ */
+function byPlatformOk(row) {
+  const map = row.by_platform;
+  if (!map || typeof map !== "object" || Array.isArray(map) || !Array.isArray(row.platforms)) {
+    return false;
+  }
+  const keys = Object.keys(map);
+  if (keys.length !== row.platforms.length || !row.platforms.every((p) => keys.includes(p))) {
+    return false;
+  }
+  return Object.values(map).every(
+    (entry) =>
+      entry &&
+      typeof entry === "object" &&
+      !Array.isArray(entry) &&
+      Object.keys(entry).every((field) => field === "texts" || field === "note") &&
+      (entry.texts === undefined ||
+        (Array.isArray(entry.texts) && entry.texts.every((id) => typeof id === "string"))) &&
+      (entry.note === undefined || typeof entry.note === "string"),
+  );
+}
+
+/**
  * Reads and shape-checks `desktop/build/licences.json`: `allowed` an array, `texts`
- * an object of `{file, sha256, source}` (each a string) and `components` an object of objects.
- * Does not check `components`' own optional fields (`licence`, `texts`, `mit`, …) — those gaps
- * are `reviewProblems`'s job, reported one by one rather than refusing to load at all.
+ * an object of `{file, sha256, source}` (each a string), `components` an object of objects, and
+ * any row's `by_platform` as `byPlatformOk` describes. Does not check `components`' other
+ * optional fields (`licence`, `texts`, `mit`, …) — those gaps are `reviewProblems`'s job,
+ * reported one by one rather than refusing to load at all.
  * @param {string} file absolute path to the table JSON
  * @returns {{allowed: string[], texts: Record<string, {file: string, sha256: string, source:
  *   string}>, components: Record<string, object>}}
@@ -193,8 +223,33 @@ export function loadTable(file) {
     if (!row || typeof row !== "object" || Array.isArray(row)) {
       throw new Error(`loadTable: ${file}: "components.${key}" must be an object`);
     }
+    if (row.by_platform !== undefined && !byPlatformOk(row)) {
+      throw new Error(
+        `loadTable: ${file}: "components.${key}.by_platform" must give each of the row's ` +
+          "platforms only its texts and note",
+      );
+    }
   }
   return table;
+}
+
+// -- rowFor -----------------------------------------------------------------------------------
+
+/**
+ * A table row as it applies on `platform`: when the row's `by_platform` has an entry for that
+ * platform, that entry's `texts` and `note` (each when set) replace the row's own; every other
+ * field, `platforms` included, is the row's own. Whether the row applies on `platform` at all
+ * is still its `platforms`' call, made by each caller.
+ * @template {object|undefined} T
+ * @param {T} row a `table.components` row, or `undefined` for a component with none
+ * @param {string} platform a `process.platform` value
+ * @returns {T} `row` itself when it has no entry for `platform`
+ */
+export function rowFor(row, platform) {
+  const entry = row?.by_platform?.[platform];
+  if (!entry) return row;
+  const { texts = row.texts, note = row.note } = entry;
+  return { ...row, texts, note };
 }
 
 // -- loadTexts --------------------------------------------------------------------------------
@@ -234,10 +289,11 @@ export function loadTexts(table, buildDir) {
  * Flags gaps between `table` (`desktop/build/licences.json`) and the licence facts
  * `components` actually reports, for `platform` (a `process.platform`/`sys.platform` value).
  * Below, "a matching row" means a `table.components` row at the component's exact key whose own
- * `platforms` (when it has one) includes `platform` — a row scoped to another platform
- * does not review the component at all, which then faces exactly the rules below as if no row
- * existed, same as a component whose key simply has no row. Five independent rules, any of which
- * a single component can fail at once:
+ * `platforms` (when it has one) includes `platform`, taken as it applies on `platform`
+ * (`rowFor`: its `by_platform` entry's `texts` and `note` replace its own) — a row scoped to
+ * another platform does not review the component at all, which then faces exactly the rules
+ * below as if no row existed, same as a component whose key simply has no row. Five independent
+ * rules, any of which a single component can fail at once:
  *   - a matching row's own non-empty string `licence` IS the review and is accepted
  *     verbatim — free text, never SPDX-parsed, never checked against
  *     `table.allowed` — which is how a curated row ships Nuitka's AGPL-with-exception text or an
@@ -263,7 +319,8 @@ export function loadTexts(table, buildDir) {
  *   texts: {title: string, text: string}[], requiresRow?: boolean}[]} components
  * @param {{allowed: string[], texts: Record<string, {file: string, sha256: string, source:
  *   string}>, components: Record<string, {licence?: string, texts?: string[], mit?: string,
- *   note?: string, platforms?: string[], files?: string[], repo_texts?: string[]}>}} table
+ *   note?: string, platforms?: string[], files?: string[], repo_texts?: string[],
+ *   by_platform?: Record<string, {texts?: string[], note?: string}>}>}} table
  * @param {string} platform a `process.platform` value
  * @returns {string[]} sorted, human-readable problem descriptions, one per gap; empty when the
  *   table covers everything `components` reports
@@ -282,7 +339,9 @@ export function reviewProblems(components, table, platform) {
     // check further down, and `notices.mjs`'s extras and file-glob checks, filter rows by
     // `platforms` on their own.)
     const row =
-      matchedRow?.platforms && !matchedRow.platforms.includes(platform) ? undefined : matchedRow;
+      matchedRow?.platforms && !matchedRow.platforms.includes(platform)
+        ? undefined
+        : rowFor(matchedRow, platform);
     // An `extra:` row (no package of its own) can be reviewed through a plain-English
     // `note` instead of a licence id or licence text; every other prefix follows the rules
     // below.

@@ -1,0 +1,36 @@
+{
+  "cpython-3.14.7-windows-x86_64-none": {
+    "name": "cpython",
+    "arch": {
+      "family": "x86_64",
+      "variant": null
+    },
+    "os": "windows",
+    "libc": "none",
+    "major": 3,
+    "minor": 14,
+    "patch": 7,
+    "prerelease": "",
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260807/cpython-3.14.7%2B20260807-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+    "sha256": "840e368318d1630bd8efbd3f7de8fab32cb4bbd735baef733f9034f2676c6a92",
+    "variant": null,
+    "build": "20260807"
+  },
+  "cpython-3.14.7-darwin-aarch64-none": {
+    "name": "cpython",
+    "arch": {
+      "family": "aarch64",
+      "variant": null
+    },
+    "os": "darwin",
+    "libc": "none",
+    "major": 3,
+    "minor": 14,
+    "patch": 7,
+    "prerelease": "",
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260807/cpython-3.14.7%2B20260807-aarch64-apple-darwin-install_only_stripped.tar.gz",
+    "sha256": "532645be202d3df8510ab318ca5faed92060a694c8327144e14fa81f31af0f6d",
+    "variant": null,
+    "build": "20260807"
+  }
+}

@@ -401,3 +401,71 @@ def test_workflow_checkouts_keep_no_credentials() -> None:
             "with:",
             "persist-credentials: false",
         ]
+
+
+# The Windows and macOS builds compile with python-build-standalone 20260807's CPython 3.14.7,
+# the build `desktop/build/licences.json`'s `python:cpython@3.14.7` row reviews for both. uv
+# installs it as a managed Python from this pinned download list, in uv's own format, instead of
+# uv's built-in list (which resolves 3.14 to 3.14.4).
+PYTHON_LIST = REPO / "scripts" / "release-python.json"
+CPYTHON_STEP = [
+    "      - name: Install CPython 3.14.7 from the pinned download list,"
+    " checked against its SHA-256",
+    "        run: |",
+    "          uv python install 3.14.7 --python-downloads-json-url scripts/release-python.json",
+    '          echo "UV_PYTHON=3.14.7" >> "$GITHUB_ENV"',
+    '          echo "UV_PYTHON_PREFERENCE=only-managed" >> "$GITHUB_ENV"',
+    '          echo "UV_PYTHON_DOWNLOADS=never" >> "$GITHUB_ENV"',
+]
+
+
+def pinned_build(os_name: str, arch: str, triple: str, sha256: str) -> dict[str, object]:
+    return {
+        "name": "cpython",
+        "arch": {"family": arch, "variant": None},
+        "os": os_name,
+        "libc": "none",
+        "major": 3,
+        "minor": 14,
+        "patch": 7,
+        "prerelease": "",
+        "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260807/"
+        f"cpython-3.14.7%2B20260807-{triple}-install_only_stripped.tar.gz",
+        "sha256": sha256,
+        "variant": None,
+        "build": "20260807",
+    }
+
+
+def test_release_python_list_pins_exactly_the_two_reviewed_builds() -> None:
+    assert json.loads(PYTHON_LIST.read_text(encoding="utf-8")) == {
+        "cpython-3.14.7-windows-x86_64-none": pinned_build(
+            "windows",
+            "x86_64",
+            "x86_64-pc-windows-msvc",
+            "840e368318d1630bd8efbd3f7de8fab32cb4bbd735baef733f9034f2676c6a92",
+        ),
+        "cpython-3.14.7-darwin-aarch64-none": pinned_build(
+            "darwin",
+            "aarch64",
+            "aarch64-apple-darwin",
+            "532645be202d3df8510ab318ca5faed92060a694c8327144e14fa81f31af0f6d",
+        ),
+    }
+
+
+@pytest.mark.parametrize("name", ["windows", "macos"])
+def test_workflow_builds_with_cpython_from_the_pinned_list(name: str) -> None:
+    lines = job(name)
+    assert block(lines, CPYTHON_STEP[0]) == CPYTHON_STEP
+    sync = "      - run: uv sync --locked --no-dev --no-editable --group build"
+    assert lines.index(CPYTHON_STEP[0]) < lines.index(sync)
+
+
+def test_workflow_never_lets_uv_fetch_or_pick_another_python() -> None:
+    lines = workflow()
+    assert [line for line in lines if "uv python" in line] == [CPYTHON_STEP[2]] * 2
+    # Only the two pinned-CPython steps name uv's interpreter settings.
+    assert [line for line in lines if "UV_PYTHON" in line] == [
+        line for line in CPYTHON_STEP if "UV_PYTHON" in line
+    ] * 2

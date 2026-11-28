@@ -111,9 +111,17 @@
       "note": "Nuitka 4.2.2; its PyPI metadata reads 'License: GNU Affero General Public License v3'. Its LICENSE-RUNTIME.txt is the Nuitka Runtime Library Exception 1.0, which lets a compiled program ship under its own terms; both ship from Nuitka's own files, alongside NOTICE.txt. PyPI: https://pypi.org/project/Nuitka/4.2.2/"
     },
     "python:cpython@3.14.7": {
-      "platforms": ["win32"],
-      "texts": ["cpython-3.14.7-incorporated"],
-      "note": "CPython 3.14.7 (PSF-2.0, uv-managed build 20260807). LICENSE.txt covers PSF history, bzip2, zstd, Tcl/Tk and the Microsoft Distributable Code conditions (redistributors must bind end users to terms protecting it). Doc/license.rst's 'Licenses and Acknowledgements for Incorporated Software' (OpenSSL, expat, libffi, zlib, libmpdec, mimalloc and others) is not installed, so it is supplied above. SQLite (public domain) and xz (0BSD) need no notice. Source: https://raw.githubusercontent.com/python/cpython/v3.14.7/Doc/license.rst"
+      "platforms": ["win32", "darwin"],
+      "by_platform": {
+        "win32": {
+          "texts": ["cpython-3.14.7-incorporated"],
+          "note": "CPython 3.14.7 (PSF-2.0, uv-managed build 20260807). LICENSE.txt covers PSF history, bzip2, zstd, Tcl/Tk and the Microsoft Distributable Code conditions (redistributors must bind end users to terms protecting it). Doc/license.rst's 'Licenses and Acknowledgements for Incorporated Software' (OpenSSL, expat, libffi, zlib, libmpdec, mimalloc and others) is not installed, so it is supplied above. SQLite (public domain) and xz (0BSD) need no notice. Source: https://raw.githubusercontent.com/python/cpython/v3.14.7/Doc/license.rst"
+        },
+        "darwin": {
+          "texts": ["cpython-3.14.7-incorporated", "bzip2-1.0.8", "libuuid-1.0.3", "zstd-1.5.7"],
+          "note": "CPython 3.14.7 (PSF-2.0), python-build-standalone 20260807 (aarch64-apple-darwin, install_only_stripped), the build the release workflow installs on macOS. Its LICENSE.txt, at lib/python3.14/LICENSE.txt, is the plain CPython licence. libpython3.14.dylib statically links OpenSSL 3.5.7, expat 2.8.2, libffi 3.4.6 and mpdecimal 4.0.0, which Doc/license.rst's 'Licenses and Acknowledgements for Incorporated Software' covers (supplied above), and bzip2 1.0.8, libuuid 1.0.3 and zstd 1.5.7, whose texts are supplied above (bzip2's and libuuid's equal the build's own; zstd's from upstream, since the build ships none). SQLite 3.53.1 (public domain) and xz 5.8.3 (0BSD) need no notice. zlib, libedit and ncurses are macOS's own /usr/lib libraries, linked but not shipped. Tcl/Tk 9.0.4 links only into the _tkinter module, which the compiled server does not include. Source: https://github.com/astral-sh/python-build-standalone/releases/tag/20260807"
+        }
+      }
     },
     "python:cpython@3.14.4": {
       "platforms": ["linux"],

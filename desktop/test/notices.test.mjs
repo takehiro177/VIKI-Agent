@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
-import { mitText } from "../build/licences.mjs";
+import { loadTable, loadTexts, mitText } from "../build/licences.mjs";
 import { buildNotices, SECTION_TITLES } from "../build/notices.mjs";
+
+const DESKTOP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const REPO_ROOT = dirname(DESKTOP_ROOT);
+const BUILD_DIR = join(DESKTOP_ROOT, "build");
 
 // -- fixture helpers ------------------------------------------------------------------------
 
@@ -409,4 +414,126 @@ test("buildNotices reports a problem when the inventory's platform differs from 
   assert.deepEqual(buildNotices(fixture).problems, [
     "inventory platform darwin differs from build platform linux",
   ]);
+});
+
+// -- buildNotices: a row's per-platform texts and note ----------------------------------------
+
+test("buildNotices renders a row's by_platform texts and note on that platform, and the row's own elsewhere", (t) => {
+  const rendered = {};
+  for (const platform of ["linux", "darwin"]) {
+    const fixture = baseFixture(makeRepo(t));
+    fixture.platform = platform;
+    fixture.inventory.platform = platform;
+    fixture.table.texts = {
+      a: { file: "a.txt", sha256: "x", source: "https://e" },
+      b: { file: "b.txt", sha256: "x", source: "https://e" },
+    };
+    fixture.texts = new Map([
+      ["a", "Text A"],
+      ["b", "Text B"],
+    ]);
+    fixture.table.components["python:cpython@3.14.7"] = {
+      licence: "PSF-2.0",
+      platforms: ["linux", "darwin"],
+      texts: ["a"],
+      note: "Linux build.",
+      by_platform: { darwin: { texts: ["b"], note: "macOS build." } },
+    };
+    const { text, problems } = buildNotices(fixture);
+    assert.deepEqual(problems, [], platform);
+    rendered[platform] = text;
+  }
+  const cpython = (note, id) =>
+    `==== cpython 3.14.7 - PSF-2.0\n${note}\nLicence text: CPython LICENSE.txt\nLicence text: ${id}\n`;
+  assert.ok(rendered.linux.includes(cpython("Linux build.", "a")));
+  assert.ok(rendered.linux.includes("---- a ----\nText A\n"));
+  assert.ok(!rendered.linux.includes("Text B"));
+  assert.ok(rendered.darwin.includes(cpython("macOS build.", "b")));
+  assert.ok(rendered.darwin.includes("---- b ----\nText B\n"));
+  assert.ok(!rendered.darwin.includes("Text A") && !rendered.darwin.includes("Linux build."));
+});
+
+// -- buildNotices over the real table: CPython 3.14.7 on win32 and darwin ---------------------
+
+/** The win32-only `python:cpython@3.14.7` row as it stood before darwin joined it. */
+const WIN32_CPYTHON_ROW_BEFORE_DARWIN = {
+  platforms: ["win32"],
+  texts: ["cpython-3.14.7-incorporated"],
+  note: "CPython 3.14.7 (PSF-2.0, uv-managed build 20260807). LICENSE.txt covers PSF history, bzip2, zstd, Tcl/Tk and the Microsoft Distributable Code conditions (redistributors must bind end users to terms protecting it). Doc/license.rst's 'Licenses and Acknowledgements for Incorporated Software' (OpenSSL, expat, libffi, zlib, libmpdec, mimalloc and others) is not installed, so it is supplied above. SQLite (public domain) and xz (0BSD) need no notice. Source: https://raw.githubusercontent.com/python/cpython/v3.14.7/Doc/license.rst",
+};
+
+/** `buildNotices` input over the real table and texts, for a CPython 3.14.7 build on `platform`
+ * with no server distributions or npm packages; the rows' `repo_texts` are copied in from the
+ * real repo. */
+function realTableFixture(repo, platform) {
+  writeEmptyLockfiles(repo);
+  const table = loadTable(join(BUILD_DIR, "licences.json"));
+  for (const path of Object.values(table.components).flatMap((row) => row.repo_texts ?? [])) {
+    mkdirSync(dirname(join(repo, path)), { recursive: true });
+    copyFileSync(join(REPO_ROOT, path), join(repo, path));
+  }
+  return {
+    repo,
+    inventory: {
+      schema: 1,
+      platform,
+      python: { version: "3.14.7", licence: "CPython LICENSE.txt body" },
+      nuitka: { version: "4.2.2", files: { "LICENSE-RUNTIME.txt": "Nuitka runtime exception" } },
+      distributions: [],
+      unattributed: [],
+    },
+    table,
+    texts: loadTexts(table, BUILD_DIR),
+    platform,
+    version: "1.0.0",
+    homepage: "https://example.test",
+  };
+}
+
+test("with the real table, Windows notices are byte-identical to the win32 row's before darwin joined it", (t) => {
+  const now = realTableFixture(makeRepo(t), "win32");
+  const before = realTableFixture(makeRepo(t), "win32");
+  before.table.components["python:cpython@3.14.7"] = WIN32_CPYTHON_ROW_BEFORE_DARWIN;
+  const nowNotices = buildNotices(now);
+  const beforeNotices = buildNotices(before);
+  assert.equal(nowNotices.text, beforeNotices.text);
+  assert.deepEqual(nowNotices.problems, beforeNotices.problems);
+  assert.ok(
+    nowNotices.text.includes(
+      `==== cpython 3.14.7 - PSF-2.0\n${WIN32_CPYTHON_ROW_BEFORE_DARWIN.note}\nLicence text: CPython LICENSE.txt\nLicence text: cpython-3.14.7-incorporated\n`,
+    ),
+  );
+  assert.deepEqual(
+    nowNotices.problems.filter((problem) => problem.startsWith("python:")),
+    [],
+  );
+});
+
+test("with the real table, darwin notices carry the macOS CPython note and the texts of what libpython statically links", (t) => {
+  const fixture = realTableFixture(makeRepo(t), "darwin");
+  const { text, problems } = buildNotices(fixture);
+  assert.deepEqual(
+    problems.filter((problem) => problem.startsWith("python:")),
+    [],
+  );
+  const darwin = fixture.table.components["python:cpython@3.14.7"].by_platform.darwin;
+  assert.deepEqual(darwin.texts, [
+    "cpython-3.14.7-incorporated",
+    "bzip2-1.0.8",
+    "libuuid-1.0.3",
+    "zstd-1.5.7",
+  ]);
+  const lines = darwin.texts.map((id) => `Licence text: ${id}`).join("\n");
+  assert.ok(
+    text.includes(
+      `==== cpython 3.14.7 - PSF-2.0\n${darwin.note}\nLicence text: CPython LICENSE.txt\n${lines}\n`,
+    ),
+  );
+  for (const id of darwin.texts) {
+    assert.ok(text.includes(`---- ${id} ----\n${fixture.texts.get(id)}`), id);
+  }
+  // macOS's own libedit and ncurses are linked, not shipped; the Windows note is not macOS's.
+  assert.ok(!text.includes(fixture.texts.get("libedit-20240808-3.1")));
+  assert.ok(!text.includes(fixture.texts.get("ncurses-6.5")));
+  assert.ok(!text.includes(WIN32_CPYTHON_ROW_BEFORE_DARWIN.note));
 });
