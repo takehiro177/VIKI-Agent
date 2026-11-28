@@ -43,6 +43,10 @@ export interface Actions {
   openCode(workspaceId: string, path: string, line: number | null): void;
   openBotMemory(workspaceId: string, path: string): void;
   openTranscript(sessionId: string): void;
+  /** True proves browser socket handoff only, same as `send`: never durable or native
+   * acceptance. Reads the window's `ui` nonce from `location.search` itself (`MagpiePanel`'s own
+   * pattern) and sends nothing for a missing or malformed one. */
+  checkForUpdates(): boolean;
 }
 export interface Viki {
   store: AppStore;
@@ -520,6 +524,10 @@ export function createViki(options: VikiOptions): Viki {
     },
     openTranscript(session_id) {
       client.send({ type: "open.transcript", session_id });
+    },
+    checkForUpdates() {
+      const ui = new URLSearchParams(window.location.search).get("ui");
+      return ui !== null && /^[0-9a-f]{32}$/.test(ui) && client.send({ type: "updates.check", ui });
     },
   };
   return { store, client, actions };

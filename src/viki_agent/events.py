@@ -610,8 +610,8 @@ def history_item(event: Event) -> dict[str, Any]:
 
 # --- client → server ------------------------------------------------------------------------------
 
-# Every client message carries `type` and (except auth and open.*) `session_id`. Values are the
-# required data keys; optional keys are listed after "?".
+# Every client message carries `type` and (except auth, open.* and updates.check) `session_id`.
+# Values are the required data keys; optional keys are listed after "?".
 CLIENT_MESSAGES: dict[str, tuple[str, ...]] = {
     "auth": ("token", "v"),
     "session.open": (
@@ -653,4 +653,5 @@ CLIENT_MESSAGES: dict[str, tuple[str, ...]] = {
     "open.code": ("workspace_id", "path", "?line"),
     "open.bot_memory": ("workspace_id", "path"),
     "open.transcript": ("session_id",),
+    "updates.check": ("ui",),
 }

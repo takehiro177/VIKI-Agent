@@ -38,6 +38,7 @@ import functools
 import hashlib
 import json
 import logging
+import re
 import secrets
 import sys
 import unicodedata
@@ -251,7 +252,12 @@ from viki_agent.voice.voice_pack_service import VoicePack
 from viki_agent.voice.voice_service import VoiceService
 from viki_agent.voice.voicebox import Voicebox
 from viki_agent.window import Spawn, WindowManager
-from viki_agent.window_host import WindowHost
+from viki_agent.window_host import (
+    UPDATE_EVERY_S,
+    UPDATE_FIRST_S,
+    WindowHost,
+    run_update_checks,
+)
 from viki_agent.workspaces import WorkspaceError, WorkspaceService
 
 # The four data services `data_routes` needs, in its own argument order.
@@ -403,6 +409,8 @@ def _valid_field(name: str, value: Any) -> bool:
         return type(value) is int and 1 <= value <= 9_999_999
     if name in {"allow", "existing_only"}:
         return isinstance(value, bool)
+    if name == "ui":  # a window's nonce, as `window_host.WindowHost.spawn` records it
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{32}", value) is not None
     if name == "expected_model":
         if value is None:
             return True
@@ -739,6 +747,7 @@ def create_app(
     decision_model: ModelPort | None = None,
     decision_clock: Clock | None = None,
     window_host: WindowHost | None = None,
+    update_check_s: tuple[float, float] = (UPDATE_FIRST_S, UPDATE_EVERY_S),
 ) -> Starlette:
     """The app. The services for settings, workspaces and bootstrap, readiness, checks,
     diagnostics and data are optional and keyword-only, and each registers its route list only
@@ -752,7 +761,8 @@ def create_app(
     and runs on `decision_clock`, by default the system clock: not `routine_clock`, which the
     scheduler waits on. The agent surface and the window's Apply routes register together with
     `agent_cli` and `settings` (ADR-086); every ordinary chat's spawn then carries a grant into
-    that surface (`manager.bind_agent_cli`)."""
+    that surface (`manager.bind_agent_cli`). With `window_host` and `settings`, the lifespan
+    runs `run_update_checks` on `update_check_s` (first, every) seconds."""
     if config.vault is None:
         # The launcher replaces `vault` with the active workspace's working directory before it
         # gets here, and every scope, transcript folder and rails read is derived from it. No
@@ -966,11 +976,15 @@ def create_app(
             # refuses on purpose, so only a persisted registration is re-canonicalised here.
             if active.workspace.persistent:
                 available = workspaces.current_root(active.workspace) is not None
-        return readiness.capabilities(
+        caps = readiness.capabilities(
             active,
             storage_readiness(manager.app_state.store, config.data_dir),
             root_available=available,
         )
+        if window_host is None:
+            return caps
+        # The desktop app checks for updates, so only a hosted window offers the check.
+        return dataclasses.replace(caps, features={**caps.features, "updates": True})
 
     if settings is not None and workspaces is not None and readiness is not None:
         assert model_connections is not None
@@ -1975,6 +1989,9 @@ def create_app(
                 elif type_ == "open.url":
                     if _valid_open_url(msg["url"]):
                         await asyncio.to_thread(opener, msg["url"])
+                elif type_ == "updates.check":
+                    if window_host is not None:
+                        window_host.ask_update_check(msg["ui"], manual=True)
                 elif type_ == "open.vault":
                     target = await asyncio.to_thread(_vault_target, vault, msg["path"])
                     if target is not None:
@@ -2222,6 +2239,16 @@ def create_app(
         except Exception:  # a bad registry file must not stop the app from starting
             logger.warning("vault session poll failed")
         poll_task = asyncio.create_task(_poll_vault_loop(hub, manager, vault_poll_s))
+        update_task: asyncio.Task[None] | None = None
+        if window_host is not None and settings is not None:
+            update_task = asyncio.create_task(
+                run_update_checks(
+                    window_host,
+                    functools.partial(settings.flag, "updates.check"),
+                    first_s=update_check_s[0],
+                    every_s=update_check_s[1],
+                )
+            )
 
         async def collect_assets() -> None:
             services: dict[str, AssetService] = {}
@@ -2305,10 +2332,15 @@ def create_app(
                     await preview_windows.close_all()
                 poll_task.cancel()
                 asset_collection_task.cancel()
+                if update_task is not None:
+                    update_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await poll_task
                 with contextlib.suppress(asyncio.CancelledError):
                     await asset_collection_task
+                if update_task is not None:
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await update_task
                 await scheduler.close()
                 if auto_learning is not None:
                     await auto_learning.close()

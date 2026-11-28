@@ -12,6 +12,10 @@ import * as dist from "../build/dist.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const DESKTOP_ROOT = join(here, "..");
 const REPO_ROOT = join(DESKTOP_ROOT, "..");
+// electron-builder's file-extension macro, spelled out so no string holds a template placeholder.
+const EXT = "$" + "{ext}";
+// Its architecture macro: a deb names x64 `amd64` and arm64 `arm64`.
+const ARCH = "$" + "{arch}";
 const HANG_GUARD_MS = 5000;
 
 const pkg = JSON.parse(readFileSync(join(DESKTOP_ROOT, "package.json"), "utf8"));
@@ -25,36 +29,11 @@ function pyprojectVersion() {
   return match[1];
 }
 
-/**
- * GO-readiness problems in a candidate package.json: a configured publish feed is a problem
- * when code signing is not forced, and a problem again when a ".invalid" placeholder is still
- * named in `homepage`, `author` or anywhere in `build`. Nothing is a problem while
- * `build.publish` stays falsy (`null` until ADR-055's GO switch).
- * @param {Record<string, any>} candidate
- * @returns {string[]}
- */
-function goProblems(candidate) {
-  const build = candidate.build ?? {};
-  if (!build.publish) return [];
-  const problems = [];
-  if (build.forceCodeSigning !== true) {
-    problems.push("forceCodeSigning is not true while a publish feed is configured");
-  }
-  const invalid =
-    String(candidate.homepage ?? "").includes(".invalid") ||
-    String(candidate.author ?? "").includes(".invalid") ||
-    JSON.stringify(build).includes(".invalid");
-  if (invalid) {
-    problems.push("homepage, author or build still names a .invalid placeholder");
-  }
-  return problems;
-}
-
 // -- top level --------------------------------------------------------------------------------
 
 test("package.json names the publisher and the dist script", () => {
   assert.equal(pkg.author, "VIKI Agent");
-  assert.equal(pkg.homepage, "https://viki-agent.invalid");
+  assert.equal(pkg.homepage, "https://github.com/" + "take" + "hiro177" + "/VIKI-Agent");
   assert.equal(pkg.scripts.dist, "node build/dist.mjs");
 });
 
@@ -96,7 +75,6 @@ test("build pins the app id, output layout and bundled files", () => {
   ]);
   assert.equal(pkg.build.asar, true);
   assert.equal(pkg.build.npmRebuild, false);
-  assert.equal(pkg.build.publish, null);
 });
 
 test("build carries the compiled server, the brand mark and the third-party notices as extra resources", () => {
@@ -133,6 +111,7 @@ test("build targets Windows with a one-click, per-user NSIS installer", () => {
     oneClick: true,
     perMachine: false,
     deleteAppDataOnUninstall: false,
+    artifactName: `viki-agent-windows-x64-setup.${EXT}`,
   });
 });
 
@@ -143,6 +122,7 @@ test("build targets macOS with a dmg and zip, hardened and entitled", () => {
       { target: "zip", arch: ["arm64"] },
     ],
     icon: "../frontend/public/brand/mark.png",
+    artifactName: `viki-agent-macos-arm64.${EXT}`,
     category: "public.app-category.productivity",
     hardenedRuntime: true,
     entitlements: "build/entitlements.mac.plist",
@@ -170,7 +150,7 @@ test("build targets Linux with a deb only, named and described", () => {
     icon: "../frontend/public/brand/mark.png",
     executableName: "viki-agent",
     category: "Office",
-    maintainer: "VIKI Agent <support@viki-agent.invalid>",
+    maintainer: "VIKI Agent <50972410+" + "take" + "hiro177" + "@users.noreply.github.com>",
     description: "A local chat for your notes vault that runs your own Claude Code.",
   });
   assert.equal(pkg.build.appImage, undefined, "there is no AppImage target");
@@ -191,6 +171,7 @@ test("the deb depends on the programs the app runs on Linux, besides electron-bu
   const electronBuilderDefaults = FpmTarget.prototype.getDefaultDepends("deb");
   assert.ok(electronBuilderDefaults.includes("libgtk-3-0"), "the builder's deb defaults were read");
   assert.deepEqual(pkg.build.deb, {
+    artifactName: `viki-agent-linux-${ARCH}.${EXT}`,
     depends: [
       ...electronBuilderDefaults,
       "libsecret-tools", // secret-tool: keeps the sealing key in the desktop keyring
@@ -289,31 +270,16 @@ test("dist refuses a foreign target before looking for the compiled backend", ()
   }
 });
 
-// -- goProblems --------------------------------------------------------------------------------
+// -- publish feed and placeholders ---------------------------------------------------------
 
-test("goProblems finds nothing wrong while publish stays null", () => {
-  assert.deepEqual(goProblems(pkg), []);
-});
-
-test("goProblems flags an unsigned, still-placeholder feed", () => {
-  const feedPkg = { ...pkg, build: { ...pkg.build, publish: { provider: "github" } } };
-  assert.deepEqual(goProblems(feedPkg), [
-    "forceCodeSigning is not true while a publish feed is configured",
-    "homepage, author or build still names a .invalid placeholder",
-  ]);
-});
-
-test("goProblems clears once code signing is forced and the identity is real", () => {
-  const readyPkg = {
-    ...pkg,
-    author: "Acme",
-    homepage: "https://viki-agent.example",
-    build: {
-      ...pkg.build,
-      publish: { provider: "github" },
-      forceCodeSigning: true,
-      linux: { ...pkg.build.linux, maintainer: "Acme <support@example.com>" },
-    },
-  };
-  assert.deepEqual(goProblems(readyPkg), []);
+test("publish is the public draft-only GitHub feed and no .invalid remains in homepage/author/build", () => {
+  assert.deepEqual(pkg.build.publish, {
+    provider: "github",
+    owner: "take" + "hiro177",
+    repo: "VIKI-Agent",
+    releaseType: "draft",
+  });
+  assert.doesNotMatch(pkg.homepage, /\.invalid/);
+  assert.doesNotMatch(String(pkg.author), /\.invalid/);
+  assert.doesNotMatch(JSON.stringify(pkg.build), /\.invalid/);
 });

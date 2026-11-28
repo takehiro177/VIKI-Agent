@@ -365,8 +365,9 @@ route or control only once it is implemented and tested. The read and wire contr
   build-only devDependency, run only by `desktop/build/dist.mjs` to build the installers
   (ADR-055); that file's `overrides` give it minimatch 11.0.1, the first release fixing the
   advisory open against minimatch 7 to 11.0.0. `electron-updater` 6.8.10, pinned exactly in
-  `desktop/package.json`, imported only by `desktop/updates.mjs`; it runs no update check
-  without a configured feed file, and `build.publish` stays null until ADR-055's GO switch.
+  `desktop/package.json`, imported only by `desktop/updates.mjs`, which checks for a newer
+  release with `autoDownload` off and never downloads or installs one; `build.publish` names
+  the public GitHub release.
 - **CLI flags:** only those in `build_argv`, plus `login_argv`. No `--append-system-prompt`,
   `--allowedTools`, `--disallowedTools`, `--strict-mcp-config`, `--max-turns`, `--bare`,
   `--setting-sources`, `--system-prompt`, `--agent`, `--agents`, and no permission-bypass
@@ -381,8 +382,9 @@ route or control only once it is implemented and tested. The read and wire contr
 - **Product scope:** VIKI adds no telemetry or tray; Magpie's external services follow its
   bundled scope above. Electron is only the desktop app in `desktop/`
   (ADR-053); its installers are built only as `desktop/`'s electron-builder targets, and an update
-  check runs only through `desktop/updates.mjs`, gated on a configured feed file that no build
-  ships until GO (ADR-055). No automatic respawn of `claude` and no automatic turn retries (the
+  check runs only through `desktop/updates.mjs`, asked by the server while `updates.check` is on
+  or on **Check now**, which shows a notice and opens the releases page; self-install waits for
+  signed builds per OS (ADR-055). No automatic respawn of `claude` and no automatic turn retries (the
   browser WebSocket's reconnect backoff is the one exception). No driver registry or plugin
   loader. A control that is not implemented must not claim a completed operation. Voice is
   optional.
@@ -412,7 +414,10 @@ route or control only once it is implemented and tested. The read and wire contr
   Words that identify you beyond your account name, such as a family name or an employer, go in
   the git-ignored `.private-words.json` (`scripts/scrub_fixture.py` `PRIVATE_FILE`), never in a
   repo file.
-- There is no GitHub CI (ADR-056). A pull request's evidence is the full check on Windows plus
+- There is no GitHub CI (ADR-056): GitHub runs no checks on a pull request. Its one workflow,
+  `.github/workflows/release.yml`, builds the installers for a pushed `v*` tag into a draft
+  release, or, run by hand, into workflow artifacts with no release. A pull request's evidence is
+  the full check on Windows plus
   `uv run --directory <repo> python scripts/linux_check.py`, which runs the Linux suites in
   Docker on the working tree and, for a suite where a test still fails when rerun alone, on its
   merge base with `origin/main`; only failures main does not share count (exit 1; 2 when it cannot

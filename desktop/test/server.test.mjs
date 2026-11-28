@@ -205,6 +205,35 @@ test("parseServerLine reads open and close, and rejects everything else", () => 
   assert.equal(parseServerLine('{"type":"wat","id":1}'), null);
 });
 
+test("parseServerLine reads update_check and rejects anything but its exact shape", () => {
+  assert.deepEqual(parseServerLine('{"type":"update_check","id":3,"manual":true}'), {
+    type: "update_check",
+    id: 3,
+    manual: true,
+  });
+  assert.deepEqual(parseServerLine('{"type":"update_check","id":3,"manual":false}'), {
+    type: "update_check",
+    id: 3,
+    manual: false,
+  });
+  assert.equal(
+    parseServerLine('{"type":"update_check","id":3,"manual":true,"extra":1}'),
+    null,
+    "an extra key must be rejected",
+  );
+  assert.equal(
+    parseServerLine('{"type":"update_check","id":3,"manual":"true"}'),
+    null,
+    "manual must be a boolean, not a string",
+  );
+  assert.equal(parseServerLine('{"type":"update_check","id":3}'), null, "manual is required");
+  assert.equal(
+    parseServerLine('{"type":"update_check","id":0,"manual":true}'),
+    null,
+    "id must be >= 1",
+  );
+});
+
 test("the spawned child's argv is the command plus --window-host=<pid>, with no token", async (t) => {
   const { closes, onOpen, onClose, onExit, ...args } = {
     ...fakeServerArgs(t, "talk"),
@@ -277,6 +306,31 @@ test("talk: window and Magpie commands write JSON lines, and stop() ends it clea
   server.stop();
   await waitFor(() => exits.length > 0);
   assert.deepEqual(exits, [{ code: 0, signal: null }]);
+});
+
+test("a server line of type update_check reaches onUpdateCheck with its id and manual flag", async (t) => {
+  const events = [];
+  const { onOpen, onClose, onExit } = collectors();
+  const script =
+    'process.stdout.write(JSON.stringify({type:"update_check",id:7,manual:true})+"\\n");' +
+    'process.stdout.write(JSON.stringify({type:"update_check",id:9,manual:false})+"\\n");' +
+    "process.stdin.on('end', () => process.exit(0));";
+  const server = startServer({
+    // "--" keeps node from parsing the appended --window-host=<pid> as its own CLI flag.
+    command: [process.execPath, "-e", script, "--"],
+    cwd: HERE,
+    env: process.env,
+    onOpen,
+    onClose,
+    onExit,
+    onUpdateCheck: (id, manual) => events.push({ id, manual }),
+  });
+  t.after(() => server.stop());
+  await waitFor(() => events.length === 2);
+  assert.deepEqual(events, [
+    { id: 7, manual: true },
+    { id: 9, manual: false },
+  ]);
 });
 
 test("Magpie show and close reach only their dedicated callbacks", async (t) => {

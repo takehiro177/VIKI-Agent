@@ -46,3 +46,24 @@ No bot or signing service confirms it, so keep your acceptance comment, because 
 The Project Owner does not need to sign an agreement with themselves for their own work.
 Acceptance does not guarantee merge. GitHub requests the Project Owner's review on every pull
 request through `.github/CODEOWNERS`, and a pull request merges only after that approval.
+
+## Release a version (maintainers)
+
+1. Bump the version in the three version fields, keeping them identical: `pyproject.toml`,
+   `desktop/package.json` and `frontend/package.json`.
+2. Lock the roots: `uv lock`, then `npm install --package-lock-only` in `frontend/` and in
+   `desktop/`.
+3. Add the release's entries to `frontend/src/help/whats-new.md`.
+4. Open a pull request with these changes and merge it once a maintainer approves it.
+5. Tag the merge commit and push the tag: `git tag v<V> <merge commit>`, then
+   `git push <remote> v<V>`.
+6. Pushing the tag starts `.github/workflows/release.yml`, which builds the three installers and
+   stages their checksums, update feeds and SBOMs into a draft release (its `release` job's
+   `gh release create`). Watch it with `gh run watch`.
+7. Once it finishes, check the draft's assets: `gh release view v<V> --json assets`.
+8. Write the release notes on the draft release, then publish it: `gh release edit v<V>
+   --draft=false`.
+
+To check the workflow without publishing anything, run it by hand instead of pushing a tag:
+`gh workflow run release.yml --ref main`. This builds and stages the same assets as a real
+release but creates none: only a tag push runs the workflow's `release` job.

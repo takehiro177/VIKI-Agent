@@ -303,6 +303,29 @@ For team workflows, see
 
 ![VIKI Agent workflow: consider context, decide within grants, execute through Claude Code, and review evidence for reuse](docs/assets/brand-workflow.svg)
 
+## Download
+
+| Platform | Download |
+|---|---|
+| Windows 11 x64 | [viki-agent-windows-x64-setup.exe](https://github.com/takehiro177/VIKI-Agent/releases/latest/download/viki-agent-windows-x64-setup.exe) |
+| macOS, Apple silicon | [viki-agent-macos-arm64.dmg](https://github.com/takehiro177/VIKI-Agent/releases/latest/download/viki-agent-macos-arm64.dmg) |
+| Linux x64 (.deb), glibc 2.28+ | [viki-agent-linux-amd64.deb](https://github.com/takehiro177/VIKI-Agent/releases/latest/download/viki-agent-linux-amd64.deb) |
+
+- **Windows:** run the downloaded setup. It adds Start menu and desktop shortcuts.
+- **macOS:** drag VIKI Agent to Applications.
+- **Linux:** `sudo apt install ./viki-agent-linux-amd64.deb`, then open VIKI Agent from the app
+  menu.
+- **Linux on aarch64:** no installer yet; [build it from source](#set-up-viki-agent).
+
+These builds are unsigned. See
+[Known issues](docs/known-issues.md#viki-agents-own-window-and-installers) for the steps Windows
+and macOS ask for on first open.
+
+**Updates:** VIKI Agent shows a notice when a newer release is ready. Choose **Download**, quit
+VIKI Agent, then run the new installer.
+
+**Support:** open an issue on the [Issues page](https://github.com/takehiro177/VIKI-Agent/issues).
+
 ## Set up VIKI Agent
 
 Clone the repository and run these commands from its root:

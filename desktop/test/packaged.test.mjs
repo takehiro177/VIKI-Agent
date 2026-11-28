@@ -146,14 +146,22 @@ packagedTest("node_modules/electron-updater/package.json is inside the asar", (p
   assert.ok(joined.includes("node_modules/electron-updater/package.json"));
 });
 
-packagedTest("no resources/app folder and no resources/app-update.yml ship", (paths) => {
-  assert.equal(existsSync(join(paths.resources, "app")), false, "resources/app must not exist");
-  assert.equal(
-    existsSync(join(paths.resources, "app-update.yml")),
-    false,
-    "resources/app-update.yml must not exist",
-  );
-});
+packagedTest(
+  "no resources/app folder ships, and app-update.yml names the public release",
+  (paths) => {
+    assert.equal(existsSync(join(paths.resources, "app")), false, "resources/app must not exist");
+    // The update check's feed (desktop/updates.mjs): build.publish, written by electron-builder.
+    const feed = readFileSync(join(paths.resources, "app-update.yml"), "utf8").split(/\r?\n/);
+    for (const line of [
+      "provider: github",
+      `owner: ${PKG.build.publish.owner}`,
+      "repo: VIKI-Agent",
+      "releaseType: draft",
+    ]) {
+      assert.ok(feed.includes(line), `app-update.yml must hold "${line}"`);
+    }
+  },
+);
 
 // -- backend binary -------------------------------------------------------------------
 
