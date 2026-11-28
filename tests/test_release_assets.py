@@ -401,3 +401,62 @@ def test_workflow_checkouts_keep_no_credentials() -> None:
             "with:",
             "persist-credentials: false",
         ]
+
+
+# The Windows and macOS builds compile with python-build-standalone 20260807's CPython 3.14.7,
+# the build `desktop/build/licences.json`'s `python:cpython@3.14.7` row reviews for both.
+PBS = "https://github.com/astral-sh/python-build-standalone/releases/download/20260807"
+CPYTHON_STEP = (
+    "      - name: Install CPython 3.14.7 (python-build-standalone 20260807),"
+    " checked against its release's SHA-256"
+)
+CPYTHON_STEPS = {
+    "windows": [
+        CPYTHON_STEP,
+        "        shell: pwsh",
+        "        run: |",
+        "          $archive = Join-Path $env:RUNNER_TEMP 'cpython.tar.gz'",
+        "          $dir = Join-Path $env:RUNNER_TEMP 'cpython'",
+        f"          Invoke-WebRequest -OutFile $archive -Uri '{PBS}/cpython-3.14.7%2B20260807"
+        "-x86_64-pc-windows-msvc-install_only_stripped.tar.gz'",
+        "          if ((Get-FileHash -Algorithm SHA256 $archive).Hash -ne"
+        " '840e368318d1630bd8efbd3f7de8fab32cb4bbd735baef733f9034f2676c6a92')"
+        " { throw 'CPython checksum mismatch' }",
+        "          New-Item -ItemType Directory -Path $dir | Out-Null",
+        '          & "$env:SystemRoot\\System32\\tar.exe" -xzf $archive -C $dir',
+        "          if ($LASTEXITCODE -ne 0) { throw 'CPython extraction failed' }",
+        '          "UV_PYTHON=$dir\\python\\python.exe"'
+        " | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append",
+        "          'UV_PYTHON_DOWNLOADS=never'"
+        " | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append",
+    ],
+    "macos": [
+        CPYTHON_STEP,
+        "        run: |",
+        f'          curl -fsSLo "$RUNNER_TEMP/cpython.tar.gz" {PBS}/cpython-3.14.7%2B20260807'
+        "-aarch64-apple-darwin-install_only_stripped.tar.gz",
+        '          echo "532645be202d3df8510ab318ca5faed92060a694c8327144e14fa81f31af0f6d'
+        '  $RUNNER_TEMP/cpython.tar.gz" | shasum -a 256 -c',
+        '          mkdir "$RUNNER_TEMP/cpython"',
+        '          tar -xzf "$RUNNER_TEMP/cpython.tar.gz" -C "$RUNNER_TEMP/cpython"',
+        '          echo "UV_PYTHON=$RUNNER_TEMP/cpython/python/bin/python3.14" >> "$GITHUB_ENV"',
+        '          echo "UV_PYTHON_DOWNLOADS=never" >> "$GITHUB_ENV"',
+    ],
+}
+
+
+@pytest.mark.parametrize("name", ["windows", "macos"])
+def test_workflow_builds_with_the_pinned_cpython_checked_by_sha256(name: str) -> None:
+    lines = job(name)
+    assert block(lines, CPYTHON_STEP) == CPYTHON_STEPS[name]
+    sync = "      - run: uv sync --locked --no-dev --no-editable --group build"
+    assert lines.index(CPYTHON_STEP) < lines.index(sync)
+
+
+def test_workflow_never_lets_uv_fetch_or_pick_another_python() -> None:
+    lines = workflow()
+    assert [line for line in lines if "uv python" in line] == []
+    # Only the two pinned-CPython steps name uv's interpreter settings.
+    assert [line for line in lines if "UV_PYTHON" in line] == [
+        line for name in ("windows", "macos") for line in CPYTHON_STEPS[name] if "UV_PYTHON" in line
+    ]

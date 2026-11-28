@@ -16,7 +16,14 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { licenceFiles, mitText, prodPackages, reviewProblems, spdxIds } from "./licences.mjs";
+import {
+  licenceFiles,
+  mitText,
+  prodPackages,
+  reviewProblems,
+  rowFor,
+  spdxIds,
+} from "./licences.mjs";
 
 /** The sections of the notice file, in the order `buildNotices` renders them. The last title
  * is not a component group: every component's licence texts are collected there, once each,
@@ -389,12 +396,14 @@ function renderText(entries, { version, platform, homepage }) {
  *   homepage: string}} args `inventory` is `scripts/licence_inventory.py`'s JSON, already
  *   parsed; `table` is `licences.mjs`'s `loadTable` result; `texts` is its `loadTexts` result;
  *   `platform` is a `process.platform` value; `version` and `homepage` come from
- *   `desktop/package.json`.
+ *   `desktop/package.json`. Each row renders as it applies on `platform` (`rowFor`).
  * @returns {{text: string, problems: string[]}} `problems` is sorted and empty when the table
  *   covers everything the inventory and both lockfiles report.
  */
 export function buildNotices({ repo, inventory, table, texts, platform, version, homepage }) {
-  const rows = table.components ?? {};
+  const rows = Object.fromEntries(
+    Object.entries(table.components ?? {}).map(([key, row]) => [key, rowFor(row, platform)]),
+  );
   const built = [];
   const problems = [];
 

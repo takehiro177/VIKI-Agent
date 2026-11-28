@@ -14,6 +14,7 @@ import {
   mitText,
   prodPackages,
   reviewProblems,
+  rowFor,
   spdxIds,
 } from "../build/licences.mjs";
 
@@ -195,6 +196,82 @@ test("loadTable names the bad key for each shape problem", (t) => {
       ),
     /"components\.npm:foo@1\.0\.0"/,
   );
+});
+
+test("loadTable accepts a by_platform map giving each of a row's platforms its own texts and note", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "licence-table-by-platform-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, "licences.json");
+  const data = {
+    allowed: [],
+    texts: {},
+    components: {
+      "python:cpython@1.0.0": {
+        platforms: ["win32", "darwin"],
+        by_platform: { win32: { texts: ["a"], note: "Windows" }, darwin: { note: "macOS" } },
+      },
+    },
+  };
+  writeFileSync(file, JSON.stringify(data));
+  assert.deepEqual(loadTable(file), data);
+});
+
+test("loadTable refuses a by_platform map that does not give exactly the row's platforms only texts and a note", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "licence-table-by-platform-bad-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const rows = {
+    "no platforms": { by_platform: { darwin: { note: "x" } } },
+    "not an object": { platforms: ["darwin"], by_platform: [] },
+    "a platform the row does not list": {
+      platforms: ["win32"],
+      by_platform: { win32: { note: "x" }, macos: { note: "y" } },
+    },
+    "a listed platform left out": {
+      platforms: ["win32", "darwin"],
+      by_platform: { win32: { note: "x" } },
+    },
+    "an entry that is not an object": { platforms: ["darwin"], by_platform: { darwin: "x" } },
+    "a field other than texts and note": {
+      platforms: ["darwin"],
+      by_platform: { darwin: { text: ["a"] } },
+    },
+    "a licence": { platforms: ["darwin"], by_platform: { darwin: { licence: "MIT" } } },
+    "texts that are not strings": {
+      platforms: ["darwin"],
+      by_platform: { darwin: { texts: "a" } },
+    },
+    "a note that is not a string": { platforms: ["darwin"], by_platform: { darwin: { note: 1 } } },
+  };
+  for (const [name, row] of Object.entries(rows)) {
+    const file = join(dir, `${name}.json`);
+    writeFileSync(
+      file,
+      JSON.stringify({ allowed: [], texts: {}, components: { "python:cpython@1.0.0": row } }),
+    );
+    assert.throws(() => loadTable(file), /"components\.python:cpython@1\.0\.0\.by_platform"/, name);
+  }
+});
+
+// -- rowFor -----------------------------------------------------------------------------------
+
+test("rowFor takes texts and note from the platform's by_platform entry and keeps the rest of the row", () => {
+  const row = {
+    licence: "PSF-2.0",
+    platforms: ["win32", "darwin"],
+    files: ["lib*.dylib"],
+    texts: ["base"],
+    note: "Base note.",
+    by_platform: { win32: { texts: ["win"] }, darwin: { texts: ["mac", "zstd"], note: "macOS." } },
+  };
+  assert.deepEqual(rowFor(row, "darwin"), {
+    ...row,
+    texts: ["mac", "zstd"],
+    note: "macOS.",
+  });
+  assert.deepEqual(rowFor(row, "win32"), { ...row, texts: ["win"], note: "Base note." });
+  assert.equal(rowFor(row, "linux"), row);
+  assert.equal(rowFor({ licence: "MIT" }, "darwin").licence, "MIT");
+  assert.equal(rowFor(undefined, "darwin"), undefined);
 });
 
 // -- loadTexts --------------------------------------------------------------------------------
@@ -521,4 +598,46 @@ test("reviewProblems never flags a stale row whose platforms exclude the current
     },
   ];
   assert.deepEqual(reviewProblems(components, table, "linux"), []);
+});
+
+/** A CPython component as `notices.mjs`'s `buildCpythonEntry` reports it. */
+function cpythonComponent(version) {
+  return {
+    key: `python:cpython@${version}`,
+    name: "cpython",
+    version,
+    licence: "PSF-2.0",
+    texts: [{ title: "CPython LICENSE.txt", text: "CPython licence" }],
+    requiresRow: true,
+  };
+}
+
+test("reviewProblems checks the text ids of the build platform's by_platform entry only", () => {
+  const table = {
+    allowed: ["PSF-2.0"],
+    texts: { known: { file: "k.txt", sha256: "x", source: "https://e" } },
+    components: {
+      "python:cpython@3.14.7": {
+        platforms: ["win32", "darwin"],
+        by_platform: { win32: { texts: ["known"] }, darwin: { texts: ["known", "missing"] } },
+      },
+    },
+  };
+  const components = [cpythonComponent("3.14.7")];
+  assert.deepEqual(reviewProblems(components, table, "win32"), []);
+  assert.deepEqual(reviewProblems(components, table, "darwin"), [
+    'python:cpython@3.14.7: row names unknown text "missing"',
+  ]);
+});
+
+test("the real table reviews CPython 3.14.7 on darwin and win32 and 3.14.4 on linux, with no problems", () => {
+  const table = loadTable(join(DESKTOP_ROOT, "build", "licences.json"));
+  assert.deepEqual(reviewProblems([cpythonComponent("3.14.7")], table, "darwin"), []);
+  assert.deepEqual(reviewProblems([cpythonComponent("3.14.7")], table, "win32"), []);
+  assert.deepEqual(reviewProblems([cpythonComponent("3.14.4")], table, "linux"), []);
+  // The release dry run's macOS failure: a 3.14.4 build has no darwin row.
+  assert.deepEqual(reviewProblems([cpythonComponent("3.14.4")], table, "darwin"), [
+    "python:cpython@3.14.4: requires a reviewed row",
+    "python:cpython@3.14.7: stale row, no component reports it",
+  ]);
 });
